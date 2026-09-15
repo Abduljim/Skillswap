@@ -1,0 +1,57 @@
+# SkillSwap — one-click Render Blueprint
+#
+# Usage:
+#   1. Push this repo to GitHub (any name, public or private)
+#   2. Go to https://dashboard.render.com/blueprints
+#   3. Click "New Blueprint Instance" → connect your repo
+#   4. Click "Apply" — Render will create:
+#        - skillswap-db (PostgreSQL)
+#        - skillswap-api (Web Service, Node 20)
+#   5. After the API deploys, run the seed command (one time) via the Shell tab
+#   6. Update the APK: rebuild with VITE_API_URL=https://skillswap-api.onrender.com
+#      OR use the live URL Render gives you.
+
+services:
+  - type: pserv
+    name: skillswap-db
+    plan: free
+    region: oregon
+    ipAllowList: []  # only accessible from skillswap-api
+    postgresMajorVersion: 16
+
+  - type: web
+    name: skillswap-api
+    plan: free
+    region: oregon
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromService: { name: skillswap-db, type: pserv, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        value: '*'
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX
+        value: 500
+      - key: LOG_LEVEL
+        value: info
+      - key: PLAY_BILLING_VERIFY
+        value: 'false'
+      # Override if you want to use your own platform
+      - key: ANDROID_PACKAGE_NAME
+        value: app.skillswap.client
+    autoDeploy: true

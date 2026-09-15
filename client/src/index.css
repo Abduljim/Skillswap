@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-cream-50 text-ink-900 font-sans;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-coral-400 ring-offset-2 ring-offset-cream-50 rounded;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-ink-900 text-cream-50 hover:bg-ink-800 shadow-soft;
+  }
+  .btn-secondary {
+    @apply btn bg-cream-100 text-ink-900 hover:bg-cream-200;
+  }
+  .btn-coral {
+    @apply btn bg-coral-500 text-white hover:bg-coral-600 shadow-soft;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-700 hover:bg-ink-50;
+  }
+  .btn-outline {
+    @apply btn bg-transparent border border-ink-200 text-ink-700 hover:bg-cream-100;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-ink-100/60;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm placeholder-ink-400 focus:border-ink-900 focus:ring-0 transition-colors;
+  }
+  .label {
+    @apply block text-sm font-medium text-ink-700 mb-1.5;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+  .chip-ink {
+    @apply chip bg-ink-900 text-cream-50;
+  }
+  .chip-mint {
+    @apply chip bg-mint-100 text-mint-700;
+  }
+  .chip-coral {
+    @apply chip bg-coral-100 text-coral-700;
+  }
+  .chip-cream {
+    @apply chip bg-cream-100 text-ink-700;
+  }
+  .chip-lavender {
+    @apply chip bg-lavender-100 text-lavender-500;
+  }
+  .skeleton {
+    @apply animate-pulse-soft bg-ink-100 rounded;
+  }
+}
+
+.connection-line {
+  background: linear-gradient(to right, transparent, currentColor, transparent);
+}
+
+.glass-nav {
+  background: rgba(253, 250, 244, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}

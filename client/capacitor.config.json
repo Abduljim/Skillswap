@@ -1,0 +1,19 @@
+{
+  "appId": "app.skillswap.client",
+  "appName": "SkillSwap",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false,
+    "errorPath": "/error"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#fdfaf4"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800
+    }
+  }
+}

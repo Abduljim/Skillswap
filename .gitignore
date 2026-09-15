@@ -1,0 +1,73 @@
+# Dependencies
+node_modules/
+.pnp/
+
+# Build output
+client/dist/
+client/android/app/build/
+client/android/build/
+client/android/.gradle/
+client/android/local.properties
+client/android/captures/
+client/android/.idea/
+client/android/*.iml
+client/android/app/release/
+client/android/app/debug/
+
+# Generated
+**/.cache/
+**/.npm/
+**/.next/
+**/.nuxt/
+**/.output/
+**/.vite/
+**/__pycache__/
+**/.mypy_cache/
+
+# Env files
+.env
+.env.local
+.env.*.local
+client/.env.local
+client/.env.*.local
+server/.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Keystores — NEVER commit
+*.jks
+*.keystore
+client/android/app/*.jks
+client/android/app/*.keystore
+client/android/app/google-services.json
+
+# Test artifacts
+coverage/
+*.lcov
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Prisma
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# Misc
+.history/
+.tmp/
+*.tsbuildinfoclient/.env.production
+
+# Build-time API URL override
+# Copy .env.production.example → .env.production and set VITE_API_URL
