@@ -1,5 +1,5 @@
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
-import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown } from 'lucide-react';
+import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -84,6 +84,9 @@ export default function AppLayout() {
               </span>
             )}
           </NavLink>
+          <Link to="/settings" className="p-2 rounded-lg text-ink-600 hover:bg-cream-100" title="Settings">
+            <Settings className="w-5 h-5" />
+          </Link>
           {user?.isAdmin && (
             <Link to="/admin" className="btn-outline" title="Admin">
               <Shield className="w-4 h-4" />
@@ -146,6 +149,9 @@ export default function AppLayout() {
             title={isPro ? 'Pro active' : 'Upgrade to Pro'}
           >
             <Crown className="w-5 h-5" />
+          </NavLink>
+          <NavLink to="/settings" className="p-2 text-ink-600" title="Settings">
+            <Settings className="w-5 h-5" />
           </NavLink>
           <NavLink to="/notifications" className="relative p-2 text-ink-600">
             <Bell className="w-5 h-5" />
