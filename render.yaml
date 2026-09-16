@@ -11,14 +11,14 @@
 #   6. Update the APK: rebuild with VITE_API_URL=https://skillswap-api.onrender.com
 #      OR use the live URL Render gives you.
 
-services:
-  - type: pserv
-    name: skillswap-db
+databases:
+  - name: skillswap-db
     plan: free
     region: oregon
+    postgresMajorVersion: '16'
     ipAllowList: []  # only accessible from skillswap-api
-    postgresMajorVersion: 16
 
+services:
   - type: web
     name: skillswap-api
     plan: free
@@ -34,7 +34,7 @@ services:
       - key: PORT
         value: 4000
       - key: DATABASE_URL
-        fromService: { name: skillswap-db, type: pserv, property: connectionString }
+        fromDatabase: { name: skillswap-db, property: connectionString }
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
