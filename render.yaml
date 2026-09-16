@@ -32,6 +32,8 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 365d
+      - key: ADMIN_EMAIL
+        value: jimoh0004@gmail.com
       - key: COOKIE_SECRET
         generateValue: true
       - key: CLIENT_URL

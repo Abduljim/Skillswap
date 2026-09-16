@@ -3,6 +3,19 @@ import { prisma } from '../lib/prisma';
 import { signToken } from '../middleware/auth';
 import { ConflictError, UnauthorizedError, BadRequestError, NotFoundError } from '../utils/errors';
 import { createHash, randomBytes } from 'crypto';
+import { env } from '../config/env';
+
+// Bootstrap admin: when ADMIN_EMAIL is set, that account is granted admin on
+// signup and on every login, so the very first real account can run the admin
+// panel without any manual database access.
+async function ensureAdminRole(email: string): Promise<boolean> {
+  if (!env.ADMIN_EMAIL || email !== env.ADMIN_EMAIL) return false;
+  await prisma.user.updateMany({
+    where: { email, isAdmin: false },
+    data: { isAdmin: true },
+  });
+  return true;
+}
 
 export async function signup(input: {
   email: string;
@@ -24,6 +37,8 @@ export async function signup(input: {
     select: { id: true, email: true, displayName: true, isAdmin: true },
   });
 
+  await ensureAdminRole(user.email);
+
   return { user, token: signToken({ userId: user.id, email: user.email }) };
 }
 
@@ -33,6 +48,8 @@ export async function login(input: { email: string; password: string }) {
 
   const ok = await bcrypt.compare(input.password, user.passwordHash);
   if (!ok) throw new UnauthorizedError('Invalid credentials');
+
+  await ensureAdminRole(user.email);
 
   return {
     user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: user.isAdmin },

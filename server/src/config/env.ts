@@ -9,6 +9,7 @@ export const env = {
   DATABASE_URL: process.env.DATABASE_URL || '',
   JWT_SECRET: process.env.JWT_SECRET || 'dev-secret-change-me',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '365d',
+  ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').toLowerCase(),
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   SERVER_URL: process.env.SERVER_URL || 'http://localhost:4000',
   COOKIE_SECRET: process.env.COOKIE_SECRET || 'dev-cookie-secret-change-me',

@@ -315,6 +315,19 @@ async function main() {
   const realUsers = await prisma.user.count();
   console.log(`Registered users remaining: ${realUsers}`);
 
+  // ── Bootstrap admin ────────────────────────────────────────────────────────
+  // If ADMIN_EMAIL is set and that account exists, promote it to admin on every
+  // deploy. Together with the login/signup check this guarantees the very first
+  // real sign-up can run the admin panel without manual DB access.
+  const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase();
+  if (adminEmail) {
+    const promoted = await prisma.user.updateMany({
+      where: { email: adminEmail, isAdmin: false },
+      data: { isAdmin: true },
+    });
+    console.log(`ADMIN_EMAIL bootstrap: promoted ${promoted.count} account(s) (${adminEmail})`);
+  }
+
   console.log('✅ Seed complete!');
   console.log(`📊 ${await prisma.skill.count()} skills across ${new Set(SKILLS.map((s) => s.category)).size} categories`);
 }

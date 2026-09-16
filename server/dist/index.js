@@ -49,6 +49,7 @@ var init_env = __esm({
       DATABASE_URL: process.env.DATABASE_URL || "",
       JWT_SECRET: process.env.JWT_SECRET || "dev-secret-change-me",
       JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "365d",
+      ADMIN_EMAIL: (process.env.ADMIN_EMAIL || "").toLowerCase(),
       CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
       SERVER_URL: process.env.SERVER_URL || "http://localhost:4000",
       COOKIE_SECRET: process.env.COOKIE_SECRET || "dev-cookie-secret-change-me",
@@ -415,6 +416,15 @@ var requireAdmin = async (req, _res, next) => {
 
 // src/services/auth.service.ts
 var import_crypto = require("crypto");
+init_env();
+async function ensureAdminRole(email) {
+  if (!env.ADMIN_EMAIL || email !== env.ADMIN_EMAIL) return false;
+  await prisma.user.updateMany({
+    where: { email, isAdmin: false },
+    data: { isAdmin: true }
+  });
+  return true;
+}
 async function signup(input) {
   const existing = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
   if (existing) throw new ConflictError("Email already registered");
@@ -428,6 +438,7 @@ async function signup(input) {
     },
     select: { id: true, email: true, displayName: true, isAdmin: true }
   });
+  await ensureAdminRole(user.email);
   return { user, token: signToken({ userId: user.id, email: user.email }) };
 }
 async function login(input) {
@@ -435,6 +446,7 @@ async function login(input) {
   if (!user || !user.isActive) throw new UnauthorizedError("Invalid credentials");
   const ok2 = await import_bcryptjs.default.compare(input.password, user.passwordHash);
   if (!ok2) throw new UnauthorizedError("Invalid credentials");
+  await ensureAdminRole(user.email);
   return {
     user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: user.isAdmin },
     token: signToken({ userId: user.id, email: user.email })
