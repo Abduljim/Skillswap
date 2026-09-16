@@ -25,7 +25,7 @@ services:
     region: oregon
     runtime: node
     rootDir: server
-    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod
+    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod && node scripts/seed-prod.js
     startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:

@@ -75,25 +75,12 @@ const USERS = [
 async function main() {
   console.log('🌱 Seeding SkillSwap…');
 
-  // Idempotent: skip if already populated
+  // Non-destructive: skip entirely if already populated
+  // (runs on every deploy via the build command, so it must never wipe data)
   const existing = await prisma.user.count();
   if (existing > 0) {
-    console.log(`Database already has ${existing} users. Clearing for fresh seed…`);
-    await prisma.notification.deleteMany();
-    await prisma.report.deleteMany();
-    await prisma.block.deleteMany();
-    await prisma.review.deleteMany();
-    await prisma.message.deleteMany();
-    await prisma.session.deleteMany();
-    await prisma.exchangeCompletionConfirmation.deleteMany();
-    await prisma.exchange.deleteMany();
-    await prisma.exchangeRequest.deleteMany();
-    await prisma.userSkill.deleteMany();
-    await prisma.availability.deleteMany();
-    await prisma.profile.deleteMany();
-    await prisma.passwordResetToken.deleteMany();
-    await prisma.skill.deleteMany();
-    await prisma.user.deleteMany();
+    console.log(`Database already has ${existing} users. Seed skipped.`);
+    return;
   }
 
   console.log(`Creating ${SKILLS.length} skills…`);
