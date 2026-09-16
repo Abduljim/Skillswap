@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { MatchScoreBadge, Avatar, EmptyState } from '../components/ui';
+import { MatchScoreBadge, FrameAvatar, EmptyState } from '../components/ui';
 import { Users, ArrowRight, Repeat, CheckCircle2, Star, Plus, MessageSquare, Crown, Sparkles } from 'lucide-react';
 import type { Match, ExchangeRequest, Exchange, Notification } from '../types';
 
@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const pending = receivedRequests?.filter((r) => r.status === 'PENDING') || [];
   const activeExchanges = exchanges?.filter((e) => e.status === 'ACTIVE') || [];
   const completed = exchanges?.filter((e) => e.status === 'COMPLETED') || [];
-  const isPro = subData?.tier === 'PRO';
+  const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
   const greeting = greetingFor();
 
   return (
@@ -92,7 +92,8 @@ export default function DashboardPage() {
                 className="flex items-center justify-between p-3 bg-cream-50 rounded-xl"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <Avatar
+                  <FrameAvatar
+                    frame={req.sender?.profile?.avatarFrame || 'default'}
                     src={req.sender?.profile?.avatarUrl}
                     alt={req.sender?.displayName || 'User'}
                     size={40}
@@ -140,7 +141,7 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  <Avatar src={m.avatarUrl} alt={m.displayName || 'User'} size={48} />
+                  <FrameAvatar frame={m.avatarFrame || 'default'} src={m.avatarUrl} alt={m.displayName || 'User'} size={48} />
                   <div className="min-w-0">
                     <div className="font-semibold text-ink-900 truncate">{m.displayName}</div>
                     <div className="text-xs text-ink-500 truncate">{m.university}</div>
@@ -190,8 +191,8 @@ export default function DashboardPage() {
                 className="card p-4 hover:shadow-soft-lg transition-all flex items-center gap-3"
               >
                 <div className="flex -space-x-2">
-                  <Avatar src={e.userA.profile?.avatarUrl} alt={e.userA.displayName} size={36} className="border-2 border-white" />
-                  <Avatar src={e.userB.profile?.avatarUrl} alt={e.userB.displayName} size={36} className="border-2 border-white" />
+                  <FrameAvatar frame={e.userA.profile?.avatarFrame || 'default'} src={e.userA.profile?.avatarUrl} alt={e.userA.displayName} size={36} className="border-2 border-white" />
+                  <FrameAvatar frame={e.userB.profile?.avatarFrame || 'default'} src={e.userB.profile?.avatarUrl} alt={e.userB.displayName} size={36} className="border-2 border-white" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-sm text-ink-900 truncate">
@@ -236,7 +237,7 @@ function BestMatchHero({ match }: { match: Match }) {
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-3">
-              <Avatar src={match.avatarUrl} alt={match.displayName || 'User'} size={56} />
+              <FrameAvatar frame={match.avatarFrame || 'default'} src={match.avatarUrl} alt={match.displayName || 'User'} size={56} />
               <div className="font-display font-bold text-3xl text-coral-300">{match.score}%</div>
             </div>
             <div className="mt-1 text-sm font-semibold">{match.displayName}</div>

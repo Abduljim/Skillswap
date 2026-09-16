@@ -83,6 +83,9 @@ model User {
   displayName   String
   isActive      Boolean  @default(true)
   isAdmin       Boolean  @default(false)
+  lastLoginAt   DateTime?
+  loginStreak   Int      @default(0)
+  maxStreak     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -118,6 +121,10 @@ model Profile {
   university      String?
   department      String?
   yearLevel       String?
+  occupation      String?
+  jobTitle        String?
+  company         String?
+  gender          String?
   bio             String?
   avatarUrl       String?
   learningFormat  LearningFormat  @default(EITHER)

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
-import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { FrameAvatar, EmptyState, Skeleton } from '../components/ui';
 import { Check, X, Ban } from 'lucide-react';
 import type { ExchangeRequest } from '../types';
 
@@ -109,7 +109,7 @@ function RequestCard({
   return (
     <div className="card p-5">
       <div className="flex items-start gap-4">
-        <Avatar src={other?.profile?.avatarUrl} alt={other?.displayName || ''} size={48} />
+        <FrameAvatar frame={other?.profile?.avatarFrame || 'default'} src={other?.profile?.avatarUrl} alt={other?.displayName || ''} size={48} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="font-semibold text-ink-900 truncate">{other?.displayName}</div>

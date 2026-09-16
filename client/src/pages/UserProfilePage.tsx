@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar, resolveBannerColor } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
 import { BadgesLegend } from '../components/BadgesLegend';
 import { ArrowLeft, Star, Medal } from 'lucide-react';
@@ -38,7 +38,7 @@ export default function UserProfilePage() {
       </Link>
 
       <div className="card overflow-hidden">
-        <div className={`p-6 md:p-8 ${user.bannerStyle ? `card-color-${user.bannerStyle}` : 'bg-gradient-to-br from-cream-50/60 via-white/40 to-mint-50/50'}`}>
+        <div className={`p-6 md:p-8 ${user.bannerStyle ? `card-color-${resolveBannerColor(user.bannerStyle)} card-dark` : 'bg-gradient-to-br from-cream-50/60 via-white/40 to-mint-50/50'}`}>
         <div className="flex flex-col md:flex-row items-start gap-5">
           <FrameAvatar frame={user.avatarFrame} src={user.avatarUrl} alt={user.displayName} size={96} />
           <div className="flex-1">
@@ -46,7 +46,20 @@ export default function UserProfilePage() {
               <h1 className="font-display font-bold text-3xl text-ink-900">{user.displayName}</h1>
               {isPro && <ProBadge />}
             </div>
-            {user.university && (
+            {user.occupation && (
+              <p className="text-ink-700 mt-1">
+                <span className="capitalize">{user.occupation.replace('_', '-')}</span>
+                {user.occupation === 'student' && (user.university || user.department) && (
+                  <> at {[user.university, user.department].filter(Boolean).join(' · ')}</>
+                )}
+                {user.occupation !== 'student' && (user.jobTitle || user.company) && (
+                  <>
+                    {' '}· {[user.jobTitle, user.company].filter(Boolean).join(' at ')}
+                  </>
+                )}
+              </p>
+            )}
+            {!user.occupation && user.university && (
               <p className="text-ink-700 mt-1">
                 {user.university} · {user.department} {user.yearLevel && `· ${user.yearLevel}`}
               </p>

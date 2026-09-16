@@ -4,22 +4,29 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES, BANNER_STYLES, resolveBannerColor } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
 import { BadgesLegend } from '../components/BadgesLegend';
-import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays, Sparkles, Flame } from 'lucide-react';
 import type { Skill, LearningFormat, Weekday, TimeOfDay } from '../types';
+import { STREAK_MILESTONES } from '../streaks';
 
 const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const TIMES: TimeOfDay[] = ['MORNING', 'AFTERNOON', 'EVENING'];
-const CARD_COLORS = [
-  { value: 'cream', label: 'Cream', cls: 'card-color-cream' },
-  { value: 'coral', label: 'Coral', cls: 'card-color-coral' },
-  { value: 'mint', label: 'Mint', cls: 'card-color-mint' },
-  { value: 'ocean', label: 'Ocean', cls: 'card-color-ocean' },
-  { value: 'forest', label: 'Forest', cls: 'card-color-forest' },
-  { value: 'sunset', label: 'Sunset', cls: 'card-color-sunset' },
-  { value: 'midnight', label: 'Midnight', cls: 'card-color-midnight' },
+const CARD_COLORS = BANNER_STYLES.map((b) => ({ value: b.value, label: b.label, cls: b.cls }));
+
+const OCCUPATIONS: { value: string; label: string }[] = [
+  { value: 'student', label: 'Student' },
+  { value: 'employed', label: 'Employed' },
+  { value: 'self_employed', label: 'Self-employed' },
+  { value: 'unemployed', label: 'Unemployed' },
+  { value: 'other', label: 'Other' },
+];
+
+const GENDERS: { value: string; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'unspecified', label: 'Prefer not to say' },
 ];
 
 const AVATAR_SIZE = 256;
@@ -65,7 +72,7 @@ export default function ProfilePage() {
     queryKey: ['my-subscription'],
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
-  const isPro = subData?.tier === 'PRO';
+  const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
@@ -77,6 +84,10 @@ export default function ProfilePage() {
       university: profile?.university || '',
       department: profile?.department || '',
       yearLevel: profile?.yearLevel || '',
+      occupation: profile?.occupation || '',
+      jobTitle: profile?.jobTitle || '',
+      company: profile?.company || '',
+      gender: profile?.gender || '',
       bio: profile?.bio || '',
       avatarUrl: profile?.avatarUrl || '',
       learningFormat: profile?.learningFormat || 'EITHER',
@@ -157,8 +168,8 @@ export default function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
       <div className="card overflow-hidden relative">
-        <div className={`p-6 md:p-8 relative ${isPro && profile?.bannerStyle ? `card-color-${profile.bannerStyle}` : ''}`}>
-        <div className="absolute -top-16 -right-16 w-48 h-48 bg-coral-100/70 rounded-full blur-3xl" />
+        <div className={`p-6 md:p-8 relative ${isPro ? `card-color-${resolveBannerColor(profile?.bannerStyle)} card-dark` : ''}`}>
+        <div className="absolute -top-16 -right-16 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
             <FrameAvatar frame={editing ? 'default' : profile?.avatarFrame || 'default'} src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
@@ -208,11 +219,26 @@ export default function ProfilePage() {
                   {isPro && <ProBadge />}
                 </div>
                 <p className="text-sm text-ink-600">{user?.email}</p>
-                {(profile?.university || profile?.department) && (
-                  <p className="text-sm text-ink-700 mt-1 font-medium">
-                    {[profile.university, profile.department].filter(Boolean).join(' · ')}
-                  </p>
-                )}
+                {(() => {
+                  if (profile?.occupation === 'student') {
+                    return (profile?.university || profile?.department) ? (
+                      <p className="text-sm text-ink-700 mt-1 font-medium">
+                        Student{profile.university || profile.department ? ` at ${[profile.university, profile.department].filter(Boolean).join(' · ')}` : ''}
+                      </p>
+                    ) : null;
+                  }
+                  if (profile?.occupation === 'employed' || profile?.occupation === 'self_employed') {
+                    const title = profile?.jobTitle || profile?.company;
+                    return title ? (
+                      <p className="text-sm text-ink-700 mt-1 font-medium">
+                        <span className="capitalize">{profile.occupation.replace('_', '-')}</span>{' '}
+                        {profile.jobTitle ? `· ${profile.jobTitle}` : ''}
+                        {profile.company ? ` at ${profile.company}` : ''}
+                      </p>
+                    ) : null;
+                  }
+                  return null;
+                })()}
                 {profile?.bio && <p className="text-sm text-ink-700 mt-3 leading-relaxed">{profile.bio}</p>}
 
                 <div className="mt-4 flex flex-wrap gap-2 text-xs">
@@ -220,6 +246,9 @@ export default function ProfilePage() {
                     <Crown className="w-3 h-3" /> {isPro ? 'Pro' : 'Free'}
                   </span>
                   <span className="chip-cream">Format: {profile?.learningFormat?.toLowerCase()}</span>
+                  {profile?.gender && (
+                    <span className="chip-cream capitalize">{profile.gender === 'unspecified' ? 'Prefer not to say' : profile.gender}</span>
+                  )}
                   {profile?.availabilities?.length > 0 && (
                     <span className="chip-cream">{profile.availabilities.length} time slots</span>
                   )}
@@ -255,17 +284,51 @@ export default function ProfilePage() {
                     <input className="input" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
                   </div>
                   <div>
-                    <label className="label">University</label>
-                    <input className="input" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} />
+                    <label className="label">Occupation</label>
+                    <select className="input" value={form.occupation || ''} onChange={(e) => setForm({ ...form, occupation: e.target.value })}>
+                      <option value="">Select…</option>
+                      {OCCUPATIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    <label className="label">Department</label>
-                    <input className="input" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
+                    <label className="label">Gender</label>
+                    <select className="input" value={form.gender || ''} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
+                      <option value="">Select…</option>
+                      {GENDERS.map((g) => (
+                        <option key={g.value} value={g.value}>{g.label}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
-                    <label className="label">Year</label>
-                    <input className="input" value={form.yearLevel} onChange={(e) => setForm({ ...form, yearLevel: e.target.value })} />
-                  </div>
+                  {form.occupation !== 'student' && (
+                    <>
+                      <div>
+                        <label className="label">Job title</label>
+                        <input className="input" value={form.jobTitle || ''} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Company</label>
+                        <input className="input" value={form.company || ''} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+                      </div>
+                    </>
+                  )}
+                  {form.occupation === 'student' && (
+                    <>
+                      <div>
+                        <label className="label">University</label>
+                        <input className="input" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Department</label>
+                        <input className="input" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Year</label>
+                        <input className="input" value={form.yearLevel} onChange={(e) => setForm({ ...form, yearLevel: e.target.value })} />
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="label">Format</label>
                     <select className="input" value={form.learningFormat} onChange={(e) => setForm({ ...form, learningFormat: e.target.value as LearningFormat })}>
@@ -347,11 +410,11 @@ export default function ProfilePage() {
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isPro ? 'bg-coral-500/20 text-coral-300' : 'bg-cream-100 text-ink-600'}`}>
             <Crown className="w-4 h-4" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className={`text-sm font-semibold ${isPro ? 'text-cream-50' : 'text-ink-900'}`}>
               {isPro ? 'Pro plan' : 'Free plan'}
             </div>
-            <div className={`text-xs ${isPro ? 'text-cream-300' : 'text-ink-500'}`}>
+            <div className={`text-xs mt-0.5 ${isPro ? 'text-cream-300' : 'text-ink-500'}`}>
               {isPro
                 ? 'Unlimited requests, boosts, who-viewed-me & Pro badge.'
                 : 'Upgrade to Pro for unlimited requests, boosts & more.'}
@@ -364,6 +427,46 @@ export default function ProfilePage() {
         {isPro && (
           <Link to="/membership" className="btn-ghost text-xs px-3 py-2 shrink-0 text-cream-100">Manage</Link>
         )}
+      </div>
+
+      {/* Day streak */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-coral-500/10 text-coral-600 flex items-center justify-center shrink-0">
+              <Flame className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-ink-900">Day streak</div>
+              <div className="text-xs text-ink-500">Check in daily to keep it growing.</div>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="font-display font-bold text-2xl text-coral-600">
+              {profile?.streak ?? 0}
+              <span className="text-sm text-ink-500 ml-1">days</span>
+            </div>
+            <div className="text-xs text-ink-500">Best: {profile?.maxStreak ?? 0}</div>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {STREAK_MILESTONES.map((m, i) => {
+            const streak = profile?.streak ?? 0;
+            const reached = streak >= m;
+            const isNext = streak < m && streak >= (STREAK_MILESTONES[i - 1] ?? 0);
+            return (
+              <div
+                key={m}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold ${
+                  reached ? 'bg-coral-500/15 text-coral-700' : isNext ? 'bg-coral-500/5 text-coral-600 ring-1 ring-coral-500/40' : 'bg-cream-100 text-ink-500'
+                }`}
+              >
+                <Flame className={`w-3 h-3 ${reached ? 'text-coral-500' : 'opacity-40'}`} />
+                {m}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Customize your profile (Pro) */}
@@ -399,7 +502,7 @@ export default function ProfilePage() {
           <div className="text-sm font-semibold text-ink-700 mb-3">Profile card color</div>
           <div className="flex flex-wrap gap-2">
             {CARD_COLORS.map((c) => {
-              const active = (profile?.bannerStyle || 'cream') === c.value;
+              const active = resolveBannerColor(profile?.bannerStyle) === c.value;
               return (
                 <button
                   key={c.value}

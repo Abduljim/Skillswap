@@ -109,7 +109,7 @@ export async function listProfileViewers(profileId: string) {
         select: {
           id: true,
           displayName: true,
-          profile: { select: { avatarUrl: true, university: true } },
+          profile: { select: { avatarUrl: true, avatarFrame: true, university: true } },
         },
       },
     },

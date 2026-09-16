@@ -4,17 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { Avatar, EmptyState, Skeleton } from '../components/ui';
-import { ArrowLeft, Send, Calendar, CheckCircle2, Star, Phone, Video } from 'lucide-react';
+import { FrameAvatar, EmptyState, Skeleton } from '../components/ui';
+import { ArrowLeft, Send, Calendar, CheckCircle2, Star, Phone, Video, Smile } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
 import { useCall, CallOverlay } from '../components/CallOverlay';
 import type { Exchange, Message, Session } from '../types';
 
 type Tab = 'overview' | 'chat' | 'sessions';
-
-const FREE_STICKERS = ['👍', '👏', '😂', '😍', '🔥', '🙏', '🎉', '💯', '👀', '🤝'];
-const PRO_STICKERS = [...FREE_STICKERS, '✨', '🫡', '🦊', '💎', '🧠', '🚀', '⭐️', '💰', '🎯', '🍕', '☕', '🧩'];
 
 function useExchangeSocket(exchangeId: string, userId: string) {
   const socketRef = useRef<Socket | null>(null);
@@ -74,8 +71,8 @@ export default function ExchangeWorkspacePage() {
       <div className="card p-5 md:p-6 bg-gradient-to-br from-ink-900 to-ink-800 text-cream-50">
         <div className="flex items-center gap-4">
           <div className="flex -space-x-3">
-            <Avatar src={exchange.userA.profile?.avatarUrl} alt={exchange.userA.displayName} size={48} className="border-2 border-ink-900" />
-            <Avatar src={exchange.userB.profile?.avatarUrl} alt={exchange.userB.displayName} size={48} className="border-2 border-ink-900" />
+            <FrameAvatar frame={exchange.userA.profile?.avatarFrame || 'default'} src={exchange.userA.profile?.avatarUrl} alt={exchange.userA.displayName} size={48} className="border-2 border-ink-900" />
+            <FrameAvatar frame={exchange.userB.profile?.avatarFrame || 'default'} src={exchange.userB.profile?.avatarUrl} alt={exchange.userB.displayName} size={48} className="border-2 border-ink-900" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-wide text-cream-300 font-semibold">Exchange with</div>
@@ -129,14 +126,23 @@ function WorkspaceWithCall({
   exchange: any;
 }) {
   const { user } = useAuth();
-  const { socket } = useExchangeSocket(exchangeId, user!.id);
-  const call = useCall(socket, exchangeId, { id: user!.id, displayName: user!.displayName, avatarUrl: null }, {
+  const { socket, ready } = useExchangeSocket(exchangeId, user!.id);
+  const call = useCall(socket, exchangeId, {
+    id: user!.id,
+    displayName: user!.displayName,
+    avatarUrl: (user as any)?.profile?.avatarUrl ?? null,
+    avatarFrame: (user as any)?.profile?.avatarFrame ?? null,
+  }, {
     id: partner.id,
     displayName: partner.displayName,
     avatarUrl: partner.profile?.avatarUrl ?? null,
+    avatarFrame: partner.profile?.avatarFrame ?? null,
   });
 
-  const startCall = (video: boolean) => call.startCall(video).catch(() => {});
+  const startCall = (video: boolean) => {
+    if (!socket) return;
+    call.startCall(video).catch(() => {});
+  };
 
   return (
     <>
@@ -144,10 +150,10 @@ function WorkspaceWithCall({
       <div className="flex justify-end gap-2 -mt-2">
         {exchange.status === 'ACTIVE' && (
           <>
-            <button onClick={() => startCall(false)} className="btn-outline text-xs px-3 py-2">
+            <button onClick={() => startCall(false)} disabled={!ready} className="btn-outline text-xs px-3 py-2 disabled:opacity-40">
               <Phone className="w-4 h-4" /> Voice call
             </button>
-            <button onClick={() => startCall(true)} className="btn-outline text-xs px-3 py-2">
+            <button onClick={() => startCall(true)} disabled={!ready} className="btn-outline text-xs px-3 py-2 disabled:opacity-40">
               <Video className="w-4 h-4" /> Video call
             </button>
           </>
@@ -225,7 +231,7 @@ function OverviewTab({ exchange }: { exchange: any }) {
           <h3 className="font-display font-bold text-ink-900 mb-2">Participants</h3>
           {[exchange.userA, exchange.userB].map((u: any) => (
             <div key={u.id} className="flex items-center gap-3 py-2 border-b border-ink-100 last:border-0">
-              <Avatar src={u.profile?.avatarUrl} alt={u.displayName} size={36} />
+              <FrameAvatar frame={u.profile?.avatarFrame || 'default'} src={u.profile?.avatarUrl} alt={u.displayName} size={36} />
               <div>
                 <div className="font-semibold text-sm">{u.displayName}</div>
                 <div className="text-xs text-ink-500">{u.profile?.university}</div>
@@ -299,17 +305,9 @@ function ChatTab({
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [showStickers, setShowStickers] = useState(false);
-  const [stickerPack, setStickerPack] = useState<'free' | 'pro'>('free');
   const socketRef = useRef<Socket | null>(controlledSocket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const { data: subData } = useQuery({
-    queryKey: ['my-subscription'],
-    queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
-  });
-  const isPro = subData?.tier === 'PRO';
-  const stickers = stickerPack === 'pro' && isPro ? PRO_STICKERS : FREE_STICKERS;
+  const textInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!controlledSocket) return;
@@ -355,43 +353,8 @@ function ChatTab({
     reader.readAsDataURL(file);
   };
 
-  const sendSticker = (emoji: string) => {
-    sendMessage(emoji, 'STICKER');
-    setShowStickers(false);
-  };
-
   return (
     <div className="card p-4 md:p-5 flex flex-col h-[60vh]">
-      {/* Sticker panel */}
-      {showStickers && (
-        <div className="border-b border-ink-100 pb-3 mb-3 animate-slide-up">
-          <div className="flex items-center gap-2 mb-2">
-            {(['free', 'pro'] as const).map((pack) => (
-              <button
-                key={pack}
-                onClick={() => setStickerPack(pack)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                  stickerPack === pack ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-700'
-                } ${pack === 'pro' && !isPro ? 'opacity-50' : ''}`}
-              >
-                {pack} {pack === 'pro' && !isPro ? '(Pro)' : ''}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-6 gap-2">
-            {stickers.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => sendSticker(emoji)}
-                className="h-11 w-11 text-2xl flex items-center justify-center rounded-xl hover:bg-cream-100 active:scale-90 transition-transform"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="flex-1 overflow-y-auto space-y-3 pb-2">
         {messages.length === 0 && (
           <div className="text-center text-sm text-ink-500 py-8">No messages yet. Say hello.</div>
@@ -427,11 +390,11 @@ function ChatTab({
       <div className="flex gap-2 pt-3 border-t border-ink-100 items-end">
         <div className="relative flex items-center gap-1">
           <button
-            onClick={() => setShowStickers((v) => !v)}
+            onClick={() => textInputRef.current?.focus()}
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
-            title="Stickers"
+            title="Emoji"
           >
-            😊
+            <Smile className="w-5 h-5" />
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -453,6 +416,7 @@ function ChatTab({
           />
         </div>
         <input
+          ref={textInputRef}
           className="input flex-1"
           placeholder="Type a message…"
           value={text}

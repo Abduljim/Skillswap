@@ -19,7 +19,7 @@ export default function SettingsPage() {
     queryKey: ['my-subscription'],
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
-  const isPro = subData?.tier === 'PRO';
+  const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();

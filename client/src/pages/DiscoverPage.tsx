@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Avatar, MatchScoreBadge, EmptyState, Skeleton } from '../components/ui';
+import { FrameAvatar, MatchScoreBadge, EmptyState, Skeleton } from '../components/ui';
 import { Search, Filter, Star, Repeat, Crown, Zap } from 'lucide-react';
 import type { Match, Skill } from '../types';
 
@@ -203,7 +203,7 @@ function MatchCard({ match }: { match: Match }) {
       </div>
 
       <div className="flex items-center gap-3 relative">
-        <Avatar src={match.avatarUrl} alt={match.displayName || 'User'} size={52} />
+        <FrameAvatar frame={match.avatarFrame || 'default'} src={match.avatarUrl} alt={match.displayName || 'User'} size={52} />
         <div className="min-w-0 flex-1">
           <div className="font-display font-bold text-ink-900 truncate">{match.displayName}</div>
           <div className="text-xs text-ink-500 truncate">{match.university}</div>

@@ -102,7 +102,7 @@ export function initSocket(httpServer: HTTPServer) {
     });
 
     // ── Call signaling ────────────────────────────────────────────────
-    socket.on('call:request', async (data: { exchangeId: string }) => {
+    socket.on('call:request', async (data: { exchangeId: string; video?: boolean }) => {
       try {
         const exchange = await prisma.exchange.findUnique({
           where: { id: data.exchangeId },
@@ -114,10 +114,19 @@ export function initSocket(httpServer: HTTPServer) {
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
         const caller = await prisma.user.findUnique({
           where: { id: userId },
-          select: { id: true, displayName: true },
+          select: {
+            id: true,
+            displayName: true,
+            profile: { select: { avatarUrl: true, avatarFrame: true } },
+          },
         });
-        // Ring both the exchange room (if target is there) AND the user room
-        const payload = { exchangeId: data.exchangeId, caller };
+        const callerPayload = {
+          id: caller?.id ?? userId,
+          displayName: caller?.displayName ?? 'User',
+          avatarUrl: caller?.profile?.avatarUrl ?? null,
+          avatarFrame: caller?.profile?.avatarFrame ?? null,
+        };
+        const payload = { exchangeId: data.exchangeId, video: !!data.video, caller: callerPayload };
         io!.to(`exchange:${data.exchangeId}`).emit('call:ringing', payload);
         io!.to(`user:${targetUserId}`).emit('call:ringing', payload);
       } catch (e) {

@@ -193,13 +193,34 @@ html[data-theme='midnight'] {
 }
 
 /* ── Profile card colors (Pro) ─────────────────────────────── */
-.card-color-cream { background: #fdfaf4; }
-.card-color-coral { background: #fff5f1; }
-.card-color-mint { background: #effaf4; }
-.card-color-ocean { background: #f0f9f7; }
-.card-color-forest { background: #f3f9f4; }
-.card-color-sunset { background: #fdf6ee; }
-.card-color-midnight { background: #121c2e; }
+.card-color-indigo   { background: #100933; }
+.card-color-teal     { background: #01202c; }
+.card-color-rust     { background: #58211c; }
+.card-color-ocean    { background: #01153f; }
+.card-color-midnight { background: #0a071b; }
+.card-color-eclipse  { background: #011515; }
+.card-color-petrol   { background: #031530; }
+.card-color-espresso { background: #17110b; }
+.card-color-burgundy { background: #310e1b; }
+.card-color-forest   { background: #081f16; }
+
+/* Light-text overrides when a dark card color is active */
+.card-dark { color: #fdfaf4; }
+.card-dark .text-ink-900 { color: #fdfaf4; }
+.card-dark .text-ink-800,
+.card-dark .text-ink-700,
+.card-dark .text-ink-600 { color: rgba(253, 250, 244, 0.88); }
+.card-dark .text-ink-500 { color: rgba(253, 250, 244, 0.6); }
+.card-dark .text-ink-400 { color: rgba(253, 250, 244, 0.45); }
+.card-dark .chip-cream { background: rgba(253, 250, 244, 0.12); color: #fdfaf4; }
+.card-dark .chip-mint  { background: rgba(53, 211, 153, 0.2);  color: #82cba6; }
+.card-dark .chip-coral { background: rgba(251, 79, 29, 0.2);   color: #ffa07e; }
+.card-dark .btn-outline { border-color: rgba(253, 250, 244, 0.4); color: #fdfaf4; }
+.card-dark .btn-outline:hover { background: rgba(253, 250, 244, 0.08); }
+.card-dark .btn-ghost { color: rgba(253, 250, 244, 0.8); }
+.card-dark .btn-ghost:hover { background: rgba(253, 250, 244, 0.08); }
+.card-dark .bg-white,
+.card-dark .card { background: transparent; border-color: rgba(253, 250, 244, 0.15); }
 
 /* Shared remaps consumed by every theme */
 html[data-theme] body { background: var(--c-bg); color: var(--c-text); }
@@ -278,12 +299,3 @@ html[data-theme] .text-coral-300 { color: var(--c-accent); }
 html[data-theme] .text-coral-700 { color: var(--c-accent-soft-text); }
 html[data-theme] .border-coral-500 { border-color: var(--c-accent); }
 html[data-theme] .fill-coral-400 { fill: var(--c-accent); }
-
-/* ── Profile card colors (Pro) ─────────────────────────────── */
-.card-color-cream { background: #fdfaf4; }
-.card-color-coral { background: #fff5f1; }
-.card-color-mint { background: #effaf4; }
-.card-color-ocean { background: #f0f9f7; }
-.card-color-forest { background: #f3f9f4; }
-.card-color-sunset { background: #fdf6ee; }
-.card-color-midnight { background: #121c2e; }

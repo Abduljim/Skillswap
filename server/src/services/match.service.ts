@@ -179,7 +179,7 @@ export async function getMatchesForUser(
       id: true,
       displayName: true,
       profile: {
-        select: { avatarUrl: true, university: true, department: true, learningFormat: true },
+        select: { avatarUrl: true, avatarFrame: true, university: true, department: true, learningFormat: true },
       },
       reviewsReceived: { select: { rating: true } },
       _count: {
@@ -205,6 +205,7 @@ export async function getMatchesForUser(
       ...m,
       displayName: p?.displayName ?? null,
       avatarUrl: p?.profile?.avatarUrl ?? null,
+      avatarFrame: p?.profile?.avatarFrame ?? null,
       university: p?.profile?.university ?? null,
       department: p?.profile?.department ?? null,
       learningFormat: p?.profile?.learningFormat ?? null,

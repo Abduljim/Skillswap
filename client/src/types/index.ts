@@ -20,6 +20,10 @@ export interface User {
   email: string;
   displayName: string;
   isAdmin?: boolean;
+  tier?: 'FREE' | 'PRO';
+  streak?: number;
+  maxStreak?: number;
+  profile?: { avatarUrl?: string | null; avatarFrame?: string | null } | null;
 }
 
 export interface Profile {
@@ -28,11 +32,17 @@ export interface Profile {
   university?: string | null;
   department?: string | null;
   yearLevel?: string | null;
+  occupation?: string | null;
+  jobTitle?: string | null;
+  company?: string | null;
+  gender?: string | null;
   bio?: string | null;
   avatarUrl?: string | null;
   learningFormat?: LearningFormat;
   avatarFrame?: string;
   bannerStyle?: string;
+  streak?: number;
+  maxStreak?: number;
   availabilities: { weekday: Weekday; timeOfDay: TimeOfDay }[];
   tier?: Tier;
   badges?: Badge[];
@@ -63,6 +73,7 @@ export interface Match {
   reasons: string[];
   displayName?: string | null;
   avatarUrl?: string | null;
+  avatarFrame?: string | null;
   university?: string | null;
   department?: string | null;
   learningFormat?: LearningFormat | null;
@@ -81,16 +92,16 @@ export interface ExchangeRequest {
   message: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
   createdAt: string;
-  sender?: { id: string; displayName: string; profile?: { avatarUrl?: string | null } };
-  receiver?: { id: string; displayName: string; profile?: { avatarUrl?: string | null } };
+  sender?: { id: string; displayName: string; profile?: { avatarUrl?: string | null; avatarFrame?: string | null } };
+  receiver?: { id: string; displayName: string; profile?: { avatarUrl?: string | null; avatarFrame?: string | null } };
   offeredSkill?: Skill;
   requestedSkill?: Skill;
 }
 
 export interface Exchange {
   id: string;
-  userA: { id: string; displayName: string; profile?: { avatarUrl?: string | null; university?: string | null } };
-  userB: { id: string; displayName: string; profile?: { avatarUrl?: string | null; university?: string | null } };
+  userA: { id: string; displayName: string; profile?: { avatarUrl?: string | null; avatarFrame?: string | null; university?: string | null } };
+  userB: { id: string; displayName: string; profile?: { avatarUrl?: string | null; avatarFrame?: string | null; university?: string | null } };
   skillA?: Skill;
   skillB?: Skill;
   status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DISPUTED';

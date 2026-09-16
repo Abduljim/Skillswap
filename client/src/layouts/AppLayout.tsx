@@ -20,7 +20,7 @@ export default function AppLayout() {
     queryKey: ['my-subscription'],
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
-  const isPro = sub?.tier === 'PRO';
+  const isPro = sub ? sub.tier === 'PRO' : (user as any)?.tier === 'PRO';
 
   const navItems = [
     { to: '/dashboard', icon: Home, label: 'Home' },

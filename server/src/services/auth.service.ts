@@ -5,6 +5,8 @@ import { ConflictError, UnauthorizedError, BadRequestError, NotFoundError } from
 import { createHash, randomBytes } from 'crypto';
 import { env } from '../config/env';
 import { sendPasswordResetEmail } from './email.service';
+import { getUserTier } from './entitlements.service';
+import { touchStreak } from './streak.service';
 
 // Bootstrap admin: when ADMIN_EMAIL is set, that account is granted admin on
 // signup and on every login, so the very first real account can run the admin
@@ -52,40 +54,62 @@ export async function login(input: { email: string; password: string }) {
 
   await ensureAdminRole(user.email);
 
+  const [tierResult, streak] = await Promise.all([
+    getUserTier(user.id),
+    touchStreak(user.id).catch(() => ({ streak: 0, maxStreak: 0 })),
+  ]);
+
   return {
-    user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: user.isAdmin },
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      isAdmin: user.isAdmin,
+      tier: tierResult.tier,
+      streak: streak.streak,
+      maxStreak: streak.maxStreak,
+    },
     token: signToken({ userId: user.id, email: user.email }),
   };
 }
 
 export async function getMe(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      isAdmin: true,
-      isActive: true,
-      createdAt: true,
-      profile: {
-        select: {
-          id: true,
-          university: true,
-          department: true,
-          yearLevel: true,
-          bio: true,
-          avatarUrl: true,
-          learningFormat: true,
-          availabilities: {
-            select: { id: true, weekday: true, timeOfDay: true },
+  const [user, tierResult, streak] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        isAdmin: true,
+        isActive: true,
+        createdAt: true,
+        profile: {
+          select: {
+            id: true,
+            university: true,
+            department: true,
+            yearLevel: true,
+            occupation: true,
+            jobTitle: true,
+            company: true,
+            gender: true,
+            bio: true,
+            avatarUrl: true,
+            avatarFrame: true,
+            bannerStyle: true,
+            learningFormat: true,
+            availabilities: {
+              select: { id: true, weekday: true, timeOfDay: true },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    getUserTier(userId),
+    touchStreak(userId).catch(() => ({ streak: 0, maxStreak: 0 })),
+  ]);
   if (!user) throw new NotFoundError('User not found');
-  // Return in the expected shape for the client (AuthContext expects User directly)
   return {
     id: user.id,
     email: user.email,
@@ -93,6 +117,9 @@ export async function getMe(userId: string) {
     isAdmin: user.isAdmin,
     isActive: user.isActive,
     createdAt: user.createdAt,
+    tier: tierResult.tier,
+    streak: streak.streak,
+    maxStreak: streak.maxStreak,
     profile: user.profile,
   };
 }

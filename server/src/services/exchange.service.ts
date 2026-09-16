@@ -19,10 +19,10 @@ export async function listUserExchanges(userId: string) {
     orderBy: { updatedAt: 'desc' },
     include: {
       userA: {
-        select: { id: true, displayName: true, profile: { select: { avatarUrl: true } } },
+        select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true } } },
       },
       userB: {
-        select: { id: true, displayName: true, profile: { select: { avatarUrl: true } } },
+        select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true } } },
       },
       _count: { select: { messages: true, sessions: true } },
     },
@@ -55,11 +55,11 @@ export async function getExchange(userId: string, exchangeId: string) {
   const [userA, userB, skillA, skillB, sessions, messages, confirmations] = await Promise.all([
     prisma.user.findUnique({
       where: { id: exchange.userAId },
-      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } },
+      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } },
     }),
     prisma.user.findUnique({
       where: { id: exchange.userBId },
-      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } },
+      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } },
     }),
     prisma.skill.findUnique({ where: { id: exchange.skillAId } }),
     prisma.skill.findUnique({ where: { id: exchange.skillBId } }),

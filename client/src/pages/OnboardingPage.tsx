@@ -25,9 +25,13 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0);
 
   const [profile, setProfile] = useState({
+    occupation: 'student',
     university: '',
     department: '',
     yearLevel: '',
+    jobTitle: '',
+    company: '',
+    gender: '',
     bio: '',
     learningFormat: 'EITHER' as LearningFormat,
     availabilities: [] as { weekday: Weekday; timeOfDay: TimeOfDay }[],
@@ -112,32 +116,94 @@ export default function OnboardingPage() {
             <h2 className="font-display font-bold text-2xl text-ink-900">Introduce yourself</h2>
             <p className="text-sm text-ink-600">A few quick details to help people get to know you.</p>
             <div>
-              <label className="label">University</label>
-              <input
-                className="input"
-                value={profile.university}
-                onChange={(e) => setProfile({ ...profile, university: e.target.value })}
-                placeholder="e.g. University of Lagos"
-              />
+              <label className="label">What do you do? {profile.occupation === 'student' ? '(Student)' : ''}</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['student', 'employed', 'self_employed'] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setProfile({ ...profile, occupation: o })}
+                    className={clsx(
+                      'px-3 py-2 rounded-xl text-xs font-semibold capitalize border',
+                      profile.occupation === o
+                        ? 'bg-ink-900 text-cream-50 border-ink-900'
+                        : 'bg-cream-100 text-ink-700 border-transparent hover:bg-cream-200'
+                    )}
+                  >
+                    {o === 'self_employed' ? 'Self-employed' : o}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <label className="label">Department</label>
-              <input
-                className="input"
-                value={profile.department}
-                onChange={(e) => setProfile({ ...profile, department: e.target.value })}
-                placeholder="e.g. Computer Science"
-              />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Gender</label>
+                <select
+                  className="input"
+                  value={profile.gender}
+                  onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                >
+                  <option value="">Select…</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="unspecified">Prefer not to say</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="label">Year</label>
-              <input
-                className="input"
-                value={profile.yearLevel}
-                onChange={(e) => setProfile({ ...profile, yearLevel: e.target.value })}
-                placeholder="e.g. 3rd Year"
-              />
-            </div>
+            {profile.occupation === 'student' ? (
+              <>
+                <div>
+                  <label className="label">University</label>
+                  <input
+                    className="input"
+                    value={profile.university}
+                    onChange={(e) => setProfile({ ...profile, university: e.target.value })}
+                    placeholder="e.g. University of Lagos"
+                  />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Department</label>
+                    <input
+                      className="input"
+                      value={profile.department}
+                      onChange={(e) => setProfile({ ...profile, department: e.target.value })}
+                      placeholder="e.g. Computer Science"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Year</label>
+                    <input
+                      className="input"
+                      value={profile.yearLevel}
+                      onChange={(e) => setProfile({ ...profile, yearLevel: e.target.value })}
+                      placeholder="e.g. 3rd Year"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Job title</label>
+                  <input
+                    className="input"
+                    value={profile.jobTitle}
+                    onChange={(e) => setProfile({ ...profile, jobTitle: e.target.value })}
+                    placeholder="e.g. Software Engineer"
+                  />
+                </div>
+                <div>
+                  <label className="label">Company</label>
+                  <input
+                    className="input"
+                    value={profile.company}
+                    onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+                    placeholder="e.g. Tekpulse"
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <label className="label">Short bio (optional)</label>
               <textarea

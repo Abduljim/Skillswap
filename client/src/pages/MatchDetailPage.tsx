@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
-import { Avatar, MatchScoreBadge, EmptyState, Skeleton } from '../components/ui';
+import { FrameAvatar, MatchScoreBadge, EmptyState, Skeleton } from '../components/ui';
 import { ArrowLeft, Send, Check, X, Shield, Ban, Crown } from 'lucide-react';
 import PaywallModal from '../components/PaywallModal';
 import type { Match, Skill } from '../types';
@@ -124,7 +124,7 @@ export default function MatchDetailPage() {
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-coral-500/30 rounded-full blur-3xl" />
         <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-mint-500/20 rounded-full blur-3xl" />
         <div className="relative flex flex-col md:flex-row items-center gap-6">
-          <Avatar src={profile.avatarUrl} alt={profile.displayName} size={96} />
+          <FrameAvatar frame={profile.avatarFrame || 'default'} src={profile.avatarUrl} alt={profile.displayName} size={96} />
           <div className="flex-1 text-center md:text-left">
             <div className="text-xs uppercase tracking-widest text-coral-300 font-semibold mb-1">
               You two have something to trade

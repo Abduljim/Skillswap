@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { FrameAvatar, EmptyState, Skeleton } from '../components/ui';
 import type { Exchange } from '../types';
 import { Repeat, MessageSquare } from 'lucide-react';
 
@@ -72,9 +72,9 @@ function ExchangeCard({ exchange }: { exchange: Exchange }) {
         </div>
       </div>
       <div className="flex items-center justify-center gap-2 my-4">
-        <Avatar src={exchange.userA.profile?.avatarUrl} alt={exchange.userA.displayName} size={48} />
+        <FrameAvatar frame={exchange.userA.profile?.avatarFrame || 'default'} src={exchange.userA.profile?.avatarUrl} alt={exchange.userA.displayName} size={48} />
         <div className="text-ink-400 text-2xl">↔</div>
-        <Avatar src={exchange.userB.profile?.avatarUrl} alt={exchange.userB.displayName} size={48} />
+        <FrameAvatar frame={exchange.userB.profile?.avatarFrame || 'default'} src={exchange.userB.profile?.avatarUrl} alt={exchange.userB.displayName} size={48} />
       </div>
       <div className="text-center">
         <div className="font-semibold text-ink-900">

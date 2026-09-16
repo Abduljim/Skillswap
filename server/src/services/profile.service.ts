@@ -2,9 +2,10 @@ import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../utils/errors';
 import { recordProfileView, getUserTier } from './entitlements.service';
 import { computeBadges } from './badges.service';
+import { readStreak } from './streak.service';
 
 export async function getProfile(userId: string) {
-  const [profile, tierResult] = await Promise.all([
+  const [profile, tierResult, streak] = await Promise.all([
     prisma.profile.findUnique({
       where: { userId },
       include: {
@@ -15,6 +16,7 @@ export async function getProfile(userId: string) {
       },
     }),
     getUserTier(userId),
+    readStreak(userId).catch(() => ({ streak: 0, maxStreak: 0 })),
   ]);
   if (!profile) throw new NotFoundError('Profile not found');
   const userSkills = await prisma.userSkill.findMany({
@@ -31,7 +33,7 @@ export async function getProfile(userId: string) {
     completedExchanges: completedCount,
     ageDays,
   });
-  return { ...profile, tier: tierResult.tier, badges, userSkills };
+  return { ...profile, tier: tierResult.tier, badges, userSkills, streak: streak.streak, maxStreak: streak.maxStreak };
 }
 
 export async function updateProfile(
@@ -41,6 +43,10 @@ export async function updateProfile(
     university?: string | null;
     department?: string | null;
     yearLevel?: string | null;
+    occupation?: string | null;
+    jobTitle?: string | null;
+    company?: string | null;
+    gender?: string | null;
     bio?: string | null;
     avatarUrl?: string | null;
     learningFormat?: 'ONLINE' | 'IN_PERSON' | 'EITHER';
@@ -65,6 +71,10 @@ export async function updateProfile(
         university: profileFields.university ?? undefined,
         department: profileFields.department ?? undefined,
         yearLevel: profileFields.yearLevel ?? undefined,
+        occupation: profileFields.occupation ?? undefined,
+        jobTitle: profileFields.jobTitle ?? undefined,
+        company: profileFields.company ?? undefined,
+        gender: profileFields.gender ?? undefined,
         bio: profileFields.bio ?? undefined,
         avatarUrl: profileFields.avatarUrl ?? undefined,
         learningFormat: profileFields.learningFormat ?? undefined,
@@ -100,6 +110,10 @@ export async function getUserById(id: string, viewerId?: string) {
           university: true,
           department: true,
           yearLevel: true,
+          occupation: true,
+          jobTitle: true,
+          company: true,
+          gender: true,
           bio: true,
           avatarUrl: true,
           learningFormat: true,
@@ -153,8 +167,13 @@ export async function getUserById(id: string, viewerId?: string) {
     university: user.profile?.university ?? null,
     department: user.profile?.department ?? null,
     yearLevel: user.profile?.yearLevel ?? null,
+    occupation: user.profile?.occupation ?? null,
+    jobTitle: user.profile?.jobTitle ?? null,
+    company: user.profile?.company ?? null,
+    gender: user.profile?.gender ?? null,
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
+    avatarFrame: user.profile?.avatarFrame ?? null,
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,

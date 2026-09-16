@@ -17,6 +17,55 @@ export const AVATAR_FRAMES: Record<string, { src: string; label: string }> = {
   frame_11: { src: '/frames/frame_11.png', label: 'Pearl' },
 };
 
+// Each frame PNG (512x512) has a central transparent hole the photo fills.
+// The PNG must be rendered larger than the avatar so the photo exactly fills
+// the hole: scale = 512 / hole diameter (measured in the source assets).
+const FRAME_SCALE: Record<string, number> = {
+  frame_0: 512 / 330,
+  frame_1: 512 / 326,
+  frame_2: 512 / 314,
+  frame_3: 512 / 333,
+  frame_4: 512 / 346,
+  frame_5: 512 / 303,
+  frame_6: 512 / 341,
+  frame_7: 512 / 348,
+  frame_8: 512 / 330,
+  frame_9: 512 / 315,
+  frame_10: 512 / 298,
+  frame_11: 512 / 318,
+};
+
+export const BANNER_STYLES = [
+  { value: 'indigo',   label: 'Indigo',   cls: 'card-color-indigo' },
+  { value: 'teal',     label: 'Teal',     cls: 'card-color-teal' },
+  { value: 'rust',     label: 'Rust',     cls: 'card-color-rust' },
+  { value: 'ocean',    label: 'Ocean',    cls: 'card-color-ocean' },
+  { value: 'midnight', label: 'Midnight', cls: 'card-color-midnight' },
+  { value: 'eclipse',  label: 'Eclipse',  cls: 'card-color-eclipse' },
+  { value: 'petrol',   label: 'Petrol',   cls: 'card-color-petrol' },
+  { value: 'espresso', label: 'Espresso', cls: 'card-color-espresso' },
+  { value: 'burgundy', label: 'Burgundy', cls: 'card-color-burgundy' },
+  { value: 'forest',   label: 'Forest',   cls: 'card-color-forest' },
+] as const;
+
+const BANNER_VALUE_SET = new Set(BANNER_STYLES.map((b) => b.value));
+
+const LEGACY_BANNER_MAP: Record<string, string> = {
+  cream: 'indigo',
+  coral: 'rust',
+  mint: 'forest',
+  ocean: 'ocean',
+  forest: 'forest',
+  sunset: 'espresso',
+  midnight: 'midnight',
+};
+
+export function resolveBannerColor(v?: string | null): string {
+  if (!v) return 'indigo';
+  if (BANNER_VALUE_SET.has(v as any)) return v;
+  return LEGACY_BANNER_MAP[v] || 'indigo';
+}
+
 export function Avatar({
   src,
   alt,
@@ -55,9 +104,14 @@ export function FrameAvatar({
 } & Omit<Parameters<typeof Avatar>[0], 'size'>) {
   const def = AVATAR_FRAMES[frame] || AVATAR_FRAMES.default;
   if (!def.src) return <Avatar {...avatarProps} size={size} />;
+  const scale = FRAME_SCALE[frame] ?? 512 / 330;
+  const outer = size * scale;
+  const inset = (outer - size) / 2;
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <Avatar {...avatarProps} size={size} />
+    <div className="relative shrink-0" style={{ width: outer, height: outer }}>
+      <div className="absolute" style={{ left: inset, top: inset }}>
+        <Avatar {...avatarProps} size={size} />
+      </div>
       <img
         src={def.src}
         alt=""

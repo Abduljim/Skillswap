@@ -112,8 +112,8 @@ export async function listRequests(userId: string, type: 'sent' | 'received') {
     where,
     orderBy: { createdAt: 'desc' },
     include: {
-      sender: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } } },
-      receiver: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } } },
+      sender: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } } },
+      receiver: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } } },
       offeredSkill: { select: { id: true, name: true, category: true } },
       requestedSkill: { select: { id: true, name: true, category: true } },
     },

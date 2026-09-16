@@ -269,7 +269,11 @@ var updateProfileSchema = import_zod2.z.object({
   avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
   avatarFrame: import_zod2.z.enum(["default", "frame_0", "frame_1", "frame_2", "frame_3", "frame_4", "frame_5", "frame_6", "frame_7", "frame_8", "frame_9", "frame_10", "frame_11"]).optional(),
-  bannerStyle: import_zod2.z.enum(["cream", "coral", "mint", "ocean", "forest", "sunset", "midnight"]).optional(),
+  bannerStyle: import_zod2.z.enum(["indigo", "teal", "rust", "ocean", "midnight", "eclipse", "petrol", "espresso", "burgundy", "forest"]).optional(),
+  occupation: import_zod2.z.enum(["student", "employed", "self_employed", "unemployed", "other"]).nullable().optional(),
+  jobTitle: import_zod2.z.string().max(100).nullable().optional(),
+  company: import_zod2.z.string().max(150).nullable().optional(),
+  gender: import_zod2.z.enum(["male", "female", "unspecified"]).nullable().optional(),
   availabilities: import_zod2.z.array(
     import_zod2.z.object({
       weekday: import_zod2.z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
@@ -479,6 +483,138 @@ If you didn't ask for this, ignore this email.`,
   });
 }
 
+// src/services/entitlements.service.ts
+var LIMITS = {
+  FREE: {
+    activeExchangeRequests: 3,
+    // pending outgoing requests
+    exchanges: 5,
+    // active exchanges
+    profileViewsCanSee: false,
+    // pro only
+    boost: false,
+    priorityInMatches: false,
+    proBadge: false
+  },
+  PRO: {
+    activeExchangeRequests: Infinity,
+    exchanges: Infinity,
+    profileViewsCanSee: true,
+    boost: true,
+    priorityInMatches: true,
+    proBadge: true
+  }
+};
+async function getUserTier(userId) {
+  const [sub, user] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } })
+  ]);
+  const isAdmin = user?.isAdmin ?? false;
+  if (isAdmin) return { tier: "PRO", subscription: sub, isAdmin };
+  if (!sub) return { tier: "FREE", subscription: null, isAdmin };
+  const active = sub.status === "ACTIVE" && (!sub.expiresAt || sub.expiresAt > /* @__PURE__ */ new Date());
+  return {
+    tier: active && sub.tier === "PRO" ? "PRO" : "FREE",
+    subscription: sub,
+    isAdmin
+  };
+}
+function limitsFor(tier) {
+  return LIMITS[tier];
+}
+async function checkCanSendRequest(userId) {
+  const { tier } = await getUserTier(userId);
+  const limits = limitsFor(tier);
+  if (limits.activeExchangeRequests === Infinity) return { allowed: true };
+  const pending = await prisma.exchangeRequest.count({
+    where: { senderId: userId, status: "PENDING" }
+  });
+  if (pending >= limits.activeExchangeRequests) {
+    return {
+      allowed: false,
+      reason: `Free users can have up to ${limits.activeExchangeRequests} pending requests. Upgrade to Pro for unlimited.`
+    };
+  }
+  return { allowed: true };
+}
+async function recordProfileView(viewerId, profileId) {
+  if (viewerId === profileId) return;
+  const recent = await prisma.profileView.findFirst({
+    where: {
+      viewerId,
+      profileId,
+      createdAt: { gte: new Date(Date.now() - 30 * 60 * 1e3) }
+    }
+  });
+  if (recent) return;
+  await prisma.profileView.create({
+    data: { viewerId, profileId }
+  });
+}
+async function listProfileViewers(profileId) {
+  const { tier } = await getUserTier(profileId);
+  if (tier !== "PRO") return { allowed: false, viewers: [] };
+  const viewers = await prisma.profileView.findMany({
+    where: { profileId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      viewer: {
+        select: {
+          id: true,
+          displayName: true,
+          profile: { select: { avatarUrl: true, avatarFrame: true, university: true } }
+        }
+      }
+    }
+  });
+  return {
+    allowed: true,
+    viewers: viewers.map((v) => ({
+      id: v.id,
+      viewedAt: v.createdAt,
+      viewer: v.viewer
+    }))
+  };
+}
+
+// src/services/streak.service.ts
+function dayKey(d) {
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
+function isYesterday(d) {
+  const t = /* @__PURE__ */ new Date();
+  t.setUTCDate(t.getUTCDate() - 1);
+  return dayKey(d) === dayKey(t);
+}
+async function touchStreak(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { lastLoginAt: true, loginStreak: true, maxStreak: true }
+  });
+  if (!user) return { streak: 0, maxStreak: 0 };
+  if (user.lastLoginAt && dayKey(user.lastLoginAt) === dayKey(/* @__PURE__ */ new Date())) {
+    return { streak: user.loginStreak, maxStreak: user.maxStreak };
+  }
+  let next = 1;
+  if (user.lastLoginAt && isYesterday(user.lastLoginAt)) next = user.loginStreak + 1;
+  const maxStreak = Math.max(user.maxStreak, next);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { lastLoginAt: /* @__PURE__ */ new Date(), loginStreak: next, maxStreak }
+  });
+  return { streak: next, maxStreak };
+}
+async function readStreak(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { loginStreak: true, maxStreak: true }
+  });
+  if (!user) return { streak: 0, maxStreak: 0 };
+  return { streak: user.loginStreak, maxStreak: user.maxStreak };
+}
+
 // src/services/auth.service.ts
 async function ensureAdminRole(email) {
   if (!env.ADMIN_EMAIL || email !== env.ADMIN_EMAIL) return false;
@@ -510,37 +646,59 @@ async function login(input) {
   const ok2 = await import_bcryptjs.default.compare(input.password, user.passwordHash);
   if (!ok2) throw new UnauthorizedError("Invalid credentials");
   await ensureAdminRole(user.email);
+  const [tierResult, streak] = await Promise.all([
+    getUserTier(user.id),
+    touchStreak(user.id).catch(() => ({ streak: 0, maxStreak: 0 }))
+  ]);
   return {
-    user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: user.isAdmin },
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      isAdmin: user.isAdmin,
+      tier: tierResult.tier,
+      streak: streak.streak,
+      maxStreak: streak.maxStreak
+    },
     token: signToken({ userId: user.id, email: user.email })
   };
 }
 async function getMe(userId) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      isAdmin: true,
-      isActive: true,
-      createdAt: true,
-      profile: {
-        select: {
-          id: true,
-          university: true,
-          department: true,
-          yearLevel: true,
-          bio: true,
-          avatarUrl: true,
-          learningFormat: true,
-          availabilities: {
-            select: { id: true, weekday: true, timeOfDay: true }
+  const [user, tierResult, streak] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        isAdmin: true,
+        isActive: true,
+        createdAt: true,
+        profile: {
+          select: {
+            id: true,
+            university: true,
+            department: true,
+            yearLevel: true,
+            occupation: true,
+            jobTitle: true,
+            company: true,
+            gender: true,
+            bio: true,
+            avatarUrl: true,
+            avatarFrame: true,
+            bannerStyle: true,
+            learningFormat: true,
+            availabilities: {
+              select: { id: true, weekday: true, timeOfDay: true }
+            }
           }
         }
       }
-    }
-  });
+    }),
+    getUserTier(userId),
+    touchStreak(userId).catch(() => ({ streak: 0, maxStreak: 0 }))
+  ]);
   if (!user) throw new NotFoundError("User not found");
   return {
     id: user.id,
@@ -549,6 +707,9 @@ async function getMe(userId) {
     isAdmin: user.isAdmin,
     isActive: user.isActive,
     createdAt: user.createdAt,
+    tier: tierResult.tier,
+    streak: streak.streak,
+    maxStreak: streak.maxStreak,
     profile: user.profile
   };
 }
@@ -685,102 +846,6 @@ var auth_routes_default = router;
 // src/routes/profile.routes.ts
 var import_express2 = require("express");
 
-// src/services/entitlements.service.ts
-var LIMITS = {
-  FREE: {
-    activeExchangeRequests: 3,
-    // pending outgoing requests
-    exchanges: 5,
-    // active exchanges
-    profileViewsCanSee: false,
-    // pro only
-    boost: false,
-    priorityInMatches: false,
-    proBadge: false
-  },
-  PRO: {
-    activeExchangeRequests: Infinity,
-    exchanges: Infinity,
-    profileViewsCanSee: true,
-    boost: true,
-    priorityInMatches: true,
-    proBadge: true
-  }
-};
-async function getUserTier(userId) {
-  const [sub, user] = await Promise.all([
-    prisma.subscription.findUnique({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } })
-  ]);
-  const isAdmin = user?.isAdmin ?? false;
-  if (isAdmin) return { tier: "PRO", subscription: sub, isAdmin };
-  if (!sub) return { tier: "FREE", subscription: null, isAdmin };
-  const active = sub.status === "ACTIVE" && (!sub.expiresAt || sub.expiresAt > /* @__PURE__ */ new Date());
-  return {
-    tier: active && sub.tier === "PRO" ? "PRO" : "FREE",
-    subscription: sub,
-    isAdmin
-  };
-}
-function limitsFor(tier) {
-  return LIMITS[tier];
-}
-async function checkCanSendRequest(userId) {
-  const { tier } = await getUserTier(userId);
-  const limits = limitsFor(tier);
-  if (limits.activeExchangeRequests === Infinity) return { allowed: true };
-  const pending = await prisma.exchangeRequest.count({
-    where: { senderId: userId, status: "PENDING" }
-  });
-  if (pending >= limits.activeExchangeRequests) {
-    return {
-      allowed: false,
-      reason: `Free users can have up to ${limits.activeExchangeRequests} pending requests. Upgrade to Pro for unlimited.`
-    };
-  }
-  return { allowed: true };
-}
-async function recordProfileView(viewerId, profileId) {
-  if (viewerId === profileId) return;
-  const recent = await prisma.profileView.findFirst({
-    where: {
-      viewerId,
-      profileId,
-      createdAt: { gte: new Date(Date.now() - 30 * 60 * 1e3) }
-    }
-  });
-  if (recent) return;
-  await prisma.profileView.create({
-    data: { viewerId, profileId }
-  });
-}
-async function listProfileViewers(profileId) {
-  const { tier } = await getUserTier(profileId);
-  if (tier !== "PRO") return { allowed: false, viewers: [] };
-  const viewers = await prisma.profileView.findMany({
-    where: { profileId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      viewer: {
-        select: {
-          id: true,
-          displayName: true,
-          profile: { select: { avatarUrl: true, university: true } }
-        }
-      }
-    }
-  });
-  return {
-    allowed: true,
-    viewers: viewers.map((v) => ({
-      id: v.id,
-      viewedAt: v.createdAt,
-      viewer: v.viewer
-    }))
-  };
-}
-
 // src/services/badges.service.ts
 var BADGES = {
   EARLY_BIRD: {
@@ -837,7 +902,7 @@ function computeBadges(opts) {
 
 // src/services/profile.service.ts
 async function getProfile(userId) {
-  const [profile, tierResult] = await Promise.all([
+  const [profile, tierResult, streak] = await Promise.all([
     prisma.profile.findUnique({
       where: { userId },
       include: {
@@ -847,7 +912,8 @@ async function getProfile(userId) {
         }
       }
     }),
-    getUserTier(userId)
+    getUserTier(userId),
+    readStreak(userId).catch(() => ({ streak: 0, maxStreak: 0 }))
   ]);
   if (!profile) throw new NotFoundError("Profile not found");
   const userSkills = await prisma.userSkill.findMany({
@@ -864,7 +930,7 @@ async function getProfile(userId) {
     completedExchanges: completedCount,
     ageDays
   });
-  return { ...profile, tier: tierResult.tier, badges, userSkills };
+  return { ...profile, tier: tierResult.tier, badges, userSkills, streak: streak.streak, maxStreak: streak.maxStreak };
 }
 async function updateProfile(userId, input) {
   const { availabilities, displayName, ...profileFields } = input;
@@ -880,6 +946,10 @@ async function updateProfile(userId, input) {
         university: profileFields.university ?? void 0,
         department: profileFields.department ?? void 0,
         yearLevel: profileFields.yearLevel ?? void 0,
+        occupation: profileFields.occupation ?? void 0,
+        jobTitle: profileFields.jobTitle ?? void 0,
+        company: profileFields.company ?? void 0,
+        gender: profileFields.gender ?? void 0,
         bio: profileFields.bio ?? void 0,
         avatarUrl: profileFields.avatarUrl ?? void 0,
         learningFormat: profileFields.learningFormat ?? void 0,
@@ -912,6 +982,10 @@ async function getUserById(id, viewerId) {
           university: true,
           department: true,
           yearLevel: true,
+          occupation: true,
+          jobTitle: true,
+          company: true,
+          gender: true,
           bio: true,
           avatarUrl: true,
           learningFormat: true,
@@ -959,8 +1033,13 @@ async function getUserById(id, viewerId) {
     university: user.profile?.university ?? null,
     department: user.profile?.department ?? null,
     yearLevel: user.profile?.yearLevel ?? null,
+    occupation: user.profile?.occupation ?? null,
+    jobTitle: user.profile?.jobTitle ?? null,
+    company: user.profile?.company ?? null,
+    gender: user.profile?.gender ?? null,
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
+    avatarFrame: user.profile?.avatarFrame ?? null,
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,
@@ -1527,7 +1606,7 @@ async function getMatchesForUser(userId, filters) {
       id: true,
       displayName: true,
       profile: {
-        select: { avatarUrl: true, university: true, department: true, learningFormat: true }
+        select: { avatarUrl: true, avatarFrame: true, university: true, department: true, learningFormat: true }
       },
       reviewsReceived: { select: { rating: true } },
       _count: {
@@ -1549,6 +1628,7 @@ async function getMatchesForUser(userId, filters) {
       ...m,
       displayName: p?.displayName ?? null,
       avatarUrl: p?.profile?.avatarUrl ?? null,
+      avatarFrame: p?.profile?.avatarFrame ?? null,
       university: p?.profile?.university ?? null,
       department: p?.profile?.department ?? null,
       learningFormat: p?.profile?.learningFormat ?? null,
@@ -1711,8 +1791,8 @@ async function listRequests(userId, type) {
     where,
     orderBy: { createdAt: "desc" },
     include: {
-      sender: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } } },
-      receiver: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } } },
+      sender: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } } },
+      receiver: { select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } } },
       offeredSkill: { select: { id: true, name: true, category: true } },
       requestedSkill: { select: { id: true, name: true, category: true } }
     }
@@ -1857,10 +1937,10 @@ async function listUserExchanges(userId) {
     orderBy: { updatedAt: "desc" },
     include: {
       userA: {
-        select: { id: true, displayName: true, profile: { select: { avatarUrl: true } } }
+        select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true } } }
       },
       userB: {
-        select: { id: true, displayName: true, profile: { select: { avatarUrl: true } } }
+        select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true } } }
       },
       _count: { select: { messages: true, sessions: true } }
     }
@@ -1889,11 +1969,11 @@ async function getExchange(userId, exchangeId) {
   const [userA, userB, skillA, skillB, sessions, messages, confirmations] = await Promise.all([
     prisma.user.findUnique({
       where: { id: exchange.userAId },
-      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } }
+      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } }
     }),
     prisma.user.findUnique({
       where: { id: exchange.userBId },
-      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, university: true } } }
+      select: { id: true, displayName: true, profile: { select: { avatarUrl: true, avatarFrame: true, university: true } } }
     }),
     prisma.skill.findUnique({ where: { id: exchange.skillAId } }),
     prisma.skill.findUnique({ where: { id: exchange.skillBId } }),
@@ -2171,9 +2251,19 @@ function initSocket(httpServer2) {
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
         const caller = await prisma.user.findUnique({
           where: { id: userId },
-          select: { id: true, displayName: true }
+          select: {
+            id: true,
+            displayName: true,
+            profile: { select: { avatarUrl: true, avatarFrame: true } }
+          }
         });
-        const payload = { exchangeId: data.exchangeId, caller };
+        const callerPayload = {
+          id: caller?.id ?? userId,
+          displayName: caller?.displayName ?? "User",
+          avatarUrl: caller?.profile?.avatarUrl ?? null,
+          avatarFrame: caller?.profile?.avatarFrame ?? null
+        };
+        const payload = { exchangeId: data.exchangeId, video: !!data.video, caller: callerPayload };
         io.to(`exchange:${data.exchangeId}`).emit("call:ringing", payload);
         io.to(`user:${targetUserId}`).emit("call:ringing", payload);
       } catch (e) {
