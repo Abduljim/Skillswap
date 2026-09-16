@@ -219,7 +219,7 @@ export default function ProfilePage() {
                   )}
                   {isPro && <ProBadge />}
                 </div>
-                <p className="text-sm text-ink-600">{user?.email}</p>
+                <p className="text-sm text-ink-600 break-words">{user?.email}</p>
                 {(() => {
                   if (profile?.occupation === 'student') {
                     return (profile?.university || profile?.department) ? (

@@ -11,10 +11,13 @@
     touch-action: manipulation;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
+    /* clip (not hidden) avoids creating a scroll container, so sticky still works */
+    overflow-x: clip;
   }
   body {
     @apply bg-cream-50 text-ink-900 font-sans;
     overscroll-behavior-y: none;
+    overflow-x: clip;
     /* Keep the layout still when the mobile keyboard opens / the URL bar moves */
     overflow-anchor: none;
   }
@@ -103,9 +106,8 @@
 }
 
 .glass-nav {
-  background: rgba(253, 250, 244, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Solid (no backdrop-filter) — a blurred sticky bar causes scroll shimmer/shake on Android WebView */
+  background: rgba(253, 250, 244, 0.98);
 }
 
 .pb-safe {
@@ -374,3 +376,11 @@ html[data-theme] .text-coral-300 { color: var(--c-accent); }
 html[data-theme] .text-coral-700 { color: var(--c-accent-soft-text); }
 html[data-theme] .border-coral-500 { border-color: var(--c-accent); }
 html[data-theme] .fill-coral-400 { fill: var(--c-accent); }
+
+/* ── Chat surface modes ────────────────────────────────────────────
+   Free users get a white chat, Pro users a dark WhatsApp-style chat.
+   These override the appearance theme, so they are unlayered, placed
+   after the theme remaps, and pinned with hard colors. */
+.chat-white { background-color: #ffffff !important; }
+.chat-dark { background-color: #0b0d12 !important; }
+.chat-dark .text-ink-900 { color: #eef0f4; }

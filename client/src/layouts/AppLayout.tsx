@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -11,7 +11,11 @@ import clsx from 'clsx';
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const location = useLocation();
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  // Chat conversations fill the whole screen (like WhatsApp), so the app chrome is hidden there.
+  const isFullScreenChat = /^\/messages\/[^/]+$/.test(location.pathname);
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -63,7 +67,7 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-cream-50">
+    <div className={`min-h-screen ${isFullScreenChat ? '' : 'bg-cream-50'}`}>
       {!online && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-coral-500 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2">
           <WifiOff className="w-3.5 h-3.5 shrink-0" />
@@ -71,6 +75,7 @@ export default function AppLayout() {
         </div>
       )}
       {/* Top bar (desktop + tablet) */}
+      {!isFullScreenChat && (
       <header className="hidden md:flex glass-nav border-b border-ink-100 sticky top-0 z-30 h-16 items-center px-6">
         <Link to="/dashboard" className="flex items-center gap-2 mr-8">
           <div className="w-8 h-8 rounded-lg bg-ink-900 flex items-center justify-center">
@@ -140,8 +145,10 @@ export default function AppLayout() {
           </button>
         </div>
       </header>
+      )}
 
       {/* Mobile bottom nav */}
+      {!isFullScreenChat && (
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 glass-nav border-t border-ink-100 pb-safe">
         <div className="grid grid-cols-5">
           {navItems.map((item) => (
@@ -166,8 +173,10 @@ export default function AppLayout() {
           ))}
         </div>
       </nav>
+      )}
 
       {/* Mobile top bar */}
+      {!isFullScreenChat && (
       <header className="md:hidden glass-nav border-b border-ink-100 sticky top-0 z-30 h-14 flex items-center justify-between px-4">
         <Link to="/dashboard" className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-ink-900 flex items-center justify-center">
@@ -205,8 +214,9 @@ export default function AppLayout() {
           </button>
         </div>
       </header>
+      )}
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-6">
+      <main className={isFullScreenChat ? '' : 'max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-6'}>
         <Outlet />
       </main>
     </div>

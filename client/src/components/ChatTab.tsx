@@ -10,9 +10,11 @@ import type { Message } from '../types';
 export default function ChatTab({
   exchangeId,
   socket,
+  dark = false,
 }: {
   exchangeId: string;
   socket?: Socket | null;
+  dark?: boolean;
 }) {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -30,6 +32,32 @@ export default function ChatTab({
   const socketRef = useRef<Socket | null>(socket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+
+  const m = dark
+    ? {
+        surface: 'chat-dark',
+        rowBorder: 'border-[#1f2430]',
+        bubbleMine: 'bg-[#fb4f1d] text-[#ffffff]',
+        bubbleTheirs: 'bg-[#1a1e29] text-[#eef0f4] ring-1 ring-[#2a2f3d]',
+        infoMine: 'text-[#ffffff]/70',
+        infoTheirs: 'text-[#76819a]',
+        input: 'bg-[#1a1e29] border-[#2a2f3d] text-[#eef0f4]',
+        inputPlaceholder: 'placeholder:text-[#76819a]',
+        iconBtn: 'text-[#cdd1da] hover:bg-[#1f2430]',
+        muted: 'text-[#76819a]',
+      }
+    : {
+        surface: 'chat-white',
+        rowBorder: 'border-[#efe9e0]',
+        bubbleMine: 'bg-[#12131a] text-[#fdfaf4]',
+        bubbleTheirs: 'bg-[#f5f2ec] text-[#12131a]',
+        infoMine: 'text-[#fdfaf4]/70',
+        infoTheirs: 'text-[#8a8a8f]',
+        input: 'bg-white border-[#e2dcd1] text-[#12131a]',
+        inputPlaceholder: 'placeholder:text-[#8a8a8f]',
+        iconBtn: 'text-[#12131a] hover:bg-[#f5f2ec]',
+        muted: 'text-[#8a8a8f]',
+      };
 
   useEffect(() => {
     if (!socket) return;
@@ -79,39 +107,37 @@ export default function ChatTab({
   };
 
   return (
-    <div className="card flex flex-col h-full min-h-0">
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-3 p-4">
+    <div className={`flex flex-col h-full min-h-0 w-full ${m.surface}`}>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-4">
         {messages.length === 0 && (
-          <div className="text-center text-sm text-ink-500 py-8">No messages yet. Say hello.</div>
+          <div className={`text-center text-sm ${m.muted} py-10`}>No messages yet. Say hello.</div>
         )}
-        {messages.map((m) => {
-          const mine = m.senderId === user?.id;
+        {messages.map((message) => {
+          const mine = message.senderId === user?.id;
           return (
-            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+            <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                  mine ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-900'
-                }`}
+                className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-sm ${mine ? m.bubbleMine : m.bubbleTheirs}`}
               >
-                {m.type === 'IMAGE' ? (
-                  <img src={m.body} alt="Shared image" className="rounded-xl max-w-[260px] max-h-64 object-cover" />
-                ) : m.type === 'STICKER' ? (
-                  <div className="text-5xl leading-none py-1">{m.body}</div>
+                {message.type === 'IMAGE' ? (
+                  <img src={message.body} alt="Shared image" className="rounded-xl max-w-[260px] max-h-64 object-cover" />
+                ) : message.type === 'STICKER' ? (
+                  <div className="text-5xl leading-none py-1">{message.body}</div>
                 ) : (
-                  <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>
+                  <div className="text-sm whitespace-pre-wrap break-words">{message.body}</div>
                 )}
-                <div className={`text-[10px] mt-1 ${mine ? 'text-cream-300' : 'text-ink-500'}`}>
-                  {m.type === 'IMAGE' && '📷 '}
-                  {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className={`text-[10px] mt-1 ${mine ? m.infoMine : m.infoTheirs}`}>
+                  {message.type === 'IMAGE' && '📷 '}
+                  {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
             </div>
           );
         })}
-        {typing && <div className="text-xs text-ink-500 italic px-2">typing…</div>}
+        {typing && <div className={`text-xs italic px-2 ${m.muted}`}>typing…</div>}
       </div>
 
-      <div className="flex gap-2 pt-3 px-4 pb-4 border-t border-ink-100 items-end">
+      <div className={`flex gap-2 pt-3 px-4 pb-4 border-t items-end ${m.rowBorder}`}>
         <div className="relative flex items-center gap-1">
           <button
             type="button"
@@ -124,7 +150,7 @@ export default function ChatTab({
               input.focus({ preventScroll: true });
               void showAndroidKeyboard().catch(() => {});
             }}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
+            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
             aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
             title="Open keyboard; use your system keyboard's emoji key for emoji"
           >
@@ -133,7 +159,7 @@ export default function ChatTab({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
+            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
             title="Send image"
           >
             📷
@@ -152,7 +178,7 @@ export default function ChatTab({
         </div>
         <input
           ref={textInputRef}
-          className="input flex-1"
+          className={`input flex-1 ${m.input} ${m.inputPlaceholder}`}
           placeholder="Type a message…"
           value={text}
           onChange={(e) => {
