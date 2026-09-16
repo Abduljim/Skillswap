@@ -29,6 +29,52 @@ export async function listMessages(userId: string, exchangeId: string) {
   return messages;
 }
 
+export async function listConversations(userId: string) {
+  const exchanges = await prisma.exchange.findMany({
+    where: {
+      status: 'ACTIVE',
+      OR: [{ userAId: userId }, { userBId: userId }],
+      messages: { some: {} },
+    },
+    select: {
+      id: true,
+      userAId: true,
+      updatedAt: true,
+      userA: {
+        select: {
+          id: true,
+          displayName: true,
+          profile: { select: { avatarUrl: true, avatarFrame: true } },
+        },
+      },
+      userB: {
+        select: {
+          id: true,
+          displayName: true,
+          profile: { select: { avatarUrl: true, avatarFrame: true } },
+        },
+      },
+      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      _count: {
+        select: { messages: { where: { readAt: null, senderId: { not: userId } } } },
+      },
+    },
+  });
+
+  return exchanges
+    .map((ex) => {
+      const partner = ex.userAId === userId ? ex.userB : ex.userA;
+      return {
+        exchangeId: ex.id,
+        partner,
+        lastMessage: ex.messages[0] ?? null,
+        unreadCount: ex._count.messages,
+        updatedAt: ex.messages[0]?.createdAt ?? ex.updatedAt,
+      };
+    })
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
 export async function createMessage(userId: string, exchangeId: string, body: string, type: string = 'TEXT') {
   const exchange = await assertActiveParticipant(userId, exchangeId);
   const message = await prisma.message.create({

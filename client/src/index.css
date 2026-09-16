@@ -192,16 +192,18 @@ html[data-theme='midnight'] {
   --c-input-bg: #121c2e; --c-input-border: #345078; --c-input-text: #e6f0ff; --c-input-placeholder: #6482a0; --c-input-focus: #e6f0ff;
 }
 
-/* ── Profile card colors (Pro) ─────────────────────────────── */
-.card-color-indigo   { background: #100933; }
-.card-color-teal     { background: #01202c; }
-.card-color-rust     { background: #58211c; }
-.card-color-ocean    { background: #01153f; }
+/* ── Profile card colors (Pro palette + free Gold) ─────────── */
+.card-color-gold     { background: #f5c948; }
+.card-color-silver   { background: #dde3ea; }
+.card-color-mint     { background: #a5e8cb; }
+.card-color-coral    { background: #ff8a5c; }
+.card-color-sky      { background: #2f6bff; }
+.card-color-ocean    { background: #0e7490; }
+.card-color-rose     { background: #d6336c; }
+.card-color-violet   { background: #7c3aed; }
+.card-color-indigo   { background: #3949ab; }
 .card-color-midnight { background: #0a071b; }
-.card-color-eclipse  { background: #011515; }
-.card-color-petrol   { background: #031530; }
 .card-color-espresso { background: #17110b; }
-.card-color-burgundy { background: #310e1b; }
 .card-color-forest   { background: #081f16; }
 
 /* Light-text overrides when a dark card color is active */

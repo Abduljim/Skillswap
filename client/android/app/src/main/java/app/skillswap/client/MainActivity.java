@@ -23,6 +23,8 @@ public class MainActivity extends BridgeActivity {
             // Force-enable wide viewport so layouts stay responsive, but no zoom.
             settings.setLoadWithOverviewMode(true);
             settings.setUseWideViewPort(true);
+            // Let WebRTC audio/video play without an extra tap after a call is live.
+            webView.setMediaPlaybackRequiresUserGesture(false);
         }
     }
 }

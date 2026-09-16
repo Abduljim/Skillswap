@@ -131,7 +131,7 @@ __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_express13 = __toESM(require("express"));
+var import_express14 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_helmet = __toESM(require("helmet"));
 var import_cookie_parser = __toESM(require("cookie-parser"));
@@ -269,7 +269,7 @@ var updateProfileSchema = import_zod2.z.object({
   avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
   avatarFrame: import_zod2.z.enum(["default", "frame_0", "frame_1", "frame_2", "frame_3", "frame_4", "frame_5", "frame_6", "frame_7", "frame_8", "frame_9", "frame_10", "frame_11"]).optional(),
-  bannerStyle: import_zod2.z.enum(["indigo", "teal", "rust", "ocean", "midnight", "eclipse", "petrol", "espresso", "burgundy", "forest"]).optional(),
+  bannerStyle: import_zod2.z.enum(["gold", "silver", "mint", "coral", "sky", "ocean", "rose", "violet", "indigo", "midnight", "espresso", "forest"]).optional(),
   occupation: import_zod2.z.enum(["student", "employed", "self_employed", "unemployed", "other"]).nullable().optional(),
   jobTitle: import_zod2.z.string().max(100).nullable().optional(),
   company: import_zod2.z.string().max(150).nullable().optional(),
@@ -930,7 +930,15 @@ async function getProfile(userId) {
     completedExchanges: completedCount,
     ageDays
   });
-  return { ...profile, tier: tierResult.tier, badges, userSkills, streak: streak.streak, maxStreak: streak.maxStreak };
+  return {
+    ...profile,
+    bannerStyle: profile.bannerStyle ?? "gold",
+    tier: tierResult.tier,
+    badges,
+    userSkills,
+    streak: streak.streak,
+    maxStreak: streak.maxStreak
+  };
 }
 async function updateProfile(userId, input) {
   const { availabilities, displayName, ...profileFields } = input;
@@ -1040,6 +1048,7 @@ async function getUserById(id, viewerId) {
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
     avatarFrame: user.profile?.avatarFrame ?? null,
+    bannerStyle: user.profile?.bannerStyle ?? "gold",
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,
@@ -2327,6 +2336,48 @@ async function listMessages(userId, exchangeId) {
   });
   return messages;
 }
+async function listConversations(userId) {
+  const exchanges = await prisma.exchange.findMany({
+    where: {
+      status: "ACTIVE",
+      OR: [{ userAId: userId }, { userBId: userId }],
+      messages: { some: {} }
+    },
+    select: {
+      id: true,
+      userAId: true,
+      updatedAt: true,
+      userA: {
+        select: {
+          id: true,
+          displayName: true,
+          profile: { select: { avatarUrl: true, avatarFrame: true } }
+        }
+      },
+      userB: {
+        select: {
+          id: true,
+          displayName: true,
+          profile: { select: { avatarUrl: true, avatarFrame: true } }
+        }
+      },
+      messages: { orderBy: { createdAt: "desc" }, take: 1 },
+      _count: {
+        select: { messages: { where: { readAt: null, senderId: { not: userId } } } }
+      }
+    }
+  });
+  return exchanges.map((ex) => {
+    const partner = ex.userAId === userId ? ex.userB : ex.userA;
+    return {
+      exchangeId: ex.id,
+      partner,
+      lastMessage: ex.messages[0] ?? null,
+      unreadCount: ex._count.messages,
+      updatedAt: ex.messages[0]?.createdAt ?? ex.updatedAt
+    };
+  }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
 async function createMessage(userId, exchangeId, body, type = "TEXT") {
   const exchange = await assertActiveParticipant(userId, exchangeId);
   const message = await prisma.message.create({
@@ -2472,10 +2523,23 @@ router7.post(
 );
 var exchanges_routes_default = router7;
 
-// src/routes/sessions.routes.ts
+// src/routes/messages.routes.ts
 var import_express8 = require("express");
 var router8 = (0, import_express8.Router)();
-router8.put(
+router8.get(
+  "/conversations",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await listConversations(req.user.userId);
+    ok(res, list);
+  })
+);
+var messages_routes_default = router8;
+
+// src/routes/sessions.routes.ts
+var import_express9 = require("express");
+var router9 = (0, import_express9.Router)();
+router9.put(
   "/:id",
   requireAuth,
   validate(updateSessionSchema),
@@ -2484,7 +2548,7 @@ router8.put(
     ok(res, updated);
   })
 );
-router8.delete(
+router9.delete(
   "/:id",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2492,7 +2556,7 @@ router8.delete(
     ok(res, result);
   })
 );
-router8.post(
+router9.post(
   "/:id/complete",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2500,12 +2564,12 @@ router8.post(
     ok(res, result);
   })
 );
-var sessions_routes_default = router8;
+var sessions_routes_default = router9;
 
 // src/routes/notifications.routes.ts
-var import_express9 = require("express");
-var router9 = (0, import_express9.Router)();
-router9.get(
+var import_express10 = require("express");
+var router10 = (0, import_express10.Router)();
+router10.get(
   "/",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2514,7 +2578,7 @@ router9.get(
     ok(res, { notifications: list, unreadCount });
   })
 );
-router9.post(
+router10.post(
   "/:id/read",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2522,7 +2586,7 @@ router9.post(
     ok(res, updated);
   })
 );
-router9.post(
+router10.post(
   "/read-all",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2530,10 +2594,10 @@ router9.post(
     ok(res, { updated: result.count });
   })
 );
-var notifications_routes_default = router9;
+var notifications_routes_default = router10;
 
 // src/routes/safety.routes.ts
-var import_express10 = require("express");
+var import_express11 = require("express");
 
 // src/services/safety.service.ts
 async function reportUser(reporterId, input) {
@@ -2572,8 +2636,8 @@ async function unblockUser(blockerId, blockedUserId) {
 }
 
 // src/routes/safety.routes.ts
-var router10 = (0, import_express10.Router)();
-router10.post(
+var router11 = (0, import_express11.Router)();
+router11.post(
   "/reports",
   requireAuth,
   validate(createReportSchema),
@@ -2582,7 +2646,7 @@ router10.post(
     ok(res, report);
   })
 );
-router10.post(
+router11.post(
   "/users/:id/block",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2590,7 +2654,7 @@ router10.post(
     ok(res, result);
   })
 );
-router10.delete(
+router11.delete(
   "/users/:id/block",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2598,10 +2662,10 @@ router10.delete(
     ok(res, result);
   })
 );
-var safety_routes_default = router10;
+var safety_routes_default = router11;
 
 // src/routes/admin.routes.ts
-var import_express11 = require("express");
+var import_express12 = require("express");
 
 // src/services/admin.service.ts
 async function getStats() {
@@ -2714,16 +2778,16 @@ async function updateReport(id, input) {
 }
 
 // src/routes/admin.routes.ts
-var router11 = (0, import_express11.Router)();
-router11.use(requireAuth, requireAdmin);
-router11.get(
+var router12 = (0, import_express12.Router)();
+router12.use(requireAuth, requireAdmin);
+router12.get(
   "/stats",
   asyncHandler(async (_req, res) => {
     const stats = await getStats();
     ok(res, stats);
   })
 );
-router11.get(
+router12.get(
   "/users",
   asyncHandler(async (req, res) => {
     const page = parseInt(req.query.page || "1");
@@ -2733,7 +2797,7 @@ router11.get(
     ok(res, result);
   })
 );
-router11.put(
+router12.put(
   "/users/:id",
   validate(adminUpdateUserSchema),
   asyncHandler(async (req, res) => {
@@ -2741,14 +2805,14 @@ router11.put(
     ok(res, updated);
   })
 );
-router11.get(
+router12.get(
   "/skills",
   asyncHandler(async (_req, res) => {
     const skills = await listSkills(void 0, true);
     ok(res, skills);
   })
 );
-router11.get(
+router12.get(
   "/reports",
   asyncHandler(async (req, res) => {
     const status = req.query.status;
@@ -2756,20 +2820,20 @@ router11.get(
     ok(res, reports);
   })
 );
-router11.put(
+router12.put(
   "/reports/:id",
   asyncHandler(async (req, res) => {
     const updated = await updateReport(req.params.id, req.body);
     ok(res, updated);
   })
 );
-var admin_routes_default = router11;
+var admin_routes_default = router12;
 
 // src/routes/billing.routes.ts
-var import_express12 = require("express");
+var import_express13 = require("express");
 var import_zod3 = require("zod");
-var router12 = (0, import_express12.Router)();
-router12.get(
+var router13 = (0, import_express13.Router)();
+router13.get(
   "/subscription",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2780,7 +2844,7 @@ router12.get(
 var webUpgradeSchema = import_zod3.z.object({
   productKey: import_zod3.z.enum(["WEB_MONTHLY", "WEB_YEARLY"])
 });
-router12.post(
+router13.post(
   "/subscription/web",
   requireAuth,
   validate(webUpgradeSchema),
@@ -2794,7 +2858,7 @@ var androidPurchaseSchema = import_zod3.z.object({
   purchaseToken: import_zod3.z.string().min(5),
   orderId: import_zod3.z.string().optional()
 });
-router12.post(
+router13.post(
   "/subscription/android",
   requireAuth,
   validate(androidPurchaseSchema),
@@ -2814,7 +2878,7 @@ router12.post(
     ok(res, sub);
   })
 );
-router12.post(
+router13.post(
   "/subscription/cancel",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2822,7 +2886,7 @@ router12.post(
     ok(res, sub);
   })
 );
-router12.post(
+router13.post(
   "/subscription/restore",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2830,7 +2894,7 @@ router12.post(
     ok(res, result);
   })
 );
-router12.post(
+router13.post(
   "/boost",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2838,7 +2902,7 @@ router12.post(
     ok(res, boost);
   })
 );
-router12.get(
+router13.get(
   "/profile-views",
   requireAuth,
   asyncHandler(async (req, res) => {
@@ -2846,10 +2910,10 @@ router12.get(
     ok(res, result);
   })
 );
-var billing_routes_default = router12;
+var billing_routes_default = router13;
 
 // src/index.ts
-var app = (0, import_express13.default)();
+var app = (0, import_express14.default)();
 app.set("trust proxy", 1);
 app.use((0, import_helmet.default)());
 app.use(
@@ -2858,7 +2922,7 @@ app.use(
     credentials: true
   })
 );
-app.use(import_express13.default.json({ limit: "1mb" }));
+app.use(import_express14.default.json({ limit: "1mb" }));
 app.use((0, import_cookie_parser.default)(env.COOKIE_SECRET));
 var globalLimiter = (0, import_express_rate_limit.default)({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
@@ -2887,6 +2951,7 @@ app.use("/api/skills", skills_routes_default);
 app.use("/api/matches", matches_routes_default);
 app.use("/api/exchange-requests", exchangeRequests_routes_default);
 app.use("/api/exchanges", exchanges_routes_default);
+app.use("/api/messages", messages_routes_default);
 app.use("/api/sessions", sessions_routes_default);
 app.use("/api/notifications", notifications_routes_default);
 app.use("/api", safety_routes_default);
@@ -2894,7 +2959,7 @@ app.use("/api", billing_routes_default);
 app.use("/api/admin", admin_routes_default);
 var publicDir = import_path2.default.resolve(__dirname, "../../client/dist");
 if (import_fs2.default.existsSync(import_path2.default.join(publicDir, "index.html"))) {
-  app.use(import_express13.default.static(publicDir, { maxAge: "7d", index: "index.html" }));
+  app.use(import_express14.default.static(publicDir, { maxAge: "7d", index: "index.html" }));
   app.get(/^\/(?!api\/|socket\.io\/).*/, (_req, res) => {
     res.sendFile(import_path2.default.join(publicDir, "index.html"));
   });

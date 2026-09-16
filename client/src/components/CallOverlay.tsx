@@ -170,6 +170,24 @@ export function useCall(
     }
   };
 
+  // Acquire the camera/microphone now, while we have a user gesture.
+  // getUserMedia is denied outside a gesture on mobile WebViews, and both the
+  // caller (on Accepted) and callee (on Accept) flow through socket events.
+  const acquireLocalStream = useCallback(async (video: boolean) => {
+    if (streamRef.current) {
+      const needsVideo = streamRef.current.getVideoTracks().length > 0;
+      if (video === needsVideo) return streamRef.current;
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video,
+    });
+    streamRef.current = stream;
+    return stream;
+  }, []);
+
   const startPeer = useCallback(async (isCallee: boolean) => {
     const sock = socketRef.current;
     if (!sock) return;
@@ -205,13 +223,17 @@ export function useCall(
       pendingSignalsRef.current = [];
       for (const sig of queued) await handleSignal(pc, sig);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: videoEnabledRef.current,
-      });
-      streamRef.current = stream;
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      attachLocal(stream);
+      let stream = streamRef.current;
+      if (!stream) {
+        stream = await navigator.mediaDevices
+          .getUserMedia({ audio: true, video: videoEnabledRef.current })
+          .catch(() => null);
+        if (stream) streamRef.current = stream;
+      }
+      if (stream) {
+        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        attachLocal(stream);
+      }
 
       if (isCallee) {
         const offer = await pc.createOffer();
@@ -261,18 +283,39 @@ export function useCall(
       if (!sock || rawRef.current.status !== 'none') return;
       videoEnabledRef.current = video;
       update({ status: 'outgoing', peer: partner, video, incoming: false, error: undefined });
+      try {
+        // Inside the tap gesture: this is where the OS permission prompt fires.
+        await acquireLocalStream(video);
+      } catch (e) {
+        console.error('[CALL] media denied', e);
+        update({
+          status: 'error',
+          error: 'Microphone or camera access was denied. Allow access in your device settings, then try again.',
+        });
+        return;
+      }
       sock.emit('call:request', { exchangeId, video });
     },
-    [exchangeId, partner, update]
+    [exchangeId, partner, update, acquireLocalStream]
   );
 
   const acceptCall = useCallback(async () => {
     const sock = socketRef.current;
     if (!sock || rawRef.current.status !== 'incoming') return;
+    try {
+      await acquireLocalStream(videoEnabledRef.current);
+    } catch (e) {
+      console.error('[CALL] media denied', e);
+      update({
+        status: 'error',
+        error: 'Microphone or camera access was denied. Allow access in your device settings, then try again.',
+      });
+      return;
+    }
     update({ status: 'active', incoming: false, error: undefined });
     sock.emit('call:accept', { exchangeId });
     await startPeer(true).catch(() => {});
-  }, [exchangeId, startPeer, update]);
+  }, [exchangeId, startPeer, update, acquireLocalStream]);
 
   const declineCall = useCallback(() => {
     const sock = socketRef.current;

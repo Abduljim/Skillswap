@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,6 +43,7 @@ function useExchangeSocket(exchangeId: string, userId: string) {
 export default function ExchangeWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+  const loc = useLocation();
   const { user } = useAuth();
   const toast = useToast();
 
@@ -52,7 +53,9 @@ export default function ExchangeWorkspacePage() {
     enabled: !!id,
   });
 
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(
+    (loc.state as { defaultTab?: Tab } | null)?.defaultTab ?? 'overview'
+  );
 
   if (isLoading) return <Skeleton className="h-64" />;
   if (!exchange) return <EmptyState title="Exchange not found" />;
@@ -390,13 +393,25 @@ function ChatTab({
       <div className="flex gap-2 pt-3 border-t border-ink-100 items-end">
         <div className="relative flex items-center gap-1">
           <button
-            onClick={() => textInputRef.current?.focus()}
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+            }}
+            onClick={() => {
+              const input = textInputRef.current;
+              if (!input) return;
+              input.focus({ preventScroll: true });
+              input.scrollIntoView({ block: 'nearest' });
+              // Nudge the WebView so the soft keyboard mounts after focus.
+              window.setTimeout(() => input.focus({ preventScroll: true }), 60);
+            }}
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
             title="Emoji"
           >
             <Smile className="w-5 h-5" />
           </button>
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
             title="Send image"

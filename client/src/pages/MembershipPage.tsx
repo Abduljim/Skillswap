@@ -113,9 +113,9 @@ const FAQ = [
 
 function FeatureRow({ name, free, pro }: { name: string; free: string | boolean; pro: string | boolean }) {
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-6 items-center py-3 border-b border-ink-100/70 last:border-b-0">
-      <div className="text-sm text-ink-700">{name}</div>
-      <div className="text-center w-24 sm:w-28">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 sm:gap-6 items-center py-3 border-b border-ink-100/70 last:border-b-0">
+      <div className="text-sm text-ink-700 min-w-0 break-words pr-1">{name}</div>
+      <div className="text-center w-16 sm:w-28 min-w-0">
         {typeof free === 'boolean' ? (
           free ? (
             <Check className="w-4 h-4 text-mint-500 mx-auto" />
@@ -123,10 +123,10 @@ function FeatureRow({ name, free, pro }: { name: string; free: string | boolean;
             <X className="w-4 h-4 text-ink-300 mx-auto" />
           )
         ) : (
-          <span className="text-xs font-medium text-ink-600">{free}</span>
+          <span className="text-xs font-medium text-ink-600 break-words">{free}</span>
         )}
       </div>
-      <div className="text-center w-24 sm:w-28">
+      <div className="text-center w-16 sm:w-28 min-w-0">
         {typeof pro === 'boolean' ? (
           pro ? (
             <Check className="w-4 h-4 text-coral-500 mx-auto" />
@@ -136,7 +136,7 @@ function FeatureRow({ name, free, pro }: { name: string; free: string | boolean;
         ) : (
           <span className="text-xs font-semibold text-coral-600 inline-flex items-center gap-1 justify-center">
             {pro === 'Unlimited' && <InfinityIcon className="w-3 h-3" />}
-            {pro}
+            <span className="min-w-0 break-words">{pro}</span>
           </span>
         )}
       </div>
@@ -341,18 +341,18 @@ export default function MembershipPage() {
 
       {/* Manage Pro (when already Pro) */}
       {isPro && sub && (
-        <div className="bg-ink-900 rounded-2xl p-5 mb-8 text-cream-50 flex items-center justify-between gap-4">
-          <div>
+        <div className="bg-ink-900 rounded-2xl p-5 mb-8 text-cream-50 flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
             <div className="text-xs uppercase tracking-widest text-coral-300 font-semibold">
               Pro active
             </div>
-            <div className="text-sm text-cream-200 mt-1">
+            <div className="text-sm text-cream-200 mt-1 break-words">
               {sub.expiresAt
                 ? `Active until ${new Date(sub.expiresAt).toLocaleDateString()}`
                 : 'Lifetime access'}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={boost}
               disabled={boosting}
@@ -398,14 +398,14 @@ export default function MembershipPage() {
 
       {/* Comparison table */}
       <div className="bg-white rounded-2xl border border-ink-100/80 p-5 mb-6">
-        <div className="grid grid-cols-[1fr_auto_auto] gap-3 sm:gap-6 pb-3 border-b border-ink-200">
-          <div className="text-xs uppercase tracking-widest text-ink-500 font-semibold">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 sm:gap-6 pb-3 border-b border-ink-200">
+          <div className="text-xs uppercase tracking-widest text-ink-500 font-semibold min-w-0">
             Feature
           </div>
-          <div className="text-xs uppercase tracking-widest text-ink-500 font-semibold w-24 sm:w-28 text-center">
+          <div className="text-xs uppercase tracking-widest text-ink-500 font-semibold w-16 sm:w-28 text-center min-w-0">
             Free
           </div>
-          <div className="text-xs uppercase tracking-widest text-coral-600 font-semibold w-24 sm:w-28 text-center">
+          <div className="text-xs uppercase tracking-widest text-coral-600 font-semibold w-16 sm:w-28 text-center min-w-0">
             Pro
           </div>
         </div>

@@ -1,20 +1,41 @@
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
-import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings } from 'lucide-react';
+import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import type { Conversation } from '../types';
 import clsx from 'clsx';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
 
   const { data: notifData } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get<{ notifications: any[]; unreadCount: number }>('/notifications'),
     refetchInterval: 30_000,
   });
-  const unread = notifData?.unreadCount ?? 0;
+  const notifUnread = notifData?.unreadCount ?? 0;
+
+  const { data: convData } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => api.get<Conversation[]>('/messages/conversations'),
+    refetchInterval: 30_000,
+  });
+  const messagesUnread = convData?.reduce((sum, c) => sum + c.unreadCount, 0) ?? 0;
 
   const { data: sub } = useQuery({
     queryKey: ['my-subscription'],
@@ -23,11 +44,11 @@ export default function AppLayout() {
   const isPro = sub ? sub.tier === 'PRO' : (user as any)?.tier === 'PRO';
 
   const navItems = [
-    { to: '/dashboard', icon: Home, label: 'Home' },
-    { to: '/discover', icon: Compass, label: 'Discover' },
-    { to: '/exchanges', icon: Repeat, label: 'Exchanges' },
-    { to: '/notifications', icon: MessageSquare, label: 'Messages' },
-    { to: '/profile', icon: User, label: 'Profile' },
+    { to: '/dashboard', icon: Home, label: 'Home', badge: 0 },
+    { to: '/discover', icon: Compass, label: 'Discover', badge: 0 },
+    { to: '/exchanges', icon: Repeat, label: 'Exchanges', badge: 0 },
+    { to: '/messages', icon: MessageSquare, label: 'Messages', badge: messagesUnread },
+    { to: '/profile', icon: User, label: 'Profile', badge: 0 },
   ];
 
   const handleLogout = async () => {
@@ -37,6 +58,12 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-cream-50">
+      {!online && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-coral-500 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2">
+          <WifiOff className="w-3.5 h-3.5 shrink-0" />
+          You are offline. Check your internet connection.
+        </div>
+      )}
       {/* Top bar (desktop + tablet) */}
       <header className="hidden md:flex glass-nav border-b border-ink-100 sticky top-0 z-30 h-16 items-center px-6">
         <Link to="/dashboard" className="flex items-center gap-2 mr-8">
@@ -59,9 +86,9 @@ export default function AppLayout() {
             >
               <item.icon className="w-4 h-4" />
               <span>{item.label}</span>
-              {item.to === '/notifications' && unread > 0 && (
+              {item.badge > 0 && (
                 <span className="ml-1 bg-coral-500 text-white text-[10px] rounded-full px-1.5 font-bold">
-                  {unread}
+                  {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}
             </NavLink>
@@ -76,11 +103,12 @@ export default function AppLayout() {
                 isActive ? 'bg-cream-100 text-ink-900' : 'text-ink-600 hover:bg-cream-100'
               )
             }
+            title="Notifications"
           >
             <Bell className="w-5 h-5" />
-            {unread > 0 && (
+            {notifUnread > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-coral-500 text-white text-[10px] rounded-full font-bold flex items-center justify-center">
-                {unread}
+                {notifUnread}
               </span>
             )}
           </NavLink>
@@ -123,6 +151,11 @@ export default function AppLayout() {
             >
               <item.icon className="w-5 h-5" />
               <span>{item.label}</span>
+              {item.badge > 0 && (
+                <span className="absolute top-1.5 right-1/2 translate-x-5 w-4 h-4 bg-coral-500 text-white text-[10px] rounded-full font-bold flex items-center justify-center">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
@@ -155,9 +188,9 @@ export default function AppLayout() {
           </NavLink>
           <NavLink to="/notifications" className="relative p-2 text-ink-600">
             <Bell className="w-5 h-5" />
-            {unread > 0 && (
+            {notifUnread > 0 && (
               <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-coral-500 text-white text-[10px] rounded-full font-bold flex items-center justify-center">
-                {unread}
+                {notifUnread}
               </span>
             )}
           </NavLink>

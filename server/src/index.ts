@@ -16,6 +16,7 @@ import skillsRoutes from './routes/skills.routes';
 import matchesRoutes from './routes/matches.routes';
 import exchangeRequestsRoutes from './routes/exchangeRequests.routes';
 import exchangesRoutes from './routes/exchanges.routes';
+import messagesRoutes from './routes/messages.routes';
 import sessionsRoutes from './routes/sessions.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import safetyRoutes from './routes/safety.routes';
@@ -69,6 +70,7 @@ app.use('/api/skills', skillsRoutes);
 app.use('/api/matches', matchesRoutes);
 app.use('/api/exchange-requests', exchangeRequestsRoutes);
 app.use('/api/exchanges', exchangesRoutes);
+app.use('/api/messages', messagesRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api', safetyRoutes); // /reports, /users/:id/block

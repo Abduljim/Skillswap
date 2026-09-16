@@ -18,6 +18,7 @@ import RequestsPage from './pages/RequestsPage';
 import ExchangesPage from './pages/ExchangesPage';
 import ExchangeWorkspacePage from './pages/ExchangeWorkspacePage';
 import NotificationsPage from './pages/NotificationsPage';
+import MessagesPage from './pages/MessagesPage';
 import SettingsPage from './pages/SettingsPage';
 import SkillsPage from './pages/SkillsPage';
 import MembershipPage from './pages/MembershipPage';
@@ -100,6 +101,7 @@ export default function App() {
         <Route path="/exchanges" element={<ExchangesPage />} />
         <Route path="/exchanges/:id" element={<ExchangeWorkspacePage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/messages" element={<MessagesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/membership" element={<MembershipPage />} />

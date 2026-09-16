@@ -122,6 +122,18 @@ export interface Message {
   sender?: { id: string; displayName: string };
 }
 
+export interface Conversation {
+  exchangeId: string;
+  partner: {
+    id: string;
+    displayName: string;
+    profile?: { avatarUrl?: string | null; avatarFrame?: string | null };
+  };
+  lastMessage: Message | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
 export interface Session {
   id: string;
   exchangeId: string;

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES, BANNER_STYLES, resolveBannerColor } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES, BANNER_STYLES, resolveBannerColor, isDarkBanner } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
 import { BadgesLegend } from '../components/BadgesLegend';
 import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays, Sparkles, Flame } from 'lucide-react';
@@ -168,7 +168,7 @@ export default function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
       <div className="card overflow-hidden relative">
-        <div className={`p-6 md:p-8 relative ${isPro ? `card-color-${resolveBannerColor(profile?.bannerStyle)} card-dark` : ''}`}>
+        <div className={`p-6 md:p-8 relative card-color-${resolveBannerColor(profile?.bannerStyle)} ${isDarkBanner(profile?.bannerStyle) ? 'card-dark' : ''}`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
@@ -469,61 +469,79 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Customize your profile (Pro) */}
-      {isPro && (
-        <div className="card p-6">
-          <h2 className="font-display font-bold text-lg text-ink-900 flex items-center gap-2 mb-1">
-            <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
-          </h2>
-          <p className="text-xs text-ink-500 mb-5">
-            Dress up your avatar and profile card color. Everyone who views your profile will see it.
-          </p>
+      {/* Customize your profile */}
+      <div className="card p-6">
+        <h2 className="font-display font-bold text-lg text-ink-900 flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
+        </h2>
+        <p className="text-xs text-ink-500 mb-5">
+          Free gets Gold. Unlock every card color and a matching avatar frame with Pro.
+        </p>
 
-          <div className="text-sm font-semibold text-ink-700 mb-3">Avatar frame</div>
-          <div className="flex flex-wrap gap-2 mb-6">
-            {Object.entries(AVATAR_FRAMES).map(([key, def]) => {
-              const active = (profile?.avatarFrame || 'default') === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => looksMutation.mutate({ avatarFrame: key })}
-                  className={`rounded-full p-1 transition-all ${
-                    active ? 'ring-2 ring-coral-500 scale-105' : 'hover:ring-2 hover:ring-ink-200'
-                  }`}
-                  title={def.label}
-                >
-                  <FrameAvatar frame={key} src={profile?.avatarUrl} alt="" size={44} />
-                </button>
-              );
-            })}
-          </div>
+        {isPro && (
+          <>
+            <div className="text-sm font-semibold text-ink-700 mb-3">Avatar frame</div>
+            <div className="flex flex-wrap gap-2 mb-6">
+              {Object.entries(AVATAR_FRAMES).map(([key, def]) => {
+                const active = (profile?.avatarFrame || 'default') === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => looksMutation.mutate({ avatarFrame: key })}
+                    className={`rounded-full p-1 transition-all ${
+                      active ? 'ring-2 ring-coral-500 scale-105' : 'hover:ring-2 hover:ring-ink-200'
+                    }`}
+                    title={def.label}
+                  >
+                    <FrameAvatar frame={key} src={profile?.avatarUrl} alt="" size={44} />
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
 
-          <div className="text-sm font-semibold text-ink-700 mb-3">Profile card color</div>
-          <div className="flex flex-wrap gap-2">
-            {CARD_COLORS.map((c) => {
-              const active = resolveBannerColor(profile?.bannerStyle) === c.value;
-              return (
-                <button
-                  key={c.value}
-                  type="button"
-                  onClick={() => looksMutation.mutate({ bannerStyle: c.value })}
-                  className={`rounded-lg p-1 transition-all ${
-                    active ? 'ring-2 ring-coral-500' : 'hover:ring-2 hover:ring-ink-200'
-                  }`}
-                  title={c.label}
-                >
-                  <div className={`h-9 w-14 rounded-md ${c.cls} border border-ink-900/10`} />
-                  <div className="text-[11px] text-center mt-1 text-ink-500">{c.label}</div>
-                </button>
-              );
-            })}
-          </div>
-          {looksMutation.isPending && (
-            <div className="text-xs text-ink-500 mt-3">Saving your look…</div>
-          )}
+        <div className="text-sm font-semibold text-ink-700 mb-3">
+          {isPro ? 'Profile card color' : 'Profile card color (Gold is free)'}
         </div>
-      )}
+        <div className="flex flex-wrap gap-2">
+          {CARD_COLORS.map((c) => {
+            const active = resolveBannerColor(profile?.bannerStyle) === c.value;
+            const locked = !isPro && c.value !== 'gold';
+            return (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => {
+                  if (locked) {
+                    toast.push({
+                      type: 'info',
+                      title: 'Pro perk',
+                      body: 'Upgrade to Pro to use this card color.',
+                    });
+                    return;
+                  }
+                  looksMutation.mutate({ bannerStyle: c.value });
+                }}
+                className={`rounded-lg p-1 transition-all ${
+                  active ? 'ring-2 ring-coral-500' : 'hover:ring-2 hover:ring-ink-200'
+                }`}
+                title={locked ? `${c.label} (Pro)` : c.label}
+              >
+                <div className={`h-9 w-14 rounded-md ${c.cls} border border-ink-900/10 ${locked ? 'opacity-50' : ''}`} />
+                <div className="text-[11px] text-center mt-1 text-ink-500 inline-flex items-center gap-0.5">
+                  {c.label}
+                  {locked && <Crown className="w-3 h-3 text-ink-400" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {looksMutation.isPending && (
+          <div className="text-xs text-ink-500 mt-3">Saving your look…</div>
+        )}
+      </div>
 
       {/* Badges */}
       <div className="card p-6">

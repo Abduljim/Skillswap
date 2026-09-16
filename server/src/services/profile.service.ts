@@ -33,7 +33,15 @@ export async function getProfile(userId: string) {
     completedExchanges: completedCount,
     ageDays,
   });
-  return { ...profile, tier: tierResult.tier, badges, userSkills, streak: streak.streak, maxStreak: streak.maxStreak };
+  return {
+    ...profile,
+    bannerStyle: profile.bannerStyle ?? 'gold',
+    tier: tierResult.tier,
+    badges,
+    userSkills,
+    streak: streak.streak,
+    maxStreak: streak.maxStreak,
+  };
 }
 
 export async function updateProfile(
@@ -174,6 +182,7 @@ export async function getUserById(id: string, viewerId?: string) {
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
     avatarFrame: user.profile?.avatarFrame ?? null,
+    bannerStyle: user.profile?.bannerStyle ?? 'gold',
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,
