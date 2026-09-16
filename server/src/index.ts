@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import http from 'http';
+import path from 'path';
+import fs from 'fs';
 import { env } from './config/env';
 import { prisma } from './lib/prisma';
 import { errorHandler, notFoundHandler } from './middleware/error';
@@ -72,6 +74,20 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api', safetyRoutes); // /reports, /users/:id/block
 app.use('/api', billingRoutes); // /subscription, /boost, /profile-views
 app.use('/api/admin', adminRoutes);
+
+// Serve the built web client (SPA) from the same process when present.
+// All API routes are mounted above, so this only handles non-API GETs and
+// falls back to index.html so React Router paths (/reset-password, …) work.
+const publicDir = path.resolve(__dirname, '../../client/dist');
+if (fs.existsSync(path.join(publicDir, 'index.html'))) {
+  app.use(express.static(publicDir, { maxAge: '7d', index: 'index.html' }));
+  app.get(/^\/(?!api\/|socket\.io\/).*/, (_req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+  console.log(`🌐 Serving web client from ${publicDir}`);
+} else {
+  console.log(`🌐 No web client build found at ${publicDir} — API only.`);
+}
 
 app.use(notFoundHandler);
 app.use(errorHandler);

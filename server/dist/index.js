@@ -137,6 +137,8 @@ var import_helmet = __toESM(require("helmet"));
 var import_cookie_parser = __toESM(require("cookie-parser"));
 var import_express_rate_limit = __toESM(require("express-rate-limit"));
 var import_http = __toESM(require("http"));
+var import_path2 = __toESM(require("path"));
+var import_fs2 = __toESM(require("fs"));
 init_env();
 
 // src/lib/prisma.ts
@@ -2794,6 +2796,16 @@ app.use("/api/notifications", notifications_routes_default);
 app.use("/api", safety_routes_default);
 app.use("/api", billing_routes_default);
 app.use("/api/admin", admin_routes_default);
+var publicDir = import_path2.default.resolve(__dirname, "../../client/dist");
+if (import_fs2.default.existsSync(import_path2.default.join(publicDir, "index.html"))) {
+  app.use(import_express13.default.static(publicDir, { maxAge: "7d", index: "index.html" }));
+  app.get(/^\/(?!api\/|socket\.io\/).*/, (_req, res) => {
+    res.sendFile(import_path2.default.join(publicDir, "index.html"));
+  });
+  console.log(`\u{1F310} Serving web client from ${publicDir}`);
+} else {
+  console.log(`\u{1F310} No web client build found at ${publicDir} \u2014 API only.`);
+}
 app.use(notFoundHandler);
 app.use(errorHandler);
 var httpServer = import_http.default.createServer(app);

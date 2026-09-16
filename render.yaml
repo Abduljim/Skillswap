@@ -15,7 +15,7 @@ services:
     region: oregon
     runtime: node
     rootDir: server
-    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod && node scripts/seed-prod.js
+    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod && node scripts/seed-prod.js && npm run --prefix ../client build
     startCommand: node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
@@ -49,7 +49,9 @@ services:
       - key: ANDROID_PACKAGE_NAME
         value: app.skillswap.client
       - key: RESET_URL
-        value: 'https://app.skillswap.app/reset-password'
+        value: 'https://skillswap-api-dcg8.onrender.com/reset-password'
+      - key: VITE_API_URL
+        value: https://skillswap-api-dcg8.onrender.com
       - key: SMTP_HOST
         value: ''
       - key: SMTP_PORT
@@ -60,29 +62,3 @@ services:
         value: ''
       - key: SMTP_FROM
         value: ''
-
-  - type: static
-    name: skillswap-client
-    plan: free
-    region: oregon
-    rootDir: client
-    buildCommand: npm ci --include=dev && VITE_API_URL=$VITE_API_URL npm run build
-    publishDirectory: dist
-    pullRequestPreviewsEnabled: false
-    autoDeploy: true
-    envVars:
-      - key: VITE_API_URL
-        value: https://skillswap-api-dcg8.onrender.com
-      - key: NODE_VERSION
-        value: '20'
-    routes:
-      - type: rewrite
-        source: /<.*>
-        destination: /index.html
-    headers:
-      - path: /assets/*
-        name: Cache-Control
-        value: 'public, max-age=604800'
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
