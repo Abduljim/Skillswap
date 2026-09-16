@@ -45,6 +45,8 @@ export const updateProfileSchema = z.object({
   bio: z.string().max(1000).nullable().optional(),
   avatarUrl: avatarUrlSchema,
   learningFormat: z.enum(['ONLINE', 'IN_PERSON', 'EITHER']).optional(),
+  avatarFrame: z.enum(['default', 'gold', 'neon', 'royal', 'emerald', 'flame']).optional(),
+  bannerStyle: z.enum(['cream', 'coral', 'mint', 'ocean', 'royal', 'forest', 'sunset', 'midnight']).optional(),
   availabilities: z
     .array(
       z.object({

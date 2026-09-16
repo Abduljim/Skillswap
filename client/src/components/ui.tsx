@@ -1,6 +1,15 @@
 import { ReactNode } from 'react';
 import clsx from 'clsx';
 
+export const AVATAR_FRAMES: Record<string, { ring: string; label: string }> = {
+  default: { ring: '', label: 'Default' },
+  gold: { ring: 'p-[3px] bg-gradient-to-br from-amber-400 via-amber-300 to-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]', label: 'Gold' },
+  neon: { ring: 'p-[3px] bg-gradient-to-br from-coral-500 via-coral-400 to-pink-500 shadow-[0_0_14px_rgba(251,79,29,0.4)]', label: 'Neon' },
+  royal: { ring: 'p-[3px] bg-gradient-to-br from-violet-500 via-violet-400 to-purple-600 shadow-[0_0_14px_rgba(139,92,246,0.4)]', label: 'Royal' },
+  emerald: { ring: 'p-[3px] bg-gradient-to-br from-emerald-500 via-emerald-400 to-green-600 shadow-[0_0_12px_rgba(16,185,129,0.35)]', label: 'Emerald' },
+  flame: { ring: 'p-[3px] bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 shadow-[0_0_14px_rgba(249,115,22,0.4)]', label: 'Flame' },
+};
+
 export function Avatar({
   src,
   alt,
@@ -25,6 +34,21 @@ export function Avatar({
       ) : (
         <span>{alt.charAt(0).toUpperCase()}</span>
       )}
+    </div>
+  );
+}
+
+export function FrameAvatar({
+  frame = 'default',
+  ...avatarProps
+}: {
+  frame?: string;
+} & Parameters<typeof Avatar>[0]) {
+  const def = AVATAR_FRAMES[frame] || AVATAR_FRAMES.default;
+  if (!def.ring) return <Avatar {...avatarProps} />;
+  return (
+    <div className={clsx('rounded-full shrink-0', def.ring)}>
+      <Avatar {...avatarProps} />
     </div>
   );
 }

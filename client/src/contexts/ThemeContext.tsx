@@ -1,13 +1,44 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-type Theme = 'light' | 'dark';
+export type AppTheme = 'light' | 'dark' | 'ocean' | 'midnight' | 'forest' | 'sunset' | 'royal';
+
+export interface ThemeDef {
+  id: AppTheme;
+  label: string;
+  desc: string;
+  /** hard-code to the swatch gradient classes below */
+  swatch: string;
+  dark: boolean;
+  /** additional color themes are a Pro perk */
+  pro: boolean;
+}
+
+export const THEMES: ThemeDef[] = [
+  { id: 'light', label: 'Light', desc: 'Clean & bright', swatch: 'bg-gradient-to-br from-cream-50 to-cream-200', dark: false, pro: false },
+  { id: 'dark', label: 'Dark', desc: 'Easy on the eyes', swatch: 'bg-gradient-to-br from-ink-900 to-ink-700', dark: true, pro: false },
+  { id: 'ocean', label: 'Ocean', desc: 'Cool teal waters', swatch: 'bg-gradient-to-br from-teal-200 via-cyan-100 to-cyan-300', dark: false, pro: true },
+  { id: 'forest', label: 'Forest', desc: 'Fresh green calm', swatch: 'bg-gradient-to-br from-emerald-200 via-green-100 to-green-300', dark: false, pro: true },
+  { id: 'sunset', label: 'Sunset', desc: 'Warm golden hour', swatch: 'bg-gradient-to-br from-amber-200 via-orange-100 to-orange-300', dark: false, pro: true },
+  { id: 'midnight', label: 'Midnight', desc: 'Deep indigo night', swatch: 'bg-gradient-to-br from-indigo-950 via-indigo-800 to-indigo-600', dark: true, pro: true },
+  { id: 'royal', label: 'Royal', desc: 'Rich violet luxury', swatch: 'bg-gradient-to-br from-purple-950 via-violet-800 to-violet-500', dark: true, pro: true },
+];
 
 const THEME_KEY = 'skillswap_theme';
 
-function initialTheme(): Theme {
+const META_COLOR: Record<AppTheme, string> = {
+  light: '#f5f2ec',
+  dark: '#101218',
+  ocean: '#f0f9f7',
+  forest: '#f3f9f4',
+  sunset: '#fdf6ee',
+  midnight: '#0c1222',
+  royal: '#170f25',
+};
+
+function initialTheme(): AppTheme {
   try {
     const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'dark' || saved === 'light') return saved;
+    if (THEMES.some((t) => t.id === saved)) return saved as AppTheme;
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       return 'dark';
     }
@@ -16,30 +47,35 @@ function initialTheme(): Theme {
 }
 
 interface ThemeState {
-  theme: Theme;
-  toggleTheme: () => void;
-  setTheme: (t: Theme) => void;
+  theme: AppTheme;
+  setTheme: (t: AppTheme) => void;
+  themes: ThemeDef[];
 }
 
 const ThemeContext = createContext<ThemeState | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [theme, setTheme] = useState<AppTheme>(initialTheme);
 
   useEffect(() => {
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch { /* ignore */ }
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.removeAttribute('data-theme');
+    } else {
+      root.setAttribute('data-theme', theme);
+    }
     // Keep WebView/status bar in sync
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#101218' : '#f5f2ec');
+    if (meta) meta.setAttribute('content', META_COLOR[theme]);
   }, [theme]);
 
   const context: ThemeState = {
     theme,
-    toggleTheme: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
     setTheme,
+    themes: THEMES,
   };
 
   return <ThemeContext.Provider value={context}>{children}</ThemeContext.Provider>;

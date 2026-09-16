@@ -1,9 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
-import { ArrowLeft, Star } from 'lucide-react';
+import { BadgesLegend } from '../components/BadgesLegend';
+import { ArrowLeft, Star, Medal } from 'lucide-react';
 
 export default function UserProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -36,9 +37,11 @@ export default function UserProfilePage() {
         <ArrowLeft className="w-4 h-4" /> Back
       </Link>
 
-      <div className={`card p-6 md:p-8 ${isPro ? 'bg-gradient-to-br from-amber-50 via-cream-50 to-coral-50 border-amber-200/70' : ''}`}>
+      <div className="card overflow-hidden">
+        {user.bannerStyle && <div className={`h-10 banner-${user.bannerStyle}`} />}
+        <div className="p-6 md:p-8 bg-gradient-to-br from-cream-50/60 via-white/40 to-mint-50/50">
         <div className="flex flex-col md:flex-row items-start gap-5">
-          <Avatar src={user.avatarUrl} alt={user.displayName} size={96} />
+          <FrameAvatar frame={user.avatarFrame} src={user.avatarUrl} alt={user.displayName} size={96} />
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display font-bold text-3xl text-ink-900">{user.displayName}</h1>
@@ -71,6 +74,7 @@ export default function UserProfilePage() {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       {user.teachingSkills?.length > 0 && (
@@ -94,6 +98,15 @@ export default function UserProfilePage() {
               <span key={s.id} className="chip-coral">{s.name}</span>
             ))}
           </div>
+        </div>
+      )}
+
+      {user.badges && user.badges.length > 0 && (
+        <div className="card p-6">
+          <h2 className="font-display font-bold text-lg text-ink-900 flex items-center gap-2 mb-4">
+            <Medal className="w-4 h-4 text-coral-500" /> Badges
+          </h2>
+          <BadgesLegend earned={user.badges.map((b: any) => b.code)} />
         </div>
       )}
 

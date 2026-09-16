@@ -31,6 +31,8 @@ export interface Profile {
   bio?: string | null;
   avatarUrl?: string | null;
   learningFormat?: LearningFormat;
+  avatarFrame?: string;
+  bannerStyle?: string;
   availabilities: { weekday: Weekday; timeOfDay: TimeOfDay }[];
   tier?: Tier;
   badges?: Badge[];

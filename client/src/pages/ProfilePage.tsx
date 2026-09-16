@@ -4,13 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
-import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays } from 'lucide-react';
+import { BadgesLegend } from '../components/BadgesLegend';
+import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays, Sparkles } from 'lucide-react';
 import type { Skill, LearningFormat, Weekday, TimeOfDay } from '../types';
 
 const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const TIMES: TimeOfDay[] = ['MORNING', 'AFTERNOON', 'EVENING'];
+const BANNER_STYLES = ['cream', 'coral', 'mint', 'ocean', 'royal', 'forest', 'sunset', 'midnight'];
 
 const AVATAR_SIZE = 256;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5MB source cap — client downscales to 256px
@@ -86,6 +88,14 @@ export default function ProfilePage() {
     },
   });
 
+  const looksMutation = useMutation({
+    mutationFn: (data: any) => api.put('/profile', data),
+    onSuccess: () => {
+      toast.push({ type: 'success', title: 'Look saved' });
+      qc.invalidateQueries({ queryKey: ['my-profile'] });
+    },
+  });
+
   const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -138,13 +148,13 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
-      <div className={`card p-6 md:p-8 overflow-hidden relative ${
-        isPro ? 'bg-gradient-to-br from-amber-50 via-cream-50 to-coral-50 border-amber-200/70' : ''
-      }`}>
+      <div className="card overflow-hidden relative">
+        {isPro && <div className={`h-10 banner-${profile?.bannerStyle || 'cream'}`} />}
+        <div className={`p-6 md:p-8 relative ${isPro ? 'bg-gradient-to-br from-amber-50/60 via-cream-50/40 to-coral-50/60' : ''}`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-coral-100/70 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
-            <Avatar src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
+            <FrameAvatar frame={editing ? 'default' : profile?.avatarFrame || 'default'} src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
             {editing && (
               <>
                 <button
@@ -321,6 +331,7 @@ export default function ProfilePage() {
             )}
           </div>
         </div>
+        </div>
       </div>
 
       {/* Member status */}
@@ -346,6 +357,71 @@ export default function ProfilePage() {
         {isPro && (
           <Link to="/membership" className="btn-ghost text-xs px-3 py-2 shrink-0 text-cream-100">Manage</Link>
         )}
+      </div>
+
+      {/* Customize your profile (Pro) */}
+      {isPro && (
+        <div className="card p-6">
+          <h2 className="font-display font-bold text-lg text-ink-900 flex items-center gap-2 mb-1">
+            <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
+          </h2>
+          <p className="text-xs text-ink-500 mb-5">
+            Dress up your avatar and profile card — everyone who views you will see it.
+          </p>
+
+          <div className="text-sm font-semibold text-ink-700 mb-3">Avatar frame</div>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {Object.entries(AVATAR_FRAMES).map(([key, def]) => {
+              const active = (profile?.avatarFrame || 'default') === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => looksMutation.mutate({ avatarFrame: key })}
+                  className={`rounded-full p-1 transition-all ${
+                    active ? 'ring-2 ring-coral-500 scale-105' : 'hover:ring-2 hover:ring-ink-200'
+                  }`}
+                  title={def.label}
+                >
+                  <FrameAvatar frame={key} src={profile?.avatarUrl} alt="" size={44} />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="text-sm font-semibold text-ink-700 mb-3">Banner</div>
+          <div className="flex flex-wrap gap-2">
+            {BANNER_STYLES.map((b) => {
+              const active = (profile?.bannerStyle || 'cream') === b;
+              return (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => looksMutation.mutate({ bannerStyle: b })}
+                  className={`rounded-lg p-1 transition-all ${
+                    active ? 'ring-2 ring-coral-500' : 'hover:ring-2 hover:ring-ink-200'
+                  }`}
+                  title={b}
+                >
+                  <div className={`h-9 w-14 rounded-md banner-${b} border border-ink-900/10`} />
+                  <div className="text-[11px] text-center mt-1 text-ink-500 capitalize">{b}</div>
+                </button>
+              );
+            })}
+          </div>
+          {looksMutation.isPending && (
+            <div className="text-xs text-ink-500 mt-3">Saving your look…</div>
+          )}
+        </div>
+      )}
+
+      {/* Badges */}
+      <div className="card p-6">
+        <h2 className="font-display font-bold text-lg text-ink-900 mb-1">Badges</h2>
+        <p className="text-xs text-ink-500 mb-4">
+          Badges show what you've achieved. Locked badges show how to earn more.
+        </p>
+        <BadgesLegend earned={profile?.badges?.map((b: any) => b.code) || []} />
       </div>
 
       {/* Teaching skills */}

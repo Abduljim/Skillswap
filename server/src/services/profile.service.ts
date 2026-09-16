@@ -44,6 +44,8 @@ export async function updateProfile(
     bio?: string | null;
     avatarUrl?: string | null;
     learningFormat?: 'ONLINE' | 'IN_PERSON' | 'EITHER';
+    avatarFrame?: string;
+    bannerStyle?: string;
     availabilities?: { weekday: any; timeOfDay: any }[];
   }
 ) {
@@ -66,6 +68,8 @@ export async function updateProfile(
         bio: profileFields.bio ?? undefined,
         avatarUrl: profileFields.avatarUrl ?? undefined,
         learningFormat: profileFields.learningFormat ?? undefined,
+        avatarFrame: profileFields.avatarFrame ?? undefined,
+        bannerStyle: profileFields.bannerStyle ?? undefined,
       },
     });
   }
@@ -99,6 +103,8 @@ export async function getUserById(id: string, viewerId?: string) {
           bio: true,
           avatarUrl: true,
           learningFormat: true,
+          avatarFrame: true,
+          bannerStyle: true,
           availabilities: true,
         },
       },

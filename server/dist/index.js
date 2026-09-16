@@ -268,6 +268,8 @@ var updateProfileSchema = import_zod2.z.object({
   bio: import_zod2.z.string().max(1e3).nullable().optional(),
   avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
+  avatarFrame: import_zod2.z.enum(["default", "gold", "neon", "royal", "emerald", "flame"]).optional(),
+  bannerStyle: import_zod2.z.enum(["cream", "coral", "mint", "ocean", "royal", "forest", "sunset", "midnight"]).optional(),
   availabilities: import_zod2.z.array(
     import_zod2.z.object({
       weekday: import_zod2.z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
@@ -880,7 +882,9 @@ async function updateProfile(userId, input) {
         yearLevel: profileFields.yearLevel ?? void 0,
         bio: profileFields.bio ?? void 0,
         avatarUrl: profileFields.avatarUrl ?? void 0,
-        learningFormat: profileFields.learningFormat ?? void 0
+        learningFormat: profileFields.learningFormat ?? void 0,
+        avatarFrame: profileFields.avatarFrame ?? void 0,
+        bannerStyle: profileFields.bannerStyle ?? void 0
       }
     });
   }
@@ -911,6 +915,8 @@ async function getUserById(id, viewerId) {
           bio: true,
           avatarUrl: true,
           learningFormat: true,
+          avatarFrame: true,
+          bannerStyle: true,
           availabilities: true
         }
       },
