@@ -1,8 +1,3 @@
-// Minimal SMTP email delivery using nodemailer. Gated by env config:
-//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, RESET_URL
-// When SMTP is not configured we return { delivered: false } and the caller
-// falls back to handing the token back to the client (dev mode).
-
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 
@@ -17,30 +12,45 @@ function isConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
 }
 
-export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean; error?: string }> {
+export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean }> {
   if (!isConfigured()) {
     return { delivered: false };
   }
+  let transporter: ReturnType<typeof nodemailer.createTransport> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const transporter = nodemailer.createTransport({
+    transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_PORT === 465,
       auth: env.SMTP_USER
         ? { user: env.SMTP_USER, pass: env.SMTP_PASS }
         : undefined,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
-    await transporter.sendMail({
-      from: env.SMTP_FROM,
-      to: opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Email delivery timed out')), 15_000);
     });
+    await Promise.race([
+      transporter.sendMail({
+        from: env.SMTP_FROM,
+        to: opts.to,
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      }),
+      timeout,
+    ]);
     return { delivered: true };
-  } catch (e: any) {
-    console.error('[EMAIL] delivery failed:', e.message);
-    return { delivered: false, error: String(e?.message || e) };
+  } catch {
+    return { delivered: false };
+  } finally {
+    clearTimeout(timer);
+    try {
+      transporter?.close();
+    } catch {}
   }
 }
 

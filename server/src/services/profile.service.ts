@@ -35,7 +35,7 @@ export async function getProfile(userId: string) {
   });
   return {
     ...profile,
-    bannerStyle: profile.bannerStyle ?? 'gold',
+    bannerStyle: profile.bannerStyle ?? 'cream',
     tier: tierResult.tier,
     badges,
     userSkills,
@@ -182,7 +182,7 @@ export async function getUserById(id: string, viewerId?: string) {
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
     avatarFrame: user.profile?.avatarFrame ?? null,
-    bannerStyle: user.profile?.bannerStyle ?? 'gold',
+    bannerStyle: user.profile?.bannerStyle ?? 'cream',
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,

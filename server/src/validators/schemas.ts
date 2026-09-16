@@ -46,7 +46,7 @@ export const updateProfileSchema = z.object({
   avatarUrl: avatarUrlSchema,
   learningFormat: z.enum(['ONLINE', 'IN_PERSON', 'EITHER']).optional(),
   avatarFrame: z.enum(['default', 'frame_0', 'frame_1', 'frame_2', 'frame_3', 'frame_4', 'frame_5', 'frame_6', 'frame_7', 'frame_8', 'frame_9', 'frame_10', 'frame_11']).optional(),
-  bannerStyle: z.enum(['gold', 'silver', 'mint', 'coral', 'sky', 'ocean', 'rose', 'violet', 'indigo', 'midnight', 'espresso', 'forest']).optional(),
+  bannerStyle: z.enum(['cream', 'purple', 'blue', 'teal', 'orange', 'pink', 'gold', 'indigo', 'green']).optional(),
   occupation: z.enum(['student', 'employed', 'self_employed', 'unemployed', 'other']).nullable().optional(),
   jobTitle: z.string().max(100).nullable().optional(),
   company: z.string().max(150).nullable().optional(),

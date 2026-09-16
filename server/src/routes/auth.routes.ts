@@ -52,18 +52,8 @@ router.post(
   '/forgot-password',
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    const result = await authService.requestPasswordReset(req.body.email);
-    // When email was actually sent, just acknowledge — don't leak the token.
-    if (result.delivered) {
-      ok(res, { message: 'If the email exists, a reset link has been sent.' });
-      return;
-    }
-    // No SMTP configured: return the token to the caller so the dev flow still
-    // completes. Strip in production once SMTP is live.
-    ok(res, {
-      message: 'Reset link generated.',
-      resetToken: result.token ?? null,
-    });
+    await authService.requestPasswordReset(req.body.email).catch(() => undefined);
+    ok(res, { message: 'If an account exists for that email, you will receive a password reset link.' });
   })
 );
 

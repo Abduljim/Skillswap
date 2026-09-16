@@ -192,19 +192,16 @@ html[data-theme='midnight'] {
   --c-input-bg: #121c2e; --c-input-border: #345078; --c-input-text: #e6f0ff; --c-input-placeholder: #6482a0; --c-input-focus: #e6f0ff;
 }
 
-/* ── Profile card colors (Pro palette + free Gold) ─────────── */
-.card-color-gold     { background: #f5c948; }
-.card-color-silver   { background: #dde3ea; }
-.card-color-mint     { background: #a5e8cb; }
-.card-color-coral    { background: #ff8a5c; }
-.card-color-sky      { background: #2f6bff; }
-.card-color-ocean    { background: #0e7490; }
-.card-color-rose     { background: #d6336c; }
-.card-color-violet   { background: #7c3aed; }
-.card-color-indigo   { background: #3949ab; }
-.card-color-midnight { background: #0a071b; }
-.card-color-espresso { background: #17110b; }
-.card-color-forest   { background: #081f16; }
+/* ── Profile card colors (Pro gradients + free Cream) ──────── */
+.card-color-cream   { background: linear-gradient(135deg, #fbf4e3, #f3ead4); }
+.card-color-purple  { background: linear-gradient(135deg, #7b2cff, #2c0b4e); }
+.card-color-blue    { background: linear-gradient(135deg, #19b6ff, #0a1b4d); }
+.card-color-teal    { background: linear-gradient(135deg, #0ed0bc, #06302b); }
+.card-color-orange  { background: linear-gradient(135deg, #ff8a2b, #5a2a17); }
+.card-color-pink    { background: linear-gradient(135deg, #ff2d7e, #3c0a28); }
+.card-color-gold    { background: linear-gradient(135deg, #f6b733, #7a4e10); }
+.card-color-indigo  { background: linear-gradient(135deg, #3942c0, #1a0b3f); }
+.card-color-green   { background: linear-gradient(135deg, #10b56c, #062a1c); }
 
 /* Light-text overrides when a dark card color is active */
 .card-dark { color: #fdfaf4; }

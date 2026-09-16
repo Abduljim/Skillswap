@@ -475,7 +475,7 @@ export default function ProfilePage() {
           <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
         </h2>
         <p className="text-xs text-ink-500 mb-5">
-          Free gets Gold. Unlock every card color and a matching avatar frame with Pro.
+          Free gets Cream. Unlock every gradient card color and a matching avatar frame with Pro.
         </p>
 
         {isPro && (
@@ -503,12 +503,12 @@ export default function ProfilePage() {
         )}
 
         <div className="text-sm font-semibold text-ink-700 mb-3">
-          {isPro ? 'Profile card color' : 'Profile card color (Gold is free)'}
+          {isPro ? 'Profile card color' : 'Profile card color (Cream is free)'}
         </div>
         <div className="flex flex-wrap gap-2">
           {CARD_COLORS.map((c) => {
             const active = resolveBannerColor(profile?.bannerStyle) === c.value;
-            const locked = !isPro && c.value !== 'gold';
+            const locked = !isPro && c.value !== 'cream';
             return (
               <button
                 key={c.value}

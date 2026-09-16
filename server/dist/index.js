@@ -269,7 +269,7 @@ var updateProfileSchema = import_zod2.z.object({
   avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
   avatarFrame: import_zod2.z.enum(["default", "frame_0", "frame_1", "frame_2", "frame_3", "frame_4", "frame_5", "frame_6", "frame_7", "frame_8", "frame_9", "frame_10", "frame_11"]).optional(),
-  bannerStyle: import_zod2.z.enum(["gold", "silver", "mint", "coral", "sky", "ocean", "rose", "violet", "indigo", "midnight", "espresso", "forest"]).optional(),
+  bannerStyle: import_zod2.z.enum(["cream", "purple", "blue", "teal", "orange", "pink", "gold", "indigo", "green"]).optional(),
   occupation: import_zod2.z.enum(["student", "employed", "self_employed", "unemployed", "other"]).nullable().optional(),
   jobTitle: import_zod2.z.string().max(100).nullable().optional(),
   company: import_zod2.z.string().max(150).nullable().optional(),
@@ -443,24 +443,40 @@ async function sendEmail(opts) {
   if (!isConfigured()) {
     return { delivered: false };
   }
+  let transporter;
+  let timer;
   try {
-    const transporter = import_nodemailer.default.createTransport({
+    transporter = import_nodemailer.default.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_PORT === 465,
-      auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : void 0
+      auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : void 0,
+      connectionTimeout: 1e4,
+      greetingTimeout: 1e4,
+      socketTimeout: 15e3
     });
-    await transporter.sendMail({
-      from: env.SMTP_FROM,
-      to: opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html
+    const timeout = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("Email delivery timed out")), 15e3);
     });
+    await Promise.race([
+      transporter.sendMail({
+        from: env.SMTP_FROM,
+        to: opts.to,
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html
+      }),
+      timeout
+    ]);
     return { delivered: true };
-  } catch (e) {
-    console.error("[EMAIL] delivery failed:", e.message);
-    return { delivered: false, error: String(e?.message || e) };
+  } catch {
+    return { delivered: false };
+  } finally {
+    clearTimeout(timer);
+    try {
+      transporter?.close();
+    } catch {
+    }
   }
 }
 function sendPasswordResetEmail(to, resetUrl) {
@@ -718,9 +734,7 @@ async function requestPasswordReset(email) {
     where: { email: email.toLowerCase() },
     select: { id: true, email: true }
   });
-  if (!user) {
-    return { delivered: false };
-  }
+  if (!user) return;
   const raw = (0, import_crypto.randomBytes)(32).toString("hex");
   const tokenHash = (0, import_crypto.createHash)("sha256").update(raw).digest("hex");
   await prisma.passwordResetToken.create({
@@ -731,13 +745,7 @@ async function requestPasswordReset(email) {
     }
   });
   const resetUrl = env.RESET_URL ? `${env.RESET_URL.replace(/\/$/, "")}?token=${raw}` : `${env.CLIENT_URL.replace(/\/$/, "")}/reset-password?token=${raw}`;
-  const result = await sendPasswordResetEmail(user.email, resetUrl);
-  if (result.delivered) {
-    console.log(`[PASSWORD-RESET] email sent to ${user.email}`);
-    return { delivered: true };
-  }
-  console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
-  return { delivered: false, token: raw };
+  await sendPasswordResetEmail(user.email, resetUrl).catch(() => void 0);
 }
 async function changePassword(input) {
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
@@ -809,15 +817,8 @@ router.post(
   "/forgot-password",
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    const result = await requestPasswordReset(req.body.email);
-    if (result.delivered) {
-      ok(res, { message: "If the email exists, a reset link has been sent." });
-      return;
-    }
-    ok(res, {
-      message: "Reset link generated.",
-      resetToken: result.token ?? null
-    });
+    await requestPasswordReset(req.body.email).catch(() => void 0);
+    ok(res, { message: "If an account exists for that email, you will receive a password reset link." });
   })
 );
 router.post(
@@ -932,7 +933,7 @@ async function getProfile(userId) {
   });
   return {
     ...profile,
-    bannerStyle: profile.bannerStyle ?? "gold",
+    bannerStyle: profile.bannerStyle ?? "cream",
     tier: tierResult.tier,
     badges,
     userSkills,
@@ -1048,7 +1049,7 @@ async function getUserById(id, viewerId) {
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
     avatarFrame: user.profile?.avatarFrame ?? null,
-    bannerStyle: user.profile?.bannerStyle ?? "gold",
+    bannerStyle: user.profile?.bannerStyle ?? "cream",
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
     tier: tierResult.tier,

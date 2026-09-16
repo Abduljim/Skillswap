@@ -36,42 +36,42 @@ const FRAME_SCALE: Record<string, number> = {
 };
 
 export const BANNER_STYLES = [
-  { value: 'gold',     label: 'Gold',      cls: 'card-color-gold',     dark: false, free: true },
-  { value: 'silver',   label: 'Silver',    cls: 'card-color-silver',   dark: false },
-  { value: 'mint',     label: 'Mint',      cls: 'card-color-mint',     dark: false },
-  { value: 'coral',    label: 'Coral',     cls: 'card-color-coral',    dark: false },
-  { value: 'sky',      label: 'Sky Blue',  cls: 'card-color-sky',      dark: true },
-  { value: 'ocean',    label: 'Ocean',     cls: 'card-color-ocean',    dark: true },
-  { value: 'rose',     label: 'Rose',      cls: 'card-color-rose',     dark: true },
-  { value: 'violet',   label: 'Violet',    cls: 'card-color-violet',   dark: true },
-  { value: 'indigo',   label: 'Indigo',    cls: 'card-color-indigo',   dark: true },
-  { value: 'midnight', label: 'Midnight',  cls: 'card-color-midnight', dark: true },
-  { value: 'espresso', label: 'Espresso',  cls: 'card-color-espresso', dark: true },
-  { value: 'forest',   label: 'Forest',    cls: 'card-color-forest',   dark: true },
+  { value: 'cream',   label: 'Cream',    cls: 'card-color-cream',   dark: false, free: true },
+  { value: 'purple',  label: 'Purple',   cls: 'card-color-purple',  dark: true },
+  { value: 'blue',    label: 'Blue',     cls: 'card-color-blue',    dark: true },
+  { value: 'teal',    label: 'Teal',     cls: 'card-color-teal',    dark: true },
+  { value: 'orange',  label: 'Orange',   cls: 'card-color-orange',  dark: true },
+  { value: 'pink',    label: 'Pink',     cls: 'card-color-pink',    dark: true },
+  { value: 'gold',    label: 'Gold',     cls: 'card-color-gold',    dark: true },
+  { value: 'indigo',  label: 'Indigo',   cls: 'card-color-indigo',  dark: true },
+  { value: 'green',   label: 'Green',    cls: 'card-color-green',   dark: true },
 ] as const;
 
 const BANNER_VALUE_SET = new Set(BANNER_STYLES.map((b) => b.value));
 
 const LEGACY_BANNER_MAP: Record<string, string> = {
-  cream: 'gold',
-  coral: 'coral',
-  mint: 'mint',
-  ocean: 'ocean',
-  forest: 'forest',
+  cream: 'cream',
+  gold: 'gold',
+  coral: 'orange',
+  mint: 'green',
+  ocean: 'teal',
+  forest: 'green',
   sunset: 'gold',
-  midnight: 'midnight',
-  indigo: 'indigo',
-  teal: 'ocean',
-  rust: 'coral',
-  eclipse: 'midnight',
-  petrol: 'sky',
-  burgundy: 'rose',
+  midnight: 'indigo',
+  indigo: 'purple',
+  teal: 'teal',
+  rust: 'orange',
+  eclipse: 'indigo',
+  petrol: 'blue',
+  burgundy: 'pink',
+  sky: 'blue',
+  silver: 'cream',
 };
 
 export function resolveBannerColor(v?: string | null): string {
-  if (!v) return 'gold';
+  if (!v) return 'cream';
   if (BANNER_VALUE_SET.has(v as any)) return v;
-  return LEGACY_BANNER_MAP[v] || 'gold';
+  return LEGACY_BANNER_MAP[v] || 'cream';
 }
 
 export function isDarkBanner(v?: string | null): boolean {

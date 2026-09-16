@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Register the Play Billing bridge plugin
         registerPlugin(app.skillswap.client.billing.PlayBillingBridge.class);
+        registerPlugin(KeyboardBridge.class);
         super.onCreate(savedInstanceState);
 
         // Disable pinch-zoom system-wide on the WebView so the app feels native.
@@ -24,7 +25,7 @@ public class MainActivity extends BridgeActivity {
             settings.setLoadWithOverviewMode(true);
             settings.setUseWideViewPort(true);
             // Let WebRTC audio/video play without an extra tap after a call is live.
-            webView.setMediaPlaybackRequiresUserGesture(false);
+            settings.setMediaPlaybackRequiresUserGesture(false);
         }
     }
 }

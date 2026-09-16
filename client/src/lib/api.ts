@@ -14,34 +14,40 @@ import { getToken } from './session';
 
 declare const window: any;
 
-let baseUrl = '/api';
-let resolved = false;
+let baseUrlPromise: Promise<string> | undefined;
 
-async function resolveBaseUrl(): Promise<string> {
-  if (resolved) return baseUrl;
-  resolved = true;
+async function loadBaseUrl(): Promise<string> {
+  const inline = import.meta.env.VITE_API_URL ||
+    (typeof window !== 'undefined' && window.__SKILLSWAP_API_URL__) || '';
+  if (inline) return `${inline.replace(/\/$/, '')}/api`;
 
-  const inline = (typeof window !== 'undefined' && window.__SKILLSWAP_API_URL__) || '';
-  if (inline) {
-    baseUrl = `${inline.replace(/\/$/, '')}/api`;
-    return baseUrl;
-  }
-
-  // Try runtime config file
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    const r = await fetch('/config.json', { credentials: 'omit' });
-    if (r.ok) {
-      const cfg = await r.json();
-      if (cfg && typeof cfg.apiUrl === 'string' && cfg.apiUrl.length > 0) {
-        baseUrl = `${cfg.apiUrl.replace(/\/$/, '')}/api`;
-        return baseUrl;
+    const response = await fetch('/config.json', {
+      credentials: 'omit',
+      signal: controller.signal,
+    });
+    if (response.ok) {
+      const config = await response.json();
+      if (typeof config?.apiUrl === 'string' && config.apiUrl.length > 0) {
+        return `${config.apiUrl.replace(/\/$/, '')}/api`;
       }
     }
-  } catch {
-    // ignore — fall through to /api
+    return '/api';
+  } finally {
+    clearTimeout(timer);
   }
+}
 
-  return baseUrl;
+function resolveBaseUrl(): Promise<string> {
+  if (!baseUrlPromise) {
+    baseUrlPromise = loadBaseUrl().catch((error) => {
+      baseUrlPromise = undefined;
+      throw error;
+    });
+  }
+  return baseUrlPromise;
 }
 
 export class ApiError extends Error {
@@ -57,23 +63,38 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await resolveBaseUrl();
-  const token = getToken();
-  const res = await fetch(`${base}${path}`, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
-  const data = await res.json().catch(() => ({ success: false, error: { message: 'Network error' } }));
-  if (!res.ok || !data.success) {
-    const error = data.error || { code: 'UNKNOWN', message: 'Request failed' };
-    throw new ApiError(error.code, error.message, res.status, error.details);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const base = await resolveBaseUrl();
+    const token = getToken();
+    const res = await fetch(`${base}${path}`, {
+      ...init,
+      credentials: 'include',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers || {}),
+      },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      const error = data.error || { code: 'UNKNOWN', message: 'Request failed' };
+      throw new ApiError(error.code, error.message, res.status, error.details);
+    }
+    return data.data as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      throw new ApiError('TIMEOUT', 'The request took too long. Check your connection and try again.', 0);
+    }
+    throw new ApiError('NETWORK', navigator.onLine
+      ? 'Unable to reach the server. Please try again.'
+      : 'You are offline. Check your connection and try again.', 0);
+  } finally {
+    clearTimeout(timer);
   }
-  return data.data as T;
 }
 
 export const api = {
@@ -84,6 +105,3 @@ export const api = {
     request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
-
-// Eagerly kick off resolution so first user action is faster
-resolveBaseUrl();

@@ -8,6 +8,7 @@ import { FrameAvatar, EmptyState, Skeleton } from '../components/ui';
 import { ArrowLeft, Send, Calendar, CheckCircle2, Star, Phone, Video, Smile } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
+import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import { useCall, CallOverlay } from '../components/CallOverlay';
 import type { Exchange, Message, Session } from '../types';
 
@@ -301,9 +302,14 @@ function ChatTab({
   user: any;
   socket?: Socket | null;
 }) {
+  const qc = useQueryClient();
   const { data: messages = [], refetch } = useQuery({
     queryKey: ['messages', exchangeId],
-    queryFn: () => api.get<Message[]>(`/exchanges/${exchangeId}/messages`),
+    queryFn: async () => {
+      const messages = await api.get<Message[]>(`/exchanges/${exchangeId}/messages`);
+      void qc.invalidateQueries({ queryKey: ['conversations'] });
+      return messages;
+    },
   });
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
@@ -338,6 +344,7 @@ function ChatTab({
     try {
       await api.post(`/exchanges/${exchangeId}/messages`, { body, type });
       setText('');
+      void qc.invalidateQueries({ queryKey: ['conversations'] });
       refetch();
     } catch (e) {
       if (e instanceof ApiError) console.error(e.message);
@@ -401,12 +408,11 @@ function ChatTab({
               const input = textInputRef.current;
               if (!input) return;
               input.focus({ preventScroll: true });
-              input.scrollIntoView({ block: 'nearest' });
-              // Nudge the WebView so the soft keyboard mounts after focus.
-              window.setTimeout(() => input.focus({ preventScroll: true }), 60);
+              void showAndroidKeyboard().catch(() => {});
             }}
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
-            title="Emoji"
+            aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
+            title="Open keyboard; use your system keyboard's emoji key for emoji"
           >
             <Smile className="w-5 h-5" />
           </button>

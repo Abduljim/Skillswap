@@ -124,15 +124,12 @@ export async function getMe(userId: string) {
   };
 }
 
-export async function requestPasswordReset(email: string): Promise<{ delivered: boolean; token?: string }> {
+export async function requestPasswordReset(email: string): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
     select: { id: true, email: true },
   });
-  if (!user) {
-    // Don't reveal whether the email exists
-    return { delivered: false };
-  }
+  if (!user) return;
   const raw = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(raw).digest('hex');
   await prisma.passwordResetToken.create({
@@ -147,16 +144,7 @@ export async function requestPasswordReset(email: string): Promise<{ delivered: 
     ? `${env.RESET_URL.replace(/\/$/, '')}?token=${raw}`
     : `${env.CLIENT_URL.replace(/\/$/, '')}/reset-password?token=${raw}`;
 
-  const result = await sendPasswordResetEmail(user.email, resetUrl);
-  if (result.delivered) {
-    console.log(`[PASSWORD-RESET] email sent to ${user.email}`);
-    return { delivered: true };
-  }
-
-  // No SMTP configured — expose the token to the API caller so the flow still
-  // completes while the app is in dev. Token is single-use and expires in 1h.
-  console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
-  return { delivered: false, token: raw };
+  await sendPasswordResetEmail(user.email, resetUrl).catch(() => undefined);
 }
 
 export async function changePassword(input: {

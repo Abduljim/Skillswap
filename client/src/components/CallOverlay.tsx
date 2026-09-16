@@ -47,6 +47,7 @@ export function useCall(
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const candidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const videoEnabledRef = useRef(false);
   const micMutedRef = useRef(false);
   const rawRef = useRef(state);
@@ -63,19 +64,27 @@ export function useCall(
 
   const handleSignal = useCallback(async (pc: RTCPeerConnection, sig: RTCSignal) => {
     try {
-      if (sig.type === 'offer') {
-        await pc.setRemoteDescription({ type: 'offer', sdp: sig.sdp });
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socketRef.current?.emit('webrtc:signal', {
-          exchangeId,
-          to: peerIdRef.current,
-          signal: { type: 'answer', sdp: pc.localDescription?.sdp },
-        });
-      } else if (sig.type === 'answer') {
-        await pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
+      if (sig.type === 'offer' || sig.type === 'answer') {
+        await pc.setRemoteDescription({ type: sig.type, sdp: sig.sdp });
+        for (const c of candidateQueueRef.current) {
+          await pc.addIceCandidate(c).catch(() => {});
+        }
+        candidateQueueRef.current = [];
+        if (sig.type === 'offer') {
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socketRef.current?.emit('webrtc:signal', {
+            exchangeId,
+            to: peerIdRef.current,
+            signal: { type: 'answer', sdp: pc.localDescription?.sdp },
+          });
+        }
       } else if (sig.type === 'candidate') {
-        await pc.addIceCandidate(sig.candidate);
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(sig.candidate);
+        } else {
+          candidateQueueRef.current.push(sig.candidate!);
+        }
       }
     } catch (e) {
       console.error('[CALL] signal error', e);
@@ -191,10 +200,20 @@ export function useCall(
   const startPeer = useCallback(async (isCallee: boolean) => {
     const sock = socketRef.current;
     if (!sock) return;
-    // Create the peer connection FIRST so incoming signals are never dropped
-    // while we wait for camera/mic permission.
+    let pc: RTCPeerConnection;
     try {
-      const pc = new RTCPeerConnection(RTC_CONFIG);
+      let stream = streamRef.current;
+      if (!stream) {
+        stream = await navigator.mediaDevices
+          .getUserMedia({ audio: true, video: videoEnabledRef.current })
+          .catch(() => null);
+      }
+      if (!stream) {
+        throw new Error('No media available');
+      }
+      streamRef.current = stream;
+
+      pc = new RTCPeerConnection(RTC_CONFIG);
       pcRef.current = pc;
 
       pc.onicecandidate = (ev) => {
@@ -218,22 +237,14 @@ export function useCall(
         }
       };
 
-      // Process any signals that arrived before this connection existed.
+      // Add local media BEFORE handling any offer so the answer carries the
+      // correct (enabled) media sections.
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      attachLocal(stream);
+
       const queued = pendingSignalsRef.current;
       pendingSignalsRef.current = [];
       for (const sig of queued) await handleSignal(pc, sig);
-
-      let stream = streamRef.current;
-      if (!stream) {
-        stream = await navigator.mediaDevices
-          .getUserMedia({ audio: true, video: videoEnabledRef.current })
-          .catch(() => null);
-        if (stream) streamRef.current = stream;
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-        attachLocal(stream);
-      }
 
       if (isCallee) {
         const offer = await pc.createOffer();
@@ -251,7 +262,6 @@ export function useCall(
         status: 'error',
         error: 'Could not access the camera or microphone. Allow access in your browser and try again.',
       });
-      throw e;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exchangeId, handleSignal]);
@@ -269,6 +279,7 @@ export function useCall(
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    candidateQueueRef.current = [];
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     videoEnabledRef.current = false;
@@ -306,6 +317,8 @@ export function useCall(
       await acquireLocalStream(videoEnabledRef.current);
     } catch (e) {
       console.error('[CALL] media denied', e);
+      // Tell the caller so their ringing screen clears.
+      sock.emit('call:reject', { exchangeId });
       update({
         status: 'error',
         error: 'Microphone or camera access was denied. Allow access in your device settings, then try again.',
