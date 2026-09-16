@@ -7,6 +7,37 @@ import { prisma } from '../lib/prisma';
 
 let io: IOServer | null = null;
 
+interface ActiveCall {
+  callerId: string;
+  calleeId: string;
+  type: 'VOICE' | 'VIDEO';
+  startedAt: Date;
+}
+
+const activeCalls = new Map<string, ActiveCall>();
+
+async function persistCallLog(exchangeId: string, endedByUserId: string, outcome: 'COMPLETED' | 'DECLINED') {
+  const active = activeCalls.get(exchangeId);
+  if (!active) return;
+  activeCalls.delete(exchangeId);
+  try {
+    await prisma.callLog.create({
+      data: {
+        exchangeId,
+        callerId: active.callerId,
+        calleeId: active.calleeId,
+        type: active.type,
+        outcome,
+        startedAt: active.startedAt,
+        endedAt: new Date(),
+      },
+    });
+  } catch (e) {
+    // Call logging must never break signaling; schema sync happens via `prisma db push`.
+    console.error('[call-log] failed to persist', e);
+  }
+}
+
 export function initSocket(httpServer: HTTPServer) {
   io = new IOServer(httpServer, {
     cors: {
@@ -112,6 +143,12 @@ export function initSocket(httpServer: HTTPServer) {
           return socket.emit('error', { message: 'Cannot place call' });
         }
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+        activeCalls.set(data.exchangeId, {
+          callerId: userId,
+          calleeId: targetUserId,
+          type: data.video ? 'VIDEO' : 'VOICE',
+          startedAt: new Date(),
+        });
         const caller = await prisma.user.findUnique({
           where: { id: userId },
           select: {
@@ -141,18 +178,20 @@ export function initSocket(httpServer: HTTPServer) {
       });
     });
 
-    socket.on('call:reject', (data: { exchangeId: string }) => {
+    socket.on('call:reject', async (data: { exchangeId: string }) => {
       socket.to(`exchange:${data.exchangeId}`).emit('call:rejected', {
         exchangeId: data.exchangeId,
         rejectorId: userId,
       });
+      await persistCallLog(data.exchangeId, userId, 'DECLINED');
     });
 
-    socket.on('call:hangup', (data: { exchangeId: string }) => {
+    socket.on('call:hangup', async (data: { exchangeId: string }) => {
       socket.to(`exchange:${data.exchangeId}`).emit('call:ended', {
         exchangeId: data.exchangeId,
         endedBy: userId,
       });
+      await persistCallLog(data.exchangeId, userId, 'COMPLETED');
     });
 
     socket.on('webrtc:signal', (data: { exchangeId: string; to: string; signal: any }) => {

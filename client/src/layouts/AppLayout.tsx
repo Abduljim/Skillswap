@@ -4,6 +4,7 @@ import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { ensureMediaPermissions } from '../lib/media-permissions';
 import type { Conversation } from '../types';
 import clsx from 'clsx';
 
@@ -21,6 +22,11 @@ export default function AppLayout() {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
     };
+  }, []);
+
+  // One-time permission prompt for camera + mic so calls work for everyone.
+  useEffect(() => {
+    void ensureMediaPermissions();
   }, []);
 
   const { data: notifData } = useQuery({

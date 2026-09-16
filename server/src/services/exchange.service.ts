@@ -11,6 +11,37 @@ async function assertParticipant(userId: string, exchangeId: string) {
   return exchange;
 }
 
+export async function listCallLogs(userId: string, exchangeId: string) {
+  await assertParticipant(userId, exchangeId);
+  const logs = await prisma.callLog.findMany({
+    where: { exchangeId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      exchange: {
+        select: {
+          userA: { select: { id: true, displayName: true } },
+          userB: { select: { id: true, displayName: true } },
+        },
+      },
+    },
+  });
+  return logs.map((l) => ({
+    id: l.id,
+    exchangeId: l.exchangeId,
+    callerId: l.callerId,
+    calleeId: l.calleeId,
+    callerName:
+      l.exchange.userA.id === l.callerId ? l.exchange.userA.displayName : l.exchange.userB.displayName,
+    calleeName:
+      l.exchange.userA.id === l.calleeId ? l.exchange.userA.displayName : l.exchange.userB.displayName,
+    type: l.type,
+    outcome: l.outcome,
+    startedAt: l.startedAt,
+    endedAt: l.endedAt,
+    createdAt: l.createdAt,
+  }));
+}
+
 export async function listUserExchanges(userId: string) {
   const exchanges = await prisma.exchange.findMany({
     where: {

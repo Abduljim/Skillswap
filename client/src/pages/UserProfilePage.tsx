@@ -1,13 +1,15 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { EmptyState, Skeleton, FrameAvatar, resolveBannerColor, isDarkBanner } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
 import { BadgesRow, ProBadge } from '../components/Badges';
 import { BadgesLegend } from '../components/BadgesLegend';
+import { useTheme } from '../contexts/ThemeContext';
 import { ArrowLeft, Star, Medal } from 'lucide-react';
 
 export default function UserProfilePage() {
   const { id } = useParams<{ id: string }>();
+  const { activeTheme } = useTheme();
   const { data: user, isLoading } = useQuery({
     queryKey: ['user', id],
     queryFn: () => api.get<any>(`/users/${id}`),
@@ -38,7 +40,7 @@ export default function UserProfilePage() {
       </Link>
 
       <div className="card overflow-hidden">
-        <div className={`p-6 md:p-8 card-color-${resolveBannerColor(user.bannerStyle)} ${isDarkBanner(user.bannerStyle) ? 'card-dark' : ''}`}>
+        <div className={`p-6 md:p-8 ${activeTheme.cardCls} ${activeTheme.cardDark ? 'card-dark' : ''}`}>
         <div className="flex flex-col md:flex-row items-start gap-5">
           <FrameAvatar frame={user.avatarFrame} src={user.avatarUrl} alt={user.displayName} size={96} />
           <div className="flex-1">

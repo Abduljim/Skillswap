@@ -64,6 +64,8 @@ var init_env = __esm({
       SMTP_USER: process.env.SMTP_USER || "",
       SMTP_PASS: process.env.SMTP_PASS || "",
       SMTP_FROM: process.env.SMTP_FROM || "",
+      RESEND_API_KEY: process.env.RESEND_API_KEY || "",
+      EMAIL_FROM: process.env.EMAIL_FROM || "",
       RESET_URL: process.env.RESET_URL || ""
     };
     if (env.NODE_ENV === "production" && env.JWT_SECRET === "dev-secret-change-me") {
@@ -436,11 +438,51 @@ init_env();
 // src/services/email.service.ts
 var import_nodemailer = __toESM(require("nodemailer"));
 init_env();
-function isConfigured() {
+var RESEND_ENDPOINT = "https://api.resend.com/emails";
+async function sendViaResend(opts) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15e3);
+  try {
+    const res = await fetch(RESEND_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM || "SkillSwap <onboarding@resend.dev>",
+        to: [opts.to],
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html
+      }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[email] Resend rejected", res.status, body);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[email] Resend delivery failed", e);
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function isSmtpConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
 }
 async function sendEmail(opts) {
-  if (!isConfigured()) {
+  if (env.RESEND_API_KEY) {
+    const ok2 = await sendViaResend(opts);
+    if (ok2) return { delivered: true };
+  }
+  if (!isSmtpConfigured()) {
+    console.error(
+      "[email] no delivery provider configured. Set RESEND_API_KEY (recommended) or SMTP_HOST/SMTP_FROM."
+    );
     return { delivered: false };
   }
   let transporter;
@@ -469,7 +511,10 @@ async function sendEmail(opts) {
       timeout
     ]);
     return { delivered: true };
-  } catch {
+  } catch (e) {
+    const err = e;
+    const message = String(err?.message ?? e).replace(/https?:\/\/\S+/gi, "[url]").slice(0, 160);
+    console.error("[email] SMTP delivery failed", err?.name || "Error", message);
     return { delivered: false };
   } finally {
     clearTimeout(timer);
@@ -1939,6 +1984,34 @@ async function assertParticipant(userId, exchangeId) {
   }
   return exchange;
 }
+async function listCallLogs(userId, exchangeId) {
+  await assertParticipant(userId, exchangeId);
+  const logs = await prisma.callLog.findMany({
+    where: { exchangeId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      exchange: {
+        select: {
+          userA: { select: { id: true, displayName: true } },
+          userB: { select: { id: true, displayName: true } }
+        }
+      }
+    }
+  });
+  return logs.map((l) => ({
+    id: l.id,
+    exchangeId: l.exchangeId,
+    callerId: l.callerId,
+    calleeId: l.calleeId,
+    callerName: l.exchange.userA.id === l.callerId ? l.exchange.userA.displayName : l.exchange.userB.displayName,
+    calleeName: l.exchange.userA.id === l.calleeId ? l.exchange.userA.displayName : l.exchange.userB.displayName,
+    type: l.type,
+    outcome: l.outcome,
+    startedAt: l.startedAt,
+    endedAt: l.endedAt,
+    createdAt: l.createdAt
+  }));
+}
 async function listUserExchanges(userId) {
   const exchanges = await prisma.exchange.findMany({
     where: {
@@ -2174,6 +2247,27 @@ var import_socket = require("socket.io");
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
 init_env();
 var io = null;
+var activeCalls = /* @__PURE__ */ new Map();
+async function persistCallLog(exchangeId, endedByUserId, outcome) {
+  const active = activeCalls.get(exchangeId);
+  if (!active) return;
+  activeCalls.delete(exchangeId);
+  try {
+    await prisma.callLog.create({
+      data: {
+        exchangeId,
+        callerId: active.callerId,
+        calleeId: active.calleeId,
+        type: active.type,
+        outcome,
+        startedAt: active.startedAt,
+        endedAt: /* @__PURE__ */ new Date()
+      }
+    });
+  } catch (e) {
+    console.error("[call-log] failed to persist", e);
+  }
+}
 function initSocket(httpServer2) {
   io = new import_socket.Server(httpServer2, {
     cors: {
@@ -2259,6 +2353,12 @@ function initSocket(httpServer2) {
           return socket.emit("error", { message: "Cannot place call" });
         }
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+        activeCalls.set(data.exchangeId, {
+          callerId: userId,
+          calleeId: targetUserId,
+          type: data.video ? "VIDEO" : "VOICE",
+          startedAt: /* @__PURE__ */ new Date()
+        });
         const caller = await prisma.user.findUnique({
           where: { id: userId },
           select: {
@@ -2286,17 +2386,19 @@ function initSocket(httpServer2) {
         acceptorId: userId
       });
     });
-    socket.on("call:reject", (data) => {
+    socket.on("call:reject", async (data) => {
       socket.to(`exchange:${data.exchangeId}`).emit("call:rejected", {
         exchangeId: data.exchangeId,
         rejectorId: userId
       });
+      await persistCallLog(data.exchangeId, userId, "DECLINED");
     });
-    socket.on("call:hangup", (data) => {
+    socket.on("call:hangup", async (data) => {
       socket.to(`exchange:${data.exchangeId}`).emit("call:ended", {
         exchangeId: data.exchangeId,
         endedBy: userId
       });
+      await persistCallLog(data.exchangeId, userId, "COMPLETED");
     });
     socket.on("webrtc:signal", (data) => {
       io.to(`user:${data.to}`).emit("webrtc:signal", {
@@ -2476,6 +2578,14 @@ router7.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const list = await listSessions(req.user.userId, req.params.id);
+    ok(res, list);
+  })
+);
+router7.get(
+  "/:id/calls",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await listCallLogs(req.user.userId, req.params.id);
     ok(res, list);
   })
 );

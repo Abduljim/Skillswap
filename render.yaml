@@ -62,3 +62,7 @@ services:
         value: ''
       - key: SMTP_FROM
         value: ''
+      - key: RESEND_API_KEY
+        value: ''
+      - key: EMAIL_FROM
+        value: 'SkillSwap <onboarding@resend.dev>'

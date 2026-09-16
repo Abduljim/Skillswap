@@ -64,6 +64,17 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallOutcome {
+  COMPLETED
+  DECLINED
+  MISSED
+}
+
 enum SessionFormat {
   ONLINE
   IN_PERSON
@@ -219,6 +230,7 @@ model Exchange {
   messages     Message[]
   reviews      Review[]
   completions  ExchangeCompletionConfirmation[]
+  callLogs     CallLog[]
 
   @@unique([userAId, userBId, skillAId, skillBId, status], name: "unique_active_exchange")
   @@index([userAId])
@@ -255,6 +267,22 @@ model Session {
   @@index([exchangeId])
   @@index([status])
   @@index([scheduledAt])
+}
+
+model CallLog {
+  id         String     @id @default(uuid()) @db.Uuid
+  exchangeId String     @db.Uuid
+  exchange   Exchange   @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+  callerId   String     @db.Uuid
+  calleeId   String     @db.Uuid
+  type       CallType
+  outcome    CallOutcome @default(COMPLETED)
+  startedAt  DateTime   @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([exchangeId])
+  @@index([callerId])
 }
 
 enum MessageType {

@@ -35,49 +35,6 @@ const FRAME_SCALE: Record<string, number> = {
   frame_11: 512 / 318,
 };
 
-export const BANNER_STYLES = [
-  { value: 'cream',   label: 'Cream',    cls: 'card-color-cream',   dark: false, free: true },
-  { value: 'purple',  label: 'Purple',   cls: 'card-color-purple',  dark: true },
-  { value: 'blue',    label: 'Blue',     cls: 'card-color-blue',    dark: true },
-  { value: 'teal',    label: 'Teal',     cls: 'card-color-teal',    dark: true },
-  { value: 'orange',  label: 'Orange',   cls: 'card-color-orange',  dark: true },
-  { value: 'pink',    label: 'Pink',     cls: 'card-color-pink',    dark: true },
-  { value: 'gold',    label: 'Gold',     cls: 'card-color-gold',    dark: true },
-  { value: 'indigo',  label: 'Indigo',   cls: 'card-color-indigo',  dark: true },
-  { value: 'green',   label: 'Green',    cls: 'card-color-green',   dark: true },
-] as const;
-
-const BANNER_VALUE_SET = new Set(BANNER_STYLES.map((b) => b.value));
-
-const LEGACY_BANNER_MAP: Record<string, string> = {
-  cream: 'cream',
-  gold: 'gold',
-  coral: 'orange',
-  mint: 'green',
-  ocean: 'teal',
-  forest: 'green',
-  sunset: 'gold',
-  midnight: 'indigo',
-  indigo: 'purple',
-  teal: 'teal',
-  rust: 'orange',
-  eclipse: 'indigo',
-  petrol: 'blue',
-  burgundy: 'pink',
-  sky: 'blue',
-  silver: 'cream',
-};
-
-export function resolveBannerColor(v?: string | null): string {
-  if (!v) return 'cream';
-  if (BANNER_VALUE_SET.has(v as any)) return v;
-  return LEGACY_BANNER_MAP[v] || 'cream';
-}
-
-export function isDarkBanner(v?: string | null): boolean {
-  return BANNER_STYLES.find((b) => b.value === resolveBannerColor(v))?.dark ?? false;
-}
-
 export function Avatar({
   src,
   alt,

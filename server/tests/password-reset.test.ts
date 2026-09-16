@@ -16,6 +16,8 @@ jest.mock('../src/config/env', () => ({
     SMTP_USER: 'test-user',
     SMTP_PASS: 'test-password',
     SMTP_FROM: 'support@example.test',
+    RESEND_API_KEY: '',
+    EMAIL_FROM: '',
     CLIENT_URL: 'https://example.test',
     RESET_URL: '',
   },
@@ -46,13 +48,39 @@ const acknowledgment = {
 const app = express();
 app.use(express.json());
 app.use('/auth', authRouter);
+
+const fetchMock = jest.fn();
+function resendOk() {
+  fetchMock.mockResolvedValue({ ok: true, status: 202, text: async () => '{"id":"test-msg-id"}' });
+}
+function resendReject() {
+  fetchMock.mockResolvedValue({
+    ok: false,
+    status: 422,
+    text: async () => '{"statusCode":422,"message":"recipient rejected"}',
+  });
+}
+function resendPending() {
+  fetchMock.mockImplementation(
+    (_url: string, init: any) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal.reason ?? new Error('aborted'))
+        );
+      })
+  );
+}
+
 let logs: jest.SpyInstance[];
 
 beforeEach(() => {
   jest.resetAllMocks();
+  global.fetch = fetchMock;
   env.NODE_ENV = 'development';
   env.SMTP_HOST = 'smtp.example.test';
   env.SMTP_FROM = 'support@example.test';
+  env.RESEND_API_KEY = '';
+  env.EMAIL_FROM = '';
   findUser.mockResolvedValue({ id: 'user-id', email });
   createToken.mockResolvedValue({ id: 'reset-id' });
   createTransport.mockReturnValue({ sendMail, close });
@@ -64,7 +92,13 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    for (const log of logs) expect(log).not.toHaveBeenCalled();
+    // Ops logs may appear on delivery failures, but never before delivery,
+    // never on info/debug channels, and never containing a reset token.
+    for (const spy of [logs[0], logs[2], logs[3], logs[4]]) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+    const errText = logs[1].mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(errText).not.toMatch(/token=[a-f0-9]{64}/);
   } finally {
     jest.restoreAllMocks();
     jest.useRealTimers();
@@ -73,127 +107,180 @@ afterEach(() => {
 
 function deliveryScenario(scenario: string) {
   if (scenario === 'missing account') findUser.mockResolvedValue(null);
-  if (scenario === 'no SMTP') env.SMTP_HOST = '';
+  if (scenario === 'no provider') {
+    env.RESEND_API_KEY = '';
+    env.SMTP_HOST = '';
+  }
+  if (scenario === 'delivery success') {
+    env.RESEND_API_KEY = 're_test_x';
+    resendOk();
+  }
   if (scenario === 'delivery failure') {
-    sendMail.mockImplementation(async (message) => {
-      throw new Error(`${message.to}: ${message.text} ${message.html}`);
-    });
+    env.RESEND_API_KEY = 're_test_x';
+    resendReject();
   }
 }
 
 describe.each(['development', 'production'])('Password reset privacy in %s', (mode) => {
-  describe.each(['delivery success', 'delivery failure', 'no SMTP', 'missing account'])('%s', (scenario) => {
-    beforeEach(() => {
-      env.NODE_ENV = mode;
-      deliveryScenario(scenario);
-    });
-
-    it('never returns account details, delivery status, or a raw token', async () => {
-      const result = await requestPasswordReset(email.toUpperCase());
-
-      expect(result).toBeUndefined();
-      expect(findUser).toHaveBeenCalledWith({
-        where: { email },
-        select: { id: true, email: true },
+  describe.each(['delivery success', 'delivery failure', 'no provider', 'missing account'])(
+    '%s',
+    (scenario) => {
+      beforeEach(() => {
+        env.NODE_ENV = mode;
+        deliveryScenario(scenario);
       });
-      if (scenario === 'missing account') {
-        expect(createToken).not.toHaveBeenCalled();
-      } else {
-        expect(createToken).toHaveBeenCalledTimes(1);
-      }
-      if (scenario === 'no SMTP' || scenario === 'missing account') {
-        expect(createTransport).not.toHaveBeenCalled();
-        expect(sendMail).not.toHaveBeenCalled();
-      } else {
-        const message = sendMail.mock.calls[0][0];
-        const raw = message.text.match(/token=([a-f0-9]{64})/)[1];
-        expect(message.to).toBe(email);
-        expect(createToken).toHaveBeenCalledWith({
-          data: {
-            userId: 'user-id',
-            tokenHash: createHash('sha256').update(raw).digest('hex'),
-            expiresAt: expect.any(Date),
-          },
+
+      it('never returns account details, delivery status, or a raw token', async () => {
+        const result = await requestPasswordReset(email.toUpperCase());
+
+        expect(result).toBeUndefined();
+        expect(findUser).toHaveBeenCalledWith({
+          where: { email },
+          select: { id: true, email: true },
         });
-        expect(JSON.stringify(createToken.mock.calls)).not.toContain(raw);
-        expect(close).toHaveBeenCalledTimes(1);
-      }
-    });
+        if (scenario === 'missing account') {
+          expect(createToken).not.toHaveBeenCalled();
+        } else {
+          expect(createToken).toHaveBeenCalledTimes(1);
+          const raw =
+            scenario === 'no provider'
+              ? null
+              : (JSON.stringify(fetchMock.mock.calls[0][1].body).match(/token=([a-f0-9]{64})/) ||
+                  [])[1];
+          if (raw) {
+            expect(createToken).toHaveBeenCalledWith({
+              data: {
+                userId: 'user-id',
+                tokenHash: createHash('sha256').update(raw).digest('hex'),
+                expiresAt: expect.any(Date),
+              },
+            });
+            expect(JSON.stringify(createToken.mock.calls)).not.toContain(raw);
+          }
+        }
+        if (scenario === 'no provider' || scenario === 'missing account') {
+          expect(fetchMock).not.toHaveBeenCalled();
+          expect(createTransport).not.toHaveBeenCalled();
+          expect(sendMail).not.toHaveBeenCalled();
+        } else {
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+          const [url, init] = fetchMock.mock.calls[0];
+          expect(url).toBe('https://api.resend.com/emails');
+          expect(init.method).toBe('POST');
+          expect(init.headers.Authorization).toBe('Bearer re_test_x');
+          const body = JSON.parse(init.body);
+          expect(body.to).toEqual([email]);
+          expect(body.html).toMatch(/Reset password/);
+        }
+        if (scenario === 'delivery failure') {
+          // Resend rejection falls back to SMTP (mock succeeds) and closes the transporter.
+          expect(sendMail).toHaveBeenCalledTimes(1);
+          expect(close).toHaveBeenCalledTimes(1);
+        } else {
+          expect(close).not.toHaveBeenCalled();
+        }
+      });
 
-    it('returns only the identical generic route acknowledgment', async () => {
-      const response = await request(app).post('/auth/forgot-password').send({ email });
+      it('returns only the identical generic route acknowledgment', async () => {
+        const response = await request(app).post('/auth/forgot-password').send({ email });
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual(acknowledgment);
-      expect(response.headers['set-cookie']).toBeUndefined();
-      expect(response.text).not.toContain(email);
-      expect(response.text).not.toMatch(/token|delivered|user-id/i);
-    });
-  });
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(acknowledgment);
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.text).not.toContain(email);
+        expect(response.text).not.toMatch(/token|delivered|user-id/i);
+      });
+    }
+  );
 });
 
-it.each(['lookup', 'token persistence'])('acknowledges %s failures without returning or logging internal errors', async (stage) => {
-  const error = new Error(`Internal error for ${email}, token=private-reset-token`);
-  if (stage === 'lookup') findUser.mockRejectedValue(error);
-  else createToken.mockRejectedValue(error);
+it.each(['lookup', 'token persistence'])(
+  'acknowledges %s failures without returning or logging internal errors',
+  async (stage) => {
+    const error = new Error(`Internal error for ${email}, token=private-reset-token`);
+    if (stage === 'lookup') findUser.mockRejectedValue(error);
+    else createToken.mockRejectedValue(error);
 
-  const response = await request(app).post('/auth/forgot-password').send({ email });
+    const response = await request(app).post('/auth/forgot-password').send({ email });
 
-  expect(response.status).toBe(200);
-  expect(response.body).toEqual(acknowledgment);
-  expect(sendMail).not.toHaveBeenCalled();
-});
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(acknowledgment);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(logs[1]).not.toHaveBeenCalled();
+  }
+);
 
-it('bounds the entire reset email delivery and closes a stalled transporter', async () => {
+it('bounds a stalled Resend delivery at 15s and clears timers', async () => {
   jest.useFakeTimers();
-  let rejectDelivery!: (error: Error) => void;
-  sendMail.mockImplementation(() => new Promise((_resolve, reject) => {
-    rejectDelivery = reject;
-  }));
+  env.RESEND_API_KEY = 're_test_x';
+  resendPending();
   const result = requestPasswordReset(email);
   const settled = jest.fn();
   void result.then(settled);
 
   await jest.advanceTimersByTimeAsync(14_999);
   expect(settled).not.toHaveBeenCalled();
-  expect(close).not.toHaveBeenCalled();
-  expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,
-  }));
+  const signal = fetchMock.mock.calls[0][1].signal;
+  expect(signal.aborted).toBe(false);
   await jest.advanceTimersByTimeAsync(1);
   await expect(result).resolves.toBeUndefined();
-  expect(close).toHaveBeenCalledTimes(1);
+  expect(signal.aborted).toBe(true);
   expect(jest.getTimerCount()).toBe(0);
-
-  rejectDelivery(new Error(sendMail.mock.calls[0][0].text));
-  await jest.advanceTimersByTimeAsync(1);
-  expect(close).toHaveBeenCalledTimes(1);
 });
 
-it.each(['success', 'failure', 'timeout', 'transport setup failure', 'no sender'])('returns only delivery status and clears timers after %s', async (scenario) => {
+it.each([
+  ['resend success', ['resend success']],
+  ['resend failure + smtp fallback', ['resend failure', 'smtp fallback success']],
+  ['resend failure only', ['resend failure']],
+  ['resend timeout only', ['resend timeout']],
+  ['smtp fallback success', ['smtp fallback success']],
+  ['smtp fallback failure', ['smtp fallback failure']],
+  ['no provider', ['no provider']],
+])('returns only delivery status and clears timers after %s', async (scenario) => {
   jest.useFakeTimers();
   const resetUrl = 'https://example.test/reset-password?token=private-reset-token';
-  if (scenario === 'failure') sendMail.mockRejectedValue(new Error(resetUrl));
-  if (scenario === 'timeout') sendMail.mockReturnValue(new Promise(() => {}));
-  if (scenario === 'transport setup failure') {
-    createTransport.mockImplementation(() => { throw new Error(resetUrl); });
+  if (scenario === 'resend success') {
+    env.RESEND_API_KEY = 're_test_x';
+    resendOk();
   }
-  if (scenario === 'no sender') env.SMTP_FROM = '';
+  if (scenario === 'resend failure + smtp fallback') {
+    env.RESEND_API_KEY = 're_test_x';
+    resendReject();
+  }
+  if (scenario === 'resend failure only' || scenario === 'resend timeout only') {
+    env.RESEND_API_KEY = 're_test_x';
+    env.SMTP_HOST = '';
+    if (scenario === 'resend failure only') resendReject();
+    else resendPending();
+  }
+  if (scenario === 'smtp fallback failure') {
+    sendMail.mockRejectedValue(new Error(resetUrl));
+  }
+  if (scenario === 'no provider') {
+    env.SMTP_HOST = '';
+  }
 
+  const expectsSuccess = [
+    'resend success',
+    'resend failure + smtp fallback',
+    'smtp fallback success',
+  ].includes(scenario);
   const result = sendPasswordResetEmail(email, resetUrl);
-  await jest.advanceTimersByTimeAsync(scenario === 'timeout' ? 15_000 : 0);
+  await jest.advanceTimersByTimeAsync(scenario.includes('timeout') ? 15_000 : 0);
 
-  await expect(result).resolves.toEqual({ delivered: scenario === 'success' });
+  await expect(result).resolves.toEqual({ delivered: expectsSuccess });
   expect(jest.getTimerCount()).toBe(0);
-  expect(close).toHaveBeenCalledTimes(['transport setup failure', 'no sender'].includes(scenario) ? 0 : 1);
+  const usesSmtp = ['resend failure + smtp fallback', 'smtp fallback success', 'smtp fallback failure'];
+  expect(close).toHaveBeenCalledTimes(usesSmtp.includes(scenario) ? 1 : 0);
 });
 
-it('contains transporter cleanup errors even on timeout', async () => {
+it('keeps SMTP cleanup errors out of responses and the public log', async () => {
   jest.useFakeTimers();
   sendMail.mockReturnValue(new Promise(() => {}));
-  close.mockImplementation(() => { throw new Error(`Private reset details for ${email}`); });
+  close.mockImplementation(() => {
+    throw new Error(`Private reset details for ${email}`);
+  });
   const result = requestPasswordReset(email);
 
   await jest.advanceTimersByTimeAsync(15_000);

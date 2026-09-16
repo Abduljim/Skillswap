@@ -10,9 +10,20 @@
     text-size-adjust: 100%;
     touch-action: manipulation;
     overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     @apply bg-cream-50 text-ink-900 font-sans;
+    overscroll-behavior-y: none;
+    /* Keep the layout still when the mobile keyboard opens / the URL bar moves */
+    overflow-anchor: none;
+  }
+  /* 16px prevents iOS/Android auto-zoom when focusing inputs inside the WebView */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
   }
   *:focus-visible {
     @apply outline-none ring-2 ring-coral-400 ring-offset-2 ring-offset-cream-50 rounded;
@@ -192,16 +203,81 @@ html[data-theme='midnight'] {
   --c-input-bg: #121c2e; --c-input-border: #345078; --c-input-text: #e6f0ff; --c-input-placeholder: #6482a0; --c-input-focus: #e6f0ff;
 }
 
-/* ── Profile card colors (Pro gradients + free Cream) ──────── */
-.card-color-cream   { background: linear-gradient(135deg, #fbf4e3, #f3ead4); }
-.card-color-purple  { background: linear-gradient(135deg, #7b2cff, #2c0b4e); }
-.card-color-blue    { background: linear-gradient(135deg, #19b6ff, #0a1b4d); }
-.card-color-teal    { background: linear-gradient(135deg, #0ed0bc, #06302b); }
-.card-color-orange  { background: linear-gradient(135deg, #ff8a2b, #5a2a17); }
-.card-color-pink    { background: linear-gradient(135deg, #ff2d7e, #3c0a28); }
-.card-color-gold    { background: linear-gradient(135deg, #f6b733, #7a4e10); }
-.card-color-indigo  { background: linear-gradient(135deg, #3942c0, #1a0b3f); }
-.card-color-green   { background: linear-gradient(135deg, #10b56c, #062a1c); }
+html[data-theme='gold'] {
+  --c-bg: #fdf4dc; --c-text: #4a3206; --c-text-1: #6b4a12; --c-text-2: #8f6828; --c-text-3: #b08a45;
+  --c-surf: #ffffff; --c-surf-1: #f8e9c4; --c-surf-2: #f3dda3; --c-surf-3: #eacf85;
+  --c-border: #eacf85; --c-border-2: #e0c270;
+  --c-primary: #4a3206; --c-primary-text: #ffffff; --c-hover: #553a0c;
+  --c-accent: #d97706; --c-accent-hover: #b45309; --c-accent-soft: rgba(217, 119, 6, 0.12); --c-accent-soft-text: #92400e;
+  --c-chip-ink-bg: #4a3206; --c-chip-ink-text: #ffffff;
+  --c-chip-cream-bg: #f8e9c4; --c-chip-cream-text: #6b4a12;
+  --c-chip-mint-bg: rgba(34, 197, 94, 0.1); --c-chip-mint-text: #166534;
+  --c-chip-coral-bg: rgba(217, 119, 6, 0.12); --c-chip-coral-text: #92400e;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
+  --c-skeleton: #f3dda3; --c-shadow: 0 2px 6px rgba(74, 50, 6, 0.08);
+  --c-nav: rgba(253, 244, 220, 0.85);
+  --c-input-bg: #ffffff; --c-input-border: #f3dda3; --c-input-text: #4a3206; --c-input-placeholder: #b08a45; --c-input-focus: #4a3206;
+}
+
+html[data-theme='purple'] {
+  --c-bg: #f6f1fd; --c-text: #2e1240; --c-text-1: #4b2566; --c-text-2: #70448f; --c-text-3: #966fd3;
+  --c-surf: #ffffff; --c-surf-1: #eadffa; --c-surf-2: #dccaf6; --c-surf-3: #c9b0f0;
+  --c-border: #c9b0f0; --c-border-2: #b89aea;
+  --c-primary: #2e1240; --c-primary-text: #ffffff; --c-hover: #38184f;
+  --c-accent: #7c3aed; --c-accent-hover: #6d28d9; --c-accent-soft: rgba(124, 58, 237, 0.12); --c-accent-soft-text: #6d28d9;
+  --c-chip-ink-bg: #2e1240; --c-chip-ink-text: #ffffff;
+  --c-chip-cream-bg: #eadffa; --c-chip-cream-text: #4b2566;
+  --c-chip-mint-bg: rgba(52, 211, 153, 0.12); --c-chip-mint-text: #0c7a5f;
+  --c-chip-coral-bg: rgba(124, 58, 237, 0.12); --c-chip-coral-text: #6d28d9;
+  --c-chip-lavender-bg: rgba(124, 58, 237, 0.1); --c-chip-lavender-text: #6d28d9;
+  --c-skeleton: #dccaf6; --c-shadow: 0 2px 6px rgba(46, 18, 64, 0.08);
+  --c-nav: rgba(246, 241, 253, 0.85);
+  --c-input-bg: #ffffff; --c-input-border: #dccaf6; --c-input-text: #2e1240; --c-input-placeholder: #966fd3; --c-input-focus: #2e1240;
+}
+
+html[data-theme='sky'] {
+  --c-bg: #f0f7fd; --c-text: #0c2c4d; --c-text-1: #1d4a75; --c-text-2: #3f6b96; --c-text-3: #6b93bb;
+  --c-surf: #ffffff; --c-surf-1: #d6e9fa; --c-surf-2: #b6d7f5; --c-surf-3: #93c2ef;
+  --c-border: #93c2ef; --c-border-2: #7bb3ea;
+  --c-primary: #0c2c4d; --c-primary-text: #ffffff; --c-hover: #113a63;
+  --c-accent: #0ea5e9; --c-accent-hover: #0284c7; --c-accent-soft: rgba(14, 165, 233, 0.12); --c-accent-soft-text: #0369a1;
+  --c-chip-ink-bg: #0c2c4d; --c-chip-ink-text: #ffffff;
+  --c-chip-cream-bg: #d6e9fa; --c-chip-cream-text: #1d4a75;
+  --c-chip-mint-bg: rgba(16, 185, 129, 0.12); --c-chip-mint-text: #047857;
+  --c-chip-coral-bg: rgba(14, 165, 233, 0.12); --c-chip-coral-text: #0369a1;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
+  --c-skeleton: #b6d7f5; --c-shadow: 0 2px 6px rgba(12, 44, 77, 0.08);
+  --c-nav: rgba(240, 247, 253, 0.85);
+  --c-input-bg: #ffffff; --c-input-border: #b6d7f5; --c-input-text: #0c2c4d; --c-input-placeholder: #6b93bb; --c-input-focus: #0c2c4d;
+}
+
+html[data-theme='rose'] {
+  --c-bg: #fdf0f4; --c-text: #4a0f26; --c-text-1: #6b1e3e; --c-text-2: #8f3f5d; --c-text-3: #b46e88;
+  --c-surf: #ffffff; --c-surf-1: #f9dce6; --c-surf-2: #f4c4d4; --c-surf-3: #eca6bf;
+  --c-border: #eca6bf; --c-border-2: #e68fb0;
+  --c-primary: #4a0f26; --c-primary-text: #ffffff; --c-hover: #571430;
+  --c-accent: #db2777; --c-accent-hover: #be185d; --c-accent-soft: rgba(219, 39, 119, 0.12); --c-accent-soft-text: #be185d;
+  --c-chip-ink-bg: #4a0f26; --c-chip-ink-text: #ffffff;
+  --c-chip-cream-bg: #f9dce6; --c-chip-cream-text: #6b1e3e;
+  --c-chip-mint-bg: rgba(16, 185, 129, 0.12); --c-chip-mint-text: #047857;
+  --c-chip-coral-bg: rgba(219, 39, 119, 0.12); --c-chip-coral-text: #be185d;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
+  --c-skeleton: #f4c4d4; --c-shadow: 0 2px 6px rgba(74, 15, 38, 0.08);
+  --c-nav: rgba(253, 240, 244, 0.85);
+  --c-input-bg: #ffffff; --c-input-border: #f4c4d4; --c-input-text: #4a0f26; --c-input-placeholder: #b46e88; --c-input-focus: #4a0f26;
+}
+
+/* Rich gradients for the profile card, one per appearance theme */
+.card-color-light    { background: linear-gradient(135deg, #fbf4e3, #f3ead4); }
+.card-color-dark     { background: linear-gradient(135deg, #1c2129, #0b0d12); }
+.card-color-ocean    { background: linear-gradient(135deg, #0ed0bc, #06302b); }
+.card-color-forest   { background: linear-gradient(135deg, #10b56c, #062a1c); }
+.card-color-sunset   { background: linear-gradient(135deg, #ff8a2b, #5a2a17); }
+.card-color-midnight { background: linear-gradient(135deg, #24357a, #0b1c3d); }
+.card-color-gold     { background: linear-gradient(135deg, #f6b733, #7a4e10); }
+.card-color-purple   { background: linear-gradient(135deg, #7b2cff, #2c0b4e); }
+.card-color-sky      { background: linear-gradient(135deg, #19b6ff, #0a1b4d); }
+.card-color-rose     { background: linear-gradient(135deg, #ff2d7e, #3c0a28); }
 
 /* Light-text overrides when a dark card color is active */
 .card-dark { color: #fdfaf4; }

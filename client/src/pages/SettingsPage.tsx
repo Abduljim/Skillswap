@@ -97,7 +97,8 @@ export default function SettingsPage() {
           <Moon className="w-4 h-4" /> Appearance
         </h2>
         <p className="text-xs text-ink-500 mb-4">
-          Pick a theme. Light & Dark are free; the five color themes are a Pro perk.
+          Pick an appearance colour. It also styles your profile card. Light &amp; Dark are free; the eight
+          gradient colours are a Pro perk.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {THEMES.map((t) => {

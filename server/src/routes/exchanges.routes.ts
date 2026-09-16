@@ -62,6 +62,16 @@ router.get(
   })
 );
 
+// Call logs
+router.get(
+  '/:id/calls',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await exchangeService.listCallLogs(req.user!.userId, req.params.id);
+    ok(res, list);
+  })
+);
+
 router.post(
   '/:id/sessions',
   requireAuth,

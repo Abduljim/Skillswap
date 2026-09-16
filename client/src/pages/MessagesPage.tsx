@@ -57,9 +57,7 @@ export default function MessagesPage() {
             <button
               key={c.exchangeId}
               type="button"
-              onClick={() =>
-                nav(`/exchanges/${c.exchangeId}`, { state: { defaultTab: 'chat' } })
-              }
+              onClick={() => nav(`/messages/${c.exchangeId}`)}
               className="card w-full p-4 text-left hover:shadow-soft transition-shadow flex items-center gap-3 active:scale-[0.99]"
             >
               <FrameAvatar

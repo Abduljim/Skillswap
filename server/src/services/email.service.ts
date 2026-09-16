@@ -8,12 +8,54 @@ interface MailOptions {
   text?: string;
 }
 
-function isConfigured() {
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+async function sendViaResend(opts: MailOptions): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(RESEND_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM || 'SkillSwap <onboarding@resend.dev>',
+        to: [opts.to],
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[email] Resend rejected', res.status, body);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[email] Resend delivery failed', e);
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isSmtpConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
 }
 
 export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean }> {
-  if (!isConfigured()) {
+  if (env.RESEND_API_KEY) {
+    const ok = await sendViaResend(opts);
+    if (ok) return { delivered: true };
+  }
+  if (!isSmtpConfigured()) {
+    console.error(
+      '[email] no delivery provider configured. Set RESEND_API_KEY (recommended) or SMTP_HOST/SMTP_FROM.'
+    );
     return { delivered: false };
   }
   let transporter: ReturnType<typeof nodemailer.createTransport> | undefined;
@@ -44,7 +86,10 @@ export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean
       timeout,
     ]);
     return { delivered: true };
-  } catch {
+  } catch (e) {
+    const err = e as Error;
+    const message = String(err?.message ?? e).replace(/https?:\/\/\S+/gi, '[url]').slice(0, 160);
+    console.error('[email] SMTP delivery failed', err?.name || 'Error', message);
     return { delivered: false };
   } finally {
     clearTimeout(timer);

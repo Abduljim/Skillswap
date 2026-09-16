@@ -149,6 +149,20 @@ export interface Session {
   updatedAt: string;
 }
 
+export interface CallLog {
+  id: string;
+  exchangeId: string;
+  callerId: string;
+  calleeId: string;
+  callerName: string;
+  calleeName: string;
+  type: 'VOICE' | 'VIDEO';
+  outcome: 'COMPLETED' | 'DECLINED' | 'MISSED';
+  startedAt: string;
+  endedAt?: string | null;
+  createdAt: string;
+}
+
 export interface Notification {
   id: string;
   type: string;

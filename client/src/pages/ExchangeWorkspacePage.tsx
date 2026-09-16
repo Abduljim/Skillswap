@@ -1,52 +1,20 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { FrameAvatar, EmptyState, Skeleton } from '../components/ui';
-import { ArrowLeft, Send, Calendar, CheckCircle2, Star, Phone, Video, Smile } from 'lucide-react';
-import { Socket } from 'socket.io-client';
-import { createSocket } from '../lib/socket';
-import { showAndroidKeyboard } from '../lib/keyboard-bridge';
-import { useCall, CallOverlay } from '../components/CallOverlay';
-import type { Exchange, Message, Session } from '../types';
+import { ArrowLeft, Calendar, CheckCircle2, Star, MessageSquare } from 'lucide-react';
+import type { Exchange, Session } from '../types';
 
-type Tab = 'overview' | 'chat' | 'sessions';
-
-function useExchangeSocket(exchangeId: string, userId: string) {
-  const socketRef = useRef<Socket | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let s: Socket;
-    let cancelled = false;
-    (async () => {
-      s = await createSocket();
-      if (cancelled) return;
-      socketRef.current = s;
-      s.on('connect', () => {
-        s.emit('exchange:join', exchangeId);
-        setReady(true);
-      });
-    })();
-    return () => {
-      cancelled = true;
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-      setReady(false);
-    };
-  }, [exchangeId, userId]);
-
-  return { socket: socketRef.current, ready };
-}
+type Tab = 'exchange' | 'overview' | 'sessions';
 
 export default function ExchangeWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const loc = useLocation();
   const { user } = useAuth();
-  const toast = useToast();
 
   const { data: exchange, isLoading } = useQuery({
     queryKey: ['exchange', id],
@@ -60,11 +28,6 @@ export default function ExchangeWorkspacePage() {
 
   if (isLoading) return <Skeleton className="h-64" />;
   if (!exchange) return <EmptyState title="Exchange not found" />;
-
-  const partner = exchange.userA.id === user?.id ? exchange.userB : exchange.userA;
-  const mySkills = exchange.userA.id === user?.id
-    ? { teaching: exchange.skillA, learning: exchange.skillB }
-    : { teaching: exchange.skillB, learning: exchange.skillA };
 
   return (
     <div className="space-y-4">
@@ -80,7 +43,7 @@ export default function ExchangeWorkspacePage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-wide text-cream-300 font-semibold">Exchange with</div>
-            <h1 className="font-display font-bold text-2xl">{partner.displayName}</h1>
+            <h1 className="font-display font-bold text-2xl">{partnerOf(exchange, user)?.displayName}</h1>
           </div>
           <div className="flex items-center gap-2">
             <span className={`chip ${
@@ -93,102 +56,39 @@ export default function ExchangeWorkspacePage() {
         <div className="mt-4 flex flex-wrap gap-3 text-sm">
           <div className="bg-ink-800 rounded-xl p-3 border border-ink-700 flex-1 min-w-[200px]">
             <div className="text-xs uppercase text-coral-300 font-semibold mb-1">You teach</div>
-            <div className="font-semibold">{mySkills.teaching?.name}</div>
+            <div className="font-semibold">{mySkills(exchange, user).teaching?.name}</div>
           </div>
           <div className="bg-ink-800 rounded-xl p-3 border border-ink-700 flex-1 min-w-[200px]">
             <div className="text-xs uppercase text-mint-300 font-semibold mb-1">You learn</div>
-            <div className="font-semibold">{mySkills.learning?.name}</div>
+            <div className="font-semibold">{mySkills(exchange, user).learning?.name}</div>
           </div>
         </div>
       </div>
 
-      {exchange.status === 'ACTIVE' && id && (
-        <WorkspaceWithCall exchangeId={id} partner={partner} tab={tab} setTab={setTab} exchange={exchange} />
-      )}
-      {exchange.status !== 'ACTIVE' && (
-        <div>
-          <TabBar tab={tab} setTab={setTab} />
-          {tab === 'overview' && <OverviewTab exchange={exchange} />}
-          {tab === 'sessions' && id && <SessionsTab exchangeId={id} user={user!} status={exchange.status} />}
-        </div>
-      )}
+      <div>
+        <TabBar tab={tab} setTab={setTab} />
+        {tab === 'exchange' && <ExchangeTab exchange={exchange} />}
+        {tab === 'overview' && <OverviewTab exchange={exchange} />}
+        {tab === 'sessions' && id && <SessionsTab exchangeId={id} user={user!} status={exchange.status} />}
+      </div>
     </div>
   );
 }
 
-function WorkspaceWithCall({
-  exchangeId,
-  partner,
-  tab,
-  setTab,
-  exchange,
-}: {
-  exchangeId: string;
-  partner: any;
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  exchange: any;
-}) {
-  const { user } = useAuth();
-  const { socket, ready } = useExchangeSocket(exchangeId, user!.id);
-  const call = useCall(socket, exchangeId, {
-    id: user!.id,
-    displayName: user!.displayName,
-    avatarUrl: (user as any)?.profile?.avatarUrl ?? null,
-    avatarFrame: (user as any)?.profile?.avatarFrame ?? null,
-  }, {
-    id: partner.id,
-    displayName: partner.displayName,
-    avatarUrl: partner.profile?.avatarUrl ?? null,
-    avatarFrame: partner.profile?.avatarFrame ?? null,
-  });
+function partnerOf(exchange: any, user: any) {
+  return exchange.userA.id === user?.id ? exchange.userB : exchange.userA;
+}
 
-  const startCall = (video: boolean) => {
-    if (!socket) return;
-    call.startCall(video).catch(() => {});
-  };
-
-  return (
-    <>
-      {/* Call buttons */}
-      <div className="flex justify-end gap-2 -mt-2">
-        {exchange.status === 'ACTIVE' && (
-          <>
-            <button onClick={() => startCall(false)} disabled={!ready} className="btn-outline text-xs px-3 py-2 disabled:opacity-40">
-              <Phone className="w-4 h-4" /> Voice call
-            </button>
-            <button onClick={() => startCall(true)} disabled={!ready} className="btn-outline text-xs px-3 py-2 disabled:opacity-40">
-              <Video className="w-4 h-4" /> Video call
-            </button>
-          </>
-        )}
-      </div>
-
-      <TabBar tab={tab} setTab={setTab} />
-      {tab === 'overview' && <OverviewTab exchange={exchange} />}
-      {tab === 'chat' && <ChatTab exchangeId={exchangeId} user={user!} socket={socket} />}
-      {tab === 'sessions' && <SessionsTab exchangeId={exchangeId} user={user!} status={exchange.status} />}
-
-      <CallOverlay
-        call={call.state}
-        partner={call.state.peer}
-        onAccept={call.acceptCall}
-        onDecline={call.declineCall}
-        onHangup={call.hangup}
-        onToggleMic={call.toggleMic}
-        onToggleCamera={call.toggleCamera}
-        micMuted={call.micMuted}
-        localVideoRef={call.localVideoRef}
-        remoteVideoRef={call.remoteVideoRef}
-      />
-    </>
-  );
+function mySkills(exchange: any, user: any) {
+  return exchange.userA.id === user?.id
+    ? { teaching: exchange.skillA, learning: exchange.skillB }
+    : { teaching: exchange.skillB, learning: exchange.skillA };
 }
 
 function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   return (
     <div className="flex gap-1 border-b border-ink-100">
-      {(['overview', 'chat', 'sessions'] as Tab[]).map((t) => (
+      {(['exchange', 'overview', 'sessions'] as Tab[]).map((t) => (
         <button
           key={t}
           onClick={() => setTab(t)}
@@ -199,6 +99,55 @@ function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
           {t}
         </button>
       ))}
+    </div>
+  );
+}
+
+function ExchangeTab({ exchange }: { exchange: any }) {
+  return (
+    <div className="space-y-4">
+      <div className="card p-5 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-display font-bold text-ink-900">Exchange details</h3>
+          <p className="text-sm text-ink-500 mt-1">
+            View who's involved and the skills being swapped. Chat & calls live in Messages.
+          </p>
+        </div>
+        <Link
+          to={`/messages/${exchange.id}`}
+          className={`${exchange.status === 'ACTIVE' ? 'btn-coral' : 'btn-outline'} shrink-0`}
+        >
+          <MessageSquare className="w-4 h-4" /> Open chat
+        </Link>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="card p-5">
+          <h3 className="font-display font-bold text-ink-900 mb-2">Participants</h3>
+          {[exchange.userA, exchange.userB].map((u: any) => (
+            <div key={u.id} className="flex items-center gap-3 py-2 border-b border-ink-100 last:border-0">
+              <FrameAvatar frame={u.profile?.avatarFrame || 'default'} src={u.profile?.avatarUrl} alt={u.displayName} size={36} />
+              <div>
+                <div className="font-semibold text-sm">{u.displayName}</div>
+                <div className="text-xs text-ink-500">{u.profile?.university}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="card p-5">
+          <h3 className="font-display font-bold text-ink-900 mb-2">Skills</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>{exchange.userA.displayName} teaches</span>
+              <span className="chip-mint">{exchange.skillA?.name}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{exchange.userB.displayName} teaches</span>
+              <span className="chip-mint">{exchange.skillB?.name}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -230,31 +179,19 @@ function OverviewTab({ exchange }: { exchange: any }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="card p-5">
-          <h3 className="font-display font-bold text-ink-900 mb-2">Participants</h3>
-          {[exchange.userA, exchange.userB].map((u: any) => (
-            <div key={u.id} className="flex items-center gap-3 py-2 border-b border-ink-100 last:border-0">
-              <FrameAvatar frame={u.profile?.avatarFrame || 'default'} src={u.profile?.avatarUrl} alt={u.displayName} size={36} />
-              <div>
-                <div className="font-semibold text-sm">{u.displayName}</div>
-                <div className="text-xs text-ink-500">{u.profile?.university}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="card p-5">
-          <h3 className="font-display font-bold text-ink-900 mb-2">Skills</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span>{exchange.userA.displayName} teaches</span>
-              <span className="chip-mint">{exchange.skillA?.name}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>{exchange.userB.displayName} teaches</span>
-              <span className="chip-mint">{exchange.skillB?.name}</span>
-            </div>
-          </div>
+      <div className="card p-5">
+        <h3 className="font-display font-bold text-ink-900 mb-2">Status</h3>
+        <div className="flex items-center gap-2 text-sm">
+          <span className={`chip ${
+            exchange.status === 'ACTIVE' ? 'chip-mint' :
+            exchange.status === 'COMPLETED' ? 'chip-coral' :
+            'chip-cream'
+          }`}>{exchange.status}</span>
+          {exchange.completedAt && (
+            <span className="text-xs text-ink-500">
+              on {new Date(exchange.completedAt).toLocaleDateString()}
+            </span>
+          )}
         </div>
       </div>
 
@@ -288,173 +225,6 @@ function OverviewTab({ exchange }: { exchange: any }) {
         {exchange.status === 'CANCELLED' && (
           <div className="chip-coral">This exchange was cancelled.</div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ChatTab({
-  exchangeId,
-  user,
-  socket: controlledSocket,
-}: {
-  exchangeId: string;
-  user: any;
-  socket?: Socket | null;
-}) {
-  const qc = useQueryClient();
-  const { data: messages = [], refetch } = useQuery({
-    queryKey: ['messages', exchangeId],
-    queryFn: async () => {
-      const messages = await api.get<Message[]>(`/exchanges/${exchangeId}/messages`);
-      void qc.invalidateQueries({ queryKey: ['conversations'] });
-      return messages;
-    },
-  });
-  const [text, setText] = useState('');
-  const [typing, setTyping] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<Socket | null>(controlledSocket ?? null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!controlledSocket) return;
-    socketRef.current = controlledSocket;
-    const onMsg = () => refetch();
-    const onTyping = (data: { userId: string }) => {
-      if (data.userId !== user.id) setTyping(true);
-      setTimeout(() => setTyping(false), 2000);
-    };
-    controlledSocket.on('message:new', onMsg);
-    controlledSocket.on('typing', onTyping);
-    return () => {
-      controlledSocket.off('message:new', onMsg);
-      controlledSocket.off('typing', onTyping);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controlledSocket, exchangeId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
-
-  const sendMessage = async (body: string, type: string = 'TEXT') => {
-    if (!body.trim()) return;
-    try {
-      await api.post(`/exchanges/${exchangeId}/messages`, { body, type });
-      setText('');
-      void qc.invalidateQueries({ queryKey: ['conversations'] });
-      refetch();
-    } catch (e) {
-      if (e instanceof ApiError) console.error(e.message);
-    }
-  };
-
-  const sendImage = async (file: File) => {
-    if (file.size > 2 * 1024 * 1024) {
-      return; // silently cap at 2MB
-    }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      await sendMessage(dataUrl, 'IMAGE');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  return (
-    <div className="card p-4 md:p-5 flex flex-col h-[60vh]">
-      <div className="flex-1 overflow-y-auto space-y-3 pb-2">
-        {messages.length === 0 && (
-          <div className="text-center text-sm text-ink-500 py-8">No messages yet. Say hello.</div>
-        )}
-        {messages.map((m) => {
-          const mine = m.senderId === user.id;
-          return (
-            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                  mine ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-900'
-                }`}
-              >
-                {m.type === 'IMAGE' ? (
-                  <img src={m.body} alt="Shared image" className="rounded-xl max-w-[260px] max-h-64 object-cover" />
-                ) : m.type === 'STICKER' ? (
-                  <div className="text-5xl leading-none py-1">{m.body}</div>
-                ) : (
-                  <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>
-                )}
-                <div className={`text-[10px] mt-1 ${mine ? 'text-cream-300' : 'text-ink-500'}`}>
-                  {m.type === 'IMAGE' && '📷 '}
-                  {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {typing && <div className="text-xs text-ink-500 italic px-2">typing…</div>}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div className="flex gap-2 pt-3 border-t border-ink-100 items-end">
-        <div className="relative flex items-center gap-1">
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-            }}
-            onClick={() => {
-              const input = textInputRef.current;
-              if (!input) return;
-              input.focus({ preventScroll: true });
-              void showAndroidKeyboard().catch(() => {});
-            }}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
-            aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
-            title="Open keyboard; use your system keyboard's emoji key for emoji"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
-            title="Send image"
-          >
-            📷
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f) sendImage(f);
-            }}
-          />
-        </div>
-        <input
-          ref={textInputRef}
-          className="input flex-1"
-          placeholder="Type a message…"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            socketRef.current?.emit('typing', { exchangeId });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage(text);
-            }
-          }}
-        />
-        <button onClick={() => sendMessage(text)} className="btn-coral shrink-0">
-          <Send className="w-4 h-4" />
-        </button>
       </div>
     </div>
   );
