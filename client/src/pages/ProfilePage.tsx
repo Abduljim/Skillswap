@@ -12,7 +12,15 @@ import type { Skill, LearningFormat, Weekday, TimeOfDay } from '../types';
 
 const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const TIMES: TimeOfDay[] = ['MORNING', 'AFTERNOON', 'EVENING'];
-const BANNER_STYLES = ['cream', 'coral', 'mint', 'ocean', 'royal', 'forest', 'sunset', 'midnight'];
+const CARD_COLORS = [
+  { value: 'cream', label: 'Cream', cls: 'card-color-cream' },
+  { value: 'coral', label: 'Coral', cls: 'card-color-coral' },
+  { value: 'mint', label: 'Mint', cls: 'card-color-mint' },
+  { value: 'ocean', label: 'Ocean', cls: 'card-color-ocean' },
+  { value: 'forest', label: 'Forest', cls: 'card-color-forest' },
+  { value: 'sunset', label: 'Sunset', cls: 'card-color-sunset' },
+  { value: 'midnight', label: 'Midnight', cls: 'card-color-midnight' },
+];
 
 const AVATAR_SIZE = 256;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5MB source cap — client downscales to 256px
@@ -149,8 +157,7 @@ export default function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
       <div className="card overflow-hidden relative">
-        {isPro && <div className={`h-10 banner-${profile?.bannerStyle || 'cream'}`} />}
-        <div className={`p-6 md:p-8 relative ${isPro ? 'bg-gradient-to-br from-amber-50/60 via-cream-50/40 to-coral-50/60' : ''}`}>
+        <div className={`p-6 md:p-8 relative ${isPro && profile?.bannerStyle ? `card-color-${profile.bannerStyle}` : ''}`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-coral-100/70 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
@@ -366,7 +373,7 @@ export default function ProfilePage() {
             <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
           </h2>
           <p className="text-xs text-ink-500 mb-5">
-            Dress up your avatar and profile card — everyone who views you will see it.
+            Dress up your avatar and profile card color. Everyone who views your profile will see it.
           </p>
 
           <div className="text-sm font-semibold text-ink-700 mb-3">Avatar frame</div>
@@ -389,22 +396,22 @@ export default function ProfilePage() {
             })}
           </div>
 
-          <div className="text-sm font-semibold text-ink-700 mb-3">Banner</div>
+          <div className="text-sm font-semibold text-ink-700 mb-3">Profile card color</div>
           <div className="flex flex-wrap gap-2">
-            {BANNER_STYLES.map((b) => {
-              const active = (profile?.bannerStyle || 'cream') === b;
+            {CARD_COLORS.map((c) => {
+              const active = (profile?.bannerStyle || 'cream') === c.value;
               return (
                 <button
-                  key={b}
+                  key={c.value}
                   type="button"
-                  onClick={() => looksMutation.mutate({ bannerStyle: b })}
+                  onClick={() => looksMutation.mutate({ bannerStyle: c.value })}
                   className={`rounded-lg p-1 transition-all ${
                     active ? 'ring-2 ring-coral-500' : 'hover:ring-2 hover:ring-ink-200'
                   }`}
-                  title={b}
+                  title={c.label}
                 >
-                  <div className={`h-9 w-14 rounded-md banner-${b} border border-ink-900/10`} />
-                  <div className="text-[11px] text-center mt-1 text-ink-500 capitalize">{b}</div>
+                  <div className={`h-9 w-14 rounded-md ${c.cls} border border-ink-900/10`} />
+                  <div className="text-[11px] text-center mt-1 text-ink-500">{c.label}</div>
                 </button>
               );
             })}

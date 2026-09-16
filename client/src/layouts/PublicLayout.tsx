@@ -39,6 +39,10 @@ export default function PublicLayout() {
         <Outlet />
       </main>
       <footer className="border-t border-ink-100 py-8 text-center text-xs text-ink-500">
+        <div className="flex items-center justify-center gap-4 mb-2">
+          <Link to="/privacy" className="hover:text-ink-900">Privacy</Link>
+          <Link to="/terms" className="hover:text-ink-900">Terms</Link>
+        </div>
         © {new Date().getFullYear()} SkillSwap. Trade what you know.
       </footer>
     </div>

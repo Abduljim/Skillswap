@@ -1,13 +1,20 @@
 import { ReactNode } from 'react';
 import clsx from 'clsx';
 
-export const AVATAR_FRAMES: Record<string, { ring: string; label: string }> = {
-  default: { ring: '', label: 'Default' },
-  gold: { ring: 'p-[3px] bg-gradient-to-br from-amber-400 via-amber-300 to-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]', label: 'Gold' },
-  neon: { ring: 'p-[3px] bg-gradient-to-br from-coral-500 via-coral-400 to-pink-500 shadow-[0_0_14px_rgba(251,79,29,0.4)]', label: 'Neon' },
-  royal: { ring: 'p-[3px] bg-gradient-to-br from-violet-500 via-violet-400 to-purple-600 shadow-[0_0_14px_rgba(139,92,246,0.4)]', label: 'Royal' },
-  emerald: { ring: 'p-[3px] bg-gradient-to-br from-emerald-500 via-emerald-400 to-green-600 shadow-[0_0_12px_rgba(16,185,129,0.35)]', label: 'Emerald' },
-  flame: { ring: 'p-[3px] bg-gradient-to-br from-orange-500 via-red-500 to-amber-500 shadow-[0_0_14px_rgba(249,115,22,0.4)]', label: 'Flame' },
+export const AVATAR_FRAMES: Record<string, { src: string; label: string }> = {
+  default: { src: '', label: 'Default' },
+  frame_0: { src: '/frames/frame_0.png', label: 'Copper' },
+  frame_1: { src: '/frames/frame_1.png', label: 'Slate' },
+  frame_2: { src: '/frames/frame_2.png', label: 'Orchid' },
+  frame_3: { src: '/frames/frame_3.png', label: 'Gold' },
+  frame_4: { src: '/frames/frame_4.png', label: 'Teal' },
+  frame_5: { src: '/frames/frame_5.png', label: 'Ember' },
+  frame_6: { src: '/frames/frame_6.png', label: 'Sage' },
+  frame_7: { src: '/frames/frame_7.png', label: 'Rose' },
+  frame_8: { src: '/frames/frame_8.png', label: 'Sand' },
+  frame_9: { src: '/frames/frame_9.png', label: 'Ocean' },
+  frame_10: { src: '/frames/frame_10.png', label: 'Wine' },
+  frame_11: { src: '/frames/frame_11.png', label: 'Pearl' },
 };
 
 export function Avatar({
@@ -40,15 +47,23 @@ export function Avatar({
 
 export function FrameAvatar({
   frame = 'default',
+  size = 40,
   ...avatarProps
 }: {
   frame?: string;
-} & Parameters<typeof Avatar>[0]) {
+  size?: number;
+} & Omit<Parameters<typeof Avatar>[0], 'size'>) {
   const def = AVATAR_FRAMES[frame] || AVATAR_FRAMES.default;
-  if (!def.ring) return <Avatar {...avatarProps} />;
+  if (!def.src) return <Avatar {...avatarProps} size={size} />;
   return (
-    <div className={clsx('rounded-full shrink-0', def.ring)}>
-      <Avatar {...avatarProps} />
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <Avatar {...avatarProps} size={size} />
+      <img
+        src={def.src}
+        alt=""
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        draggable={false}
+      />
     </div>
   );
 }

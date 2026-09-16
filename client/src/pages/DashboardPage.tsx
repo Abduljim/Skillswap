@@ -309,7 +309,7 @@ function MembershipTeaser() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-display font-bold text-lg leading-tight">
-            Go Pro — skip the limits
+            Go Pro, skip the limits
           </div>
           <div className="text-sm text-coral-100 mt-0.5">
             Unlimited requests, who-viewed-me, boosts &amp; a Pro badge.

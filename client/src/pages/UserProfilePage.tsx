@@ -38,8 +38,7 @@ export default function UserProfilePage() {
       </Link>
 
       <div className="card overflow-hidden">
-        {user.bannerStyle && <div className={`h-10 banner-${user.bannerStyle}`} />}
-        <div className="p-6 md:p-8 bg-gradient-to-br from-cream-50/60 via-white/40 to-mint-50/50">
+        <div className={`p-6 md:p-8 ${user.bannerStyle ? `card-color-${user.bannerStyle}` : 'bg-gradient-to-br from-cream-50/60 via-white/40 to-mint-50/50'}`}>
         <div className="flex flex-col md:flex-row items-start gap-5">
           <FrameAvatar frame={user.avatarFrame} src={user.avatarUrl} alt={user.displayName} size={96} />
           <div className="flex-1">

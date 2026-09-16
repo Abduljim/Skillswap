@@ -1,5 +1,8 @@
 import clsx from 'clsx';
+import { Bird, Repeat, Crown, Award, Gem, type LucideIcon } from 'lucide-react';
 import { BADGE_DEFS } from '../lib/badges';
+
+const ICONS: Record<string, LucideIcon> = { Bird, Repeat, Crown, Award, Gem };
 
 export function BadgesLegend({ earned }: { earned?: string[] }) {
   const owned = new Set(earned || []);
@@ -7,6 +10,7 @@ export function BadgesLegend({ earned }: { earned?: string[] }) {
     <div className="grid sm:grid-cols-2 gap-3">
       {BADGE_DEFS.map((b) => {
         const has = owned.has(b.code);
+        const Icon = ICONS[b.icon] || Award;
         return (
           <div
             key={b.code}
@@ -17,7 +21,7 @@ export function BadgesLegend({ earned }: { earned?: string[] }) {
           >
             <div
               className={clsx(
-                'w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-lg',
+                'w-10 h-10 shrink-0 rounded-xl flex items-center justify-center',
                 has
                   ? b.tier === 'PRO'
                     ? 'bg-gradient-to-br from-amber-300 via-amber-200 to-coral-300 shadow-soft'
@@ -25,7 +29,7 @@ export function BadgesLegend({ earned }: { earned?: string[] }) {
                   : 'bg-cream-100 grayscale'
               )}
             >
-              <span>{b.emoji}</span>
+              <Icon size={18} className={has && b.tier === 'PRO' ? 'text-amber-800' : 'text-ink-600'} />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1">

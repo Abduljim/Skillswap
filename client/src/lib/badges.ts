@@ -1,7 +1,7 @@
 export interface BadgeDef {
   code: string;
-  emoji: string;
   label: string;
+  icon: string;
   description: string;
   tier: 'BASIC' | 'PRO';
 }
@@ -9,36 +9,36 @@ export interface BadgeDef {
 export const BADGE_DEFS: BadgeDef[] = [
   {
     code: 'EARLY_BIRD',
-    emoji: '🐦',
-    label: 'Early Bird',
+    label: 'Early Adopter',
+    icon: 'Bird',
     description: 'One of the first members of SkillSwap.',
     tier: 'BASIC',
   },
   {
     code: 'SWAPPER',
-    emoji: '🔄',
-    label: 'Swapper',
-    description: 'Completed your first exchange — a real skill swap.',
+    label: 'Connector',
+    icon: 'Repeat',
+    description: 'Completed your first exchange, a real skill swap.',
     tier: 'BASIC',
   },
   {
     code: 'PRO_CROWN',
-    emoji: '👑',
-    label: 'Premium Crown',
+    label: 'Pro Member',
+    icon: 'Crown',
     description: 'Pro membership is active on your account.',
     tier: 'PRO',
   },
   {
     code: 'TOP_TRADER',
-    emoji: '🏆',
-    label: 'Top Trader',
-    description: 'A premium skill trader on the platform.',
+    label: 'Skill Master',
+    icon: 'Award',
+    description: 'Active skill exchanger on the platform.',
     tier: 'PRO',
   },
   {
     code: 'DIAMOND',
-    emoji: '💎',
-    label: 'Diamond Supporter',
+    label: 'Supporter',
+    icon: 'Gem',
     description: 'Premium supporter of SkillSwap.',
     tier: 'PRO',
   },

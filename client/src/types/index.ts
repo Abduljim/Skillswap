@@ -10,7 +10,7 @@ export type Tier = 'FREE' | 'PRO';
 export interface Badge {
   code: string;
   label: string;
-  emoji: string;
+  icon: string;
   description: string;
   tier: 'BASIC' | 'PRO';
 }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-export type AppTheme = 'light' | 'dark' | 'ocean' | 'midnight' | 'forest' | 'sunset' | 'royal';
+export type AppTheme = 'light' | 'dark' | 'ocean' | 'midnight' | 'forest' | 'sunset';
 
 export interface ThemeDef {
   id: AppTheme;
@@ -19,8 +19,7 @@ export const THEMES: ThemeDef[] = [
   { id: 'ocean', label: 'Ocean', desc: 'Cool teal waters', swatch: 'bg-gradient-to-br from-teal-200 via-cyan-100 to-cyan-300', dark: false, pro: true },
   { id: 'forest', label: 'Forest', desc: 'Fresh green calm', swatch: 'bg-gradient-to-br from-emerald-200 via-green-100 to-green-300', dark: false, pro: true },
   { id: 'sunset', label: 'Sunset', desc: 'Warm golden hour', swatch: 'bg-gradient-to-br from-amber-200 via-orange-100 to-orange-300', dark: false, pro: true },
-  { id: 'midnight', label: 'Midnight', desc: 'Deep indigo night', swatch: 'bg-gradient-to-br from-indigo-950 via-indigo-800 to-indigo-600', dark: true, pro: true },
-  { id: 'royal', label: 'Royal', desc: 'Rich violet luxury', swatch: 'bg-gradient-to-br from-purple-950 via-violet-800 to-violet-500', dark: true, pro: true },
+  { id: 'midnight', label: 'Midnight', desc: 'Deep navy night', swatch: 'bg-gradient-to-br from-blue-950 via-slate-900 to-slate-800', dark: true, pro: true },
 ];
 
 const THEME_KEY = 'skillswap_theme';
@@ -31,8 +30,7 @@ const META_COLOR: Record<AppTheme, string> = {
   ocean: '#f0f9f7',
   forest: '#f3f9f4',
   sunset: '#fdf6ee',
-  midnight: '#0c1222',
-  royal: '#170f25',
+  midnight: '#0b1220',
 };
 
 function initialTheme(): AppTheme {

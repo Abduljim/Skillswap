@@ -26,6 +26,11 @@ export default function MatchDetailPage() {
     enabled: !!userId,
   });
 
+  const { data: myProfile } = useQuery({
+    queryKey: ['my-profile'],
+    queryFn: () => api.get<any>('/profile'),
+  });
+
   const { data: skills = [] } = useQuery({
     queryKey: ['skills'],
     queryFn: () => api.get<Skill[]>('/skills'),
@@ -36,8 +41,8 @@ export default function MatchDetailPage() {
   const [message, setMessage] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const mySkills = match ? match.matchedSkills.iCanTeachThem : [];
-  const theirSkills = match ? match.matchedSkills.theyCanTeachMe : [];
+  const myTeaching = myProfile?.userSkills?.filter((s: any) => s.type === 'TEACH')?.map((s: any) => s.skill) || [];
+  const theirTeaching = profile?.teachingSkills || [];
 
   const sendMutation = useMutation({
     mutationFn: () =>
@@ -93,10 +98,12 @@ export default function MatchDetailPage() {
   }
 
   const openForm = () => {
-    if (mySkills.length > 0) setOfferedSkillId(mySkills[0].id);
+    const theirSkills = match ? match.matchedSkills.theyCanTeachMe : [];
+    if (myTeaching.length > 0) setOfferedSkillId(myTeaching[0].id);
     if (theirSkills.length > 0) setRequestedSkillId(theirSkills[0].id);
+    else if (theirTeaching.length > 0) setRequestedSkillId(theirTeaching[0].id);
     setMessage(
-      `Hi ${profile.displayName}, I noticed you can teach ${theirSkills[0]?.name ?? 'a skill'}, and I'm currently learning it. I can teach you ${mySkills[0]?.name ?? 'a skill'} in return. Would you like to exchange skills?`
+      `Hi ${profile.displayName}, I noticed you can teach ${theirSkills[0]?.name ?? theirTeaching[0]?.name ?? 'a skill'}, and I'd love to learn it. Would you be interested in a skill exchange?`
     );
     setShowForm(true);
   };
@@ -143,8 +150,8 @@ export default function MatchDetailPage() {
         <div className="card p-6">
           <div className="text-xs uppercase tracking-wide text-coral-500 font-semibold mb-2">You teach them</div>
           <div className="space-y-2">
-            {mySkills.length === 0 && <div className="text-sm text-ink-500">Nothing you teach matches what they want yet.</div>}
-            {mySkills.map((s) => (
+            {(match.matchedSkills.iCanTeachThem.length === 0) && <div className="text-sm text-ink-500">Nothing you teach matches what they want yet.</div>}
+            {match.matchedSkills.iCanTeachThem.map((s) => (
               <div key={s.id} className="chip-coral">{s.name}</div>
             ))}
           </div>
@@ -152,10 +159,10 @@ export default function MatchDetailPage() {
         <div className="card p-6">
           <div className="text-xs uppercase tracking-wide text-mint-600 font-semibold mb-2">They teach you</div>
           <div className="space-y-2">
-{theyTeach(theirSkills).length === 0 && (
+            {match.matchedSkills.theyCanTeachMe.length === 0 && (
             <div className="text-sm text-ink-500">They don't teach anything you want yet.</div>
           )}
-            {theyTeach(theirSkills).map((s) => (
+            {match.matchedSkills.theyCanTeachMe.map((s) => (
               <div key={s.id} className="chip-mint">{s.name}</div>
             ))}
           </div>
@@ -195,7 +202,7 @@ export default function MatchDetailPage() {
       <div className="card p-6">
         {!showForm ? (
           <div className="flex flex-col sm:flex-row gap-3">
-            <button onClick={openForm} disabled={mySkills.length === 0 || theirSkills.length === 0} className="btn-coral flex-1 justify-center disabled:opacity-50">
+            <button onClick={openForm} disabled={myTeaching.length === 0 || theirTeaching.length === 0} className="btn-coral flex-1 justify-center disabled:opacity-50">
               <Send className="w-4 h-4" /> Send Exchange Request
             </button>
             <button onClick={() => nav(`/profile/${userId}`)} className="btn-outline">View full profile</button>
@@ -222,7 +229,8 @@ export default function MatchDetailPage() {
                   value={offeredSkillId}
                   onChange={(e) => setOfferedSkillId(e.target.value)}
                 >
-                  {mySkills.map((s) => (
+                  {myTeaching.length === 0 && <option value="">No skills you teach yet</option>}
+                  {myTeaching.map((s: any) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
@@ -236,7 +244,8 @@ export default function MatchDetailPage() {
                   value={requestedSkillId}
                   onChange={(e) => setRequestedSkillId(e.target.value)}
                 >
-                  {theirSkills.map((s) => (
+                  {theirTeaching.length === 0 && <option value="">They teach no skills yet</option>}
+                  {theirTeaching.map((s: any) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
@@ -271,8 +280,4 @@ export default function MatchDetailPage() {
       </div>
     </div>
   );
-}
-
-function theyTeach(arr: Match['matchedSkills']['theyCanTeachMe']) {
-  return arr;
 }

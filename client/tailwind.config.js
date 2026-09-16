@@ -49,14 +49,6 @@ export default {
           800: '#1e4e3b',
           900: '#1a4031',
         },
-        lavender: {
-          50: '#f4f1fa',
-          100: '#e7e0f4',
-          200: '#cfc1e6',
-          300: '#b29bd2',
-          400: '#9377ba',
-          500: '#7a5ca1',
-        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

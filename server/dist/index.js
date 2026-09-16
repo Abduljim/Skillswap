@@ -268,8 +268,8 @@ var updateProfileSchema = import_zod2.z.object({
   bio: import_zod2.z.string().max(1e3).nullable().optional(),
   avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
-  avatarFrame: import_zod2.z.enum(["default", "gold", "neon", "royal", "emerald", "flame"]).optional(),
-  bannerStyle: import_zod2.z.enum(["cream", "coral", "mint", "ocean", "royal", "forest", "sunset", "midnight"]).optional(),
+  avatarFrame: import_zod2.z.enum(["default", "frame_0", "frame_1", "frame_2", "frame_3", "frame_4", "frame_5", "frame_6", "frame_7", "frame_8", "frame_9", "frame_10", "frame_11"]).optional(),
+  bannerStyle: import_zod2.z.enum(["cream", "coral", "mint", "ocean", "forest", "sunset", "midnight"]).optional(),
   availabilities: import_zod2.z.array(
     import_zod2.z.object({
       weekday: import_zod2.z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
@@ -785,36 +785,36 @@ async function listProfileViewers(profileId) {
 var BADGES = {
   EARLY_BIRD: {
     code: "EARLY_BIRD",
-    label: "Early Bird",
-    emoji: "\u{1F426}",
+    label: "Early Adopter",
+    icon: "Bird",
     description: "One of the first members",
     tier: "BASIC"
   },
   SWAPPER: {
     code: "SWAPPER",
-    label: "Swapper",
-    emoji: "\u{1F504}",
+    label: "Connector",
+    icon: "Repeat",
     description: "Completed an exchange",
     tier: "BASIC"
   },
   PRO_CROWN: {
     code: "PRO_CROWN",
-    label: "Premium Crown",
-    emoji: "\u{1F451}",
+    label: "Pro Member",
+    icon: "Crown",
     description: "Pro membership active",
     tier: "PRO"
   },
   TOP_TRADER: {
     code: "TOP_TRADER",
-    label: "Top Trader",
-    emoji: "\u{1F3C6}",
-    description: "Premium skill trader",
+    label: "Skill Master",
+    icon: "Award",
+    description: "Active skill exchanger",
     tier: "PRO"
   },
   DIAMOND: {
     code: "DIAMOND",
-    label: "Diamond Supporter",
-    emoji: "\u{1F48E}",
+    label: "Supporter",
+    icon: "Gem",
     description: "Premium supporter of SkillSwap",
     tier: "PRO"
   }
