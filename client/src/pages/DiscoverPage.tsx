@@ -222,7 +222,7 @@ function MatchCard({ match }: { match: Match }) {
                 {s.name}
               </span>
             ))}
-            {theyTeach.length === 0 && <span className="text-xs text-ink-400">—</span>}
+            {theyTeach.length === 0 && <span className="text-xs text-ink-400">.</span>}
           </div>
         </div>
         <div>
@@ -233,7 +233,7 @@ function MatchCard({ match }: { match: Match }) {
                 {s.name}
               </span>
             ))}
-            {iTeach.length === 0 && <span className="text-xs text-ink-400">—</span>}
+            {iTeach.length === 0 && <span className="text-xs text-ink-400">.</span>}
           </div>
         </div>
       </div>

@@ -227,7 +227,7 @@ function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
     <div className="card p-4 md:p-5 flex flex-col h-[60vh]">
       <div className="flex-1 overflow-y-auto space-y-3 pb-2">
         {messages.length === 0 && (
-          <div className="text-center text-sm text-ink-500 py-8">No messages yet — say hello!</div>
+          <div className="text-center text-sm text-ink-500 py-8">No messages yet. Say hello.</div>
         )}
         {messages.map((m) => {
           const mine = m.senderId === user.id;

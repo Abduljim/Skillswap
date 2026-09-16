@@ -1,22 +1,12 @@
 # SkillSwap — one-click Render Blueprint
 #
-# Usage:
-#   1. Push this repo to GitHub (any name, public or private)
-#   2. Go to https://dashboard.render.com/blueprints
-#   3. Click "New Blueprint Instance" → connect your repo
-#   4. Click "Apply" — Render will create:
-#        - skillswap-db (PostgreSQL)
-#        - skillswap-api (Web Service, Node 20)
-#   5. After the API deploys, run the seed command (one time) via the Shell tab
-#   6. Update the APK: rebuild with VITE_API_URL=https://skillswap-api.onrender.com
-#      OR use the live URL Render gives you.
+# After Render deploys this Blueprint, follow the steps in docs/DEPLOY.md.
 
 databases:
   - name: skillswap-db
     plan: free
     region: oregon
-    postgresMajorVersion: '16'
-    ipAllowList: []  # only accessible from skillswap-api
+    postgresMajorVersion: 16
 
 services:
   - type: web
@@ -28,13 +18,16 @@ services:
     buildCommand: npm ci --include=dev && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod && node scripts/seed-prod.js
     startCommand: node dist/index.js
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 4000
       - key: DATABASE_URL
-        fromDatabase: { name: skillswap-db, property: connectionString }
+        fromDatabase:
+          name: skillswap-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
@@ -51,7 +44,5 @@ services:
         value: info
       - key: PLAY_BILLING_VERIFY
         value: 'false'
-      # Override if you want to use your own platform
       - key: ANDROID_PACKAGE_NAME
         value: app.skillswap.client
-    autoDeploy: true

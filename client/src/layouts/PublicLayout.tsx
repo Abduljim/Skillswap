@@ -39,7 +39,7 @@ export default function PublicLayout() {
         <Outlet />
       </main>
       <footer className="border-t border-ink-100 py-8 text-center text-xs text-ink-500">
-        © {new Date().getFullYear()} SkillSwap — trade what you know
+        © {new Date().getFullYear()} SkillSwap. Trade what you know.
       </footer>
     </div>
   );

@@ -66,6 +66,13 @@ export default {
         'soft-sm': '0 1px 2px rgba(13,15,21,0.04), 0 2px 4px rgba(13,15,21,0.06)',
         soft: '0 2px 6px rgba(13,15,21,0.06), 0 8px 20px rgba(13,15,21,0.06)',
         'soft-lg': '0 4px 12px rgba(13,15,21,0.07), 0 20px 40px rgba(13,15,21,0.08)',
+        'glow-coral': '0 0 0 4px rgba(251,79,29,0.12), 0 8px 24px rgba(251,79,29,0.18)',
+        'glow-mint': '0 0 0 4px rgba(53,151,107,0.12), 0 8px 24px rgba(53,151,107,0.18)',
+      },
+      borderRadius: {
+        'xl': '0.875rem',
+        '2xl': '1.125rem',
+        '3xl': '1.5rem',
       },
       animation: {
         'fade-in': 'fade-in 0.3s ease-out',

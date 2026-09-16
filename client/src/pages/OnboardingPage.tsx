@@ -255,7 +255,7 @@ export default function OnboardingPage() {
                                 active ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-700 hover:bg-cream-200'
                               )}
                             >
-                              {active ? <Check className="w-3.5 h-3.5 mx-auto" /> : '—'}
+                              {active ? <Check className="w-3.5 h-3.5 mx-auto" /> : ''}
                             </button>
                           </td>
                         );

@@ -6,6 +6,10 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: manipulation;
+    overscroll-behavior: none;
   }
   body {
     @apply bg-cream-50 text-ink-900 font-sans;
@@ -71,6 +75,15 @@
   }
   .skeleton {
     @apply animate-pulse-soft bg-ink-100 rounded;
+  }
+  .surface {
+    @apply bg-white rounded-2xl border border-ink-100/80 shadow-soft;
+  }
+  .surface-elevated {
+    @apply bg-white rounded-2xl border border-ink-100/80 shadow-soft-lg;
+  }
+  .surface-flat {
+    @apply bg-cream-50 rounded-2xl;
   }
 }
 
