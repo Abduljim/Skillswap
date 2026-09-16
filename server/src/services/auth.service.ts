@@ -4,6 +4,7 @@ import { signToken } from '../middleware/auth';
 import { ConflictError, UnauthorizedError, BadRequestError, NotFoundError } from '../utils/errors';
 import { createHash, randomBytes } from 'crypto';
 import { env } from '../config/env';
+import { sendPasswordResetEmail } from './email.service';
 
 // Bootstrap admin: when ADMIN_EMAIL is set, that account is granted admin on
 // signup and on every login, so the very first real account can run the admin
@@ -96,14 +97,14 @@ export async function getMe(userId: string) {
   };
 }
 
-export async function requestPasswordReset(email: string) {
+export async function requestPasswordReset(email: string): Promise<{ delivered: boolean; token?: string }> {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
-    select: { id: true },
+    select: { id: true, email: true },
   });
   if (!user) {
     // Don't reveal whether the email exists
-    return null;
+    return { delivered: false };
   }
   const raw = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(raw).digest('hex');
@@ -114,11 +115,21 @@ export async function requestPasswordReset(email: string) {
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     },
   });
-  // No email provider is configured yet. The raw token must be available to the
-  // caller (the route returns it to the client, and it is always logged) so the
-  // reset flow actually completes. TTL is 1 hour, token is single-use.
+
+  const resetUrl = env.RESET_URL
+    ? `${env.RESET_URL.replace(/\/$/, '')}?token=${raw}`
+    : `${env.CLIENT_URL.replace(/\/$/, '')}/reset-password?token=${raw}`;
+
+  const result = await sendPasswordResetEmail(user.email, resetUrl);
+  if (result.delivered) {
+    console.log(`[PASSWORD-RESET] email sent to ${user.email}`);
+    return { delivered: true };
+  }
+
+  // No SMTP configured — expose the token to the API caller so the flow still
+  // completes while the app is in dev. Token is single-use and expires in 1h.
   console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
-  return raw;
+  return { delivered: false, token: raw };
 }
 
 export async function changePassword(input: {

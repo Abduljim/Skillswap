@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { BadgesRow, ProBadge } from '../components/Badges';
 import { ArrowLeft, Star } from 'lucide-react';
 
 export default function UserProfilePage() {
@@ -27,17 +28,22 @@ export default function UserProfilePage() {
     );
   }
 
+  const isPro = user.tier === 'PRO';
+
   return (
     <div className="space-y-6 max-w-3xl">
       <Link to="/discover" className="btn-ghost text-sm -ml-2 inline-flex">
         <ArrowLeft className="w-4 h-4" /> Back
       </Link>
 
-      <div className="card p-6 md:p-8">
+      <div className={`card p-6 md:p-8 ${isPro ? 'bg-gradient-to-br from-amber-50 via-cream-50 to-coral-50 border-amber-200/70' : ''}`}>
         <div className="flex flex-col md:flex-row items-start gap-5">
           <Avatar src={user.avatarUrl} alt={user.displayName} size={96} />
           <div className="flex-1">
-            <h1 className="font-display font-bold text-3xl text-ink-900">{user.displayName}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display font-bold text-3xl text-ink-900">{user.displayName}</h1>
+              {isPro && <ProBadge />}
+            </div>
             {user.university && (
               <p className="text-ink-700 mt-1">
                 {user.university} · {user.department} {user.yearLevel && `· ${user.yearLevel}`}
@@ -55,6 +61,11 @@ export default function UserProfilePage() {
                 <span className="chip-cream">{user.learningFormat.toLowerCase()}</span>
               )}
             </div>
+            {user.badges && user.badges.length > 0 && (
+              <div className="mt-3">
+                <BadgesRow badges={user.badges} size="sm" />
+              </div>
+            )}
             <div className="mt-4 flex gap-2">
               <Link to={`/matches/${user.id}`} className="btn-coral">Start Exchange Request</Link>
             </div>

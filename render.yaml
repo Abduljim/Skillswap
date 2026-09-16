@@ -48,3 +48,15 @@ services:
         value: 'false'
       - key: ANDROID_PACKAGE_NAME
         value: app.skillswap.client
+      - key: RESET_URL
+        value: 'https://app.skillswap.app/reset-password'
+      - key: SMTP_HOST
+        value: ''
+      - key: SMTP_PORT
+        value: '587'
+      - key: SMTP_USER
+        value: ''
+      - key: SMTP_PASS
+        value: ''
+      - key: SMTP_FROM
+        value: ''

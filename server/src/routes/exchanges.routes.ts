@@ -93,7 +93,8 @@ router.post(
     const msg = await messageService.createMessage(
       req.user!.userId,
       req.params.id,
-      req.body.body
+      req.body.body,
+      req.body.type
     );
     ok(res, msg);
   })

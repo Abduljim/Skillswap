@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { BadgesRow, ProBadge } from '../components/Badges';
 import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays } from 'lucide-react';
 import type { Skill, LearningFormat, Weekday, TimeOfDay } from '../types';
 
@@ -137,7 +138,9 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
-      <div className="card p-6 md:p-8 overflow-hidden relative">
+      <div className={`card p-6 md:p-8 overflow-hidden relative ${
+        isPro ? 'bg-gradient-to-br from-amber-50 via-cream-50 to-coral-50 border-amber-200/70' : ''
+      }`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-coral-100/70 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
@@ -185,6 +188,7 @@ export default function ProfilePage() {
                   {profile?.user?.isAdmin && (
                     <span className="chip-cream text-xs">Admin</span>
                   )}
+                  {isPro && <ProBadge />}
                 </div>
                 <p className="text-sm text-ink-600">{user?.email}</p>
                 {(profile?.university || profile?.department) && (
@@ -207,6 +211,10 @@ export default function ProfilePage() {
                       <CalendarDays className="w-3 h-3" /> Joined {joined.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
                     </span>
                   )}
+                </div>
+
+                <div className="mt-3">
+                  <BadgesRow badges={profile?.badges} size="md" />
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-3 text-sm text-ink-600">

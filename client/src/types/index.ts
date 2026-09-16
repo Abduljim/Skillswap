@@ -4,6 +4,16 @@ export type TimeOfDay = 'MORNING' | 'AFTERNOON' | 'EVENING';
 export type Proficiency = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
 export type SkillType = 'TEACH' | 'WANT';
 export type SessionFormat = 'ONLINE' | 'IN_PERSON';
+export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER';
+export type Tier = 'FREE' | 'PRO';
+
+export interface Badge {
+  code: string;
+  label: string;
+  emoji: string;
+  description: string;
+  tier: 'BASIC' | 'PRO';
+}
 
 export interface User {
   id: string;
@@ -22,6 +32,8 @@ export interface Profile {
   avatarUrl?: string | null;
   learningFormat?: LearningFormat;
   availabilities: { weekday: Weekday; timeOfDay: TimeOfDay }[];
+  tier?: Tier;
+  badges?: Badge[];
 }
 
 export interface Skill {
@@ -91,6 +103,7 @@ export interface Message {
   exchangeId: string;
   senderId: string;
   body: string;
+  type?: MessageType;
   createdAt: string;
   readAt?: string | null;
   sender?: { id: string; displayName: string };

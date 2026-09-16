@@ -29,22 +29,23 @@ export async function listMessages(userId: string, exchangeId: string) {
   return messages;
 }
 
-export async function createMessage(userId: string, exchangeId: string, body: string) {
+export async function createMessage(userId: string, exchangeId: string, body: string, type: string = 'TEXT') {
   const exchange = await assertActiveParticipant(userId, exchangeId);
   const message = await prisma.message.create({
-    data: { exchangeId, senderId: userId, body },
+    data: { exchangeId, senderId: userId, body, type: type as any },
     include: { sender: { select: { id: true, displayName: true } } },
   });
   emitToExchange(exchangeId, 'message:new', message);
 
-  // Notify other user
+  // Notify other user (truncate notification body for images)
   const otherUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+  const notifBody = type === 'IMAGE' ? '📷 Image' : type === 'STICKER' ? '🎨 Sticker' : body.slice(0, 100);
   await prisma.notification.create({
     data: {
       userId: otherUserId,
       type: 'NEW_MESSAGE',
       title: `New message from ${message.sender.displayName}`,
-      body: body.slice(0, 100),
+      body: notifBody,
       payload: { exchangeId, messageId: message.id },
     },
   });

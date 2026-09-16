@@ -10,6 +10,8 @@
 //     OR
 //   - Edit android/app/src/main/assets/public/config.json directly, then rebuild the APK.
 
+import { getToken } from './session';
+
 declare const window: any;
 
 let baseUrl = '/api';
@@ -56,10 +58,12 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = await resolveBaseUrl();
+  const token = getToken();
   const res = await fetch(`${base}${path}`, {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
     ...init,

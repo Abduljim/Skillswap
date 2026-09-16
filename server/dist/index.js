@@ -58,7 +58,13 @@ var init_env = __esm({
       LOG_LEVEL: process.env.LOG_LEVEL || "info",
       GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || "",
       ANDROID_PACKAGE_NAME: process.env.ANDROID_PACKAGE_NAME || "app.skillswap.client",
-      PLAY_BILLING_VERIFY: process.env.PLAY_BILLING_VERIFY || "false"
+      PLAY_BILLING_VERIFY: process.env.PLAY_BILLING_VERIFY || "false",
+      SMTP_HOST: process.env.SMTP_HOST || "",
+      SMTP_PORT: parseInt(process.env.SMTP_PORT || "587", 10),
+      SMTP_USER: process.env.SMTP_USER || "",
+      SMTP_PASS: process.env.SMTP_PASS || "",
+      SMTP_FROM: process.env.SMTP_FROM || "",
+      RESET_URL: process.env.RESET_URL || ""
     };
     if (env.NODE_ENV === "production" && env.JWT_SECRET === "dev-secret-change-me") {
       throw new Error("JWT_SECRET must be set in production");
@@ -305,7 +311,8 @@ var createSessionSchema = import_zod2.z.object({
 });
 var updateSessionSchema = createSessionSchema.partial();
 var createMessageSchema = import_zod2.z.object({
-  body: import_zod2.z.string().min(1).max(2e3)
+  body: import_zod2.z.string().min(1).max(2e6),
+  type: import_zod2.z.enum(["TEXT", "IMAGE", "STICKER"]).default("TEXT")
 });
 var createReviewSchema = import_zod2.z.object({
   rating: import_zod2.z.number().int().min(1).max(5),
@@ -417,6 +424,58 @@ var requireAdmin = async (req, _res, next) => {
 // src/services/auth.service.ts
 var import_crypto = require("crypto");
 init_env();
+
+// src/services/email.service.ts
+var import_nodemailer = __toESM(require("nodemailer"));
+init_env();
+function isConfigured() {
+  return Boolean(env.SMTP_HOST && env.SMTP_FROM);
+}
+async function sendEmail(opts) {
+  if (!isConfigured()) {
+    return { delivered: false };
+  }
+  try {
+    const transporter = import_nodemailer.default.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_PORT === 465,
+      auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : void 0
+    });
+    await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html
+    });
+    return { delivered: true };
+  } catch (e) {
+    console.error("[EMAIL] delivery failed:", e.message);
+    return { delivered: false, error: String(e?.message || e) };
+  }
+}
+function sendPasswordResetEmail(to, resetUrl) {
+  return sendEmail({
+    to,
+    subject: "SkillSwap \u2014 reset your password",
+    text: `Reset your password here:
+
+${resetUrl}
+
+The link expires in 1 hour and can be used once.
+If you didn't ask for this, ignore this email.`,
+    html: `
+      <div style="font-family:sans-serif;padding:24px;background:#f5f2ec;border-radius:16px">
+        <h2 style="margin:0 0 8px;color:#12131a">SkillSwap</h2>
+        <p style="color:#3b3b41;margin:0 0 16px">Click below to choose a new password.</p>
+        <a href="${resetUrl}" style="display:inline-block;background:#fb4f1d;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:bold">Reset password</a>
+        <p style="color:#8a8a8f;font-size:12px;margin-top:20px">If you didn't request this, you can safely ignore this email.</p>
+      </div>`
+  });
+}
+
+// src/services/auth.service.ts
 async function ensureAdminRole(email) {
   if (!env.ADMIN_EMAIL || email !== env.ADMIN_EMAIL) return false;
   await prisma.user.updateMany({
@@ -492,10 +551,10 @@ async function getMe(userId) {
 async function requestPasswordReset(email) {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
-    select: { id: true }
+    select: { id: true, email: true }
   });
   if (!user) {
-    return null;
+    return { delivered: false };
   }
   const raw = (0, import_crypto.randomBytes)(32).toString("hex");
   const tokenHash = (0, import_crypto.createHash)("sha256").update(raw).digest("hex");
@@ -506,8 +565,14 @@ async function requestPasswordReset(email) {
       expiresAt: new Date(Date.now() + 60 * 60 * 1e3)
     }
   });
+  const resetUrl = env.RESET_URL ? `${env.RESET_URL.replace(/\/$/, "")}?token=${raw}` : `${env.CLIENT_URL.replace(/\/$/, "")}/reset-password?token=${raw}`;
+  const result = await sendPasswordResetEmail(user.email, resetUrl);
+  if (result.delivered) {
+    console.log(`[PASSWORD-RESET] email sent to ${user.email}`);
+    return { delivered: true };
+  }
   console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
-  return raw;
+  return { delivered: false, token: raw };
 }
 async function changePassword(input) {
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
@@ -551,7 +616,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await signup(req.body);
     setAuthCookie(res, result.token);
-    ok(res, { user: result.user });
+    ok(res, { user: result.user, token: result.token });
   })
 );
 router.post(
@@ -560,7 +625,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await login(req.body);
     setAuthCookie(res, result.token);
-    ok(res, { user: result.user });
+    ok(res, { user: result.user, token: result.token });
   })
 );
 router.post("/logout", (_req, res) => {
@@ -579,14 +644,14 @@ router.post(
   "/forgot-password",
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    const raw = await requestPasswordReset(req.body.email);
-    if (!raw) {
+    const result = await requestPasswordReset(req.body.email);
+    if (result.delivered) {
       ok(res, { message: "If the email exists, a reset link has been sent." });
       return;
     }
     ok(res, {
       message: "Reset link generated.",
-      resetToken: raw
+      resetToken: result.token ?? null
     });
   })
 );
@@ -639,15 +704,18 @@ var LIMITS = {
   }
 };
 async function getUserTier(userId) {
-  const sub = await prisma.subscription.findUnique({
-    where: { userId },
-    include: { user: false }
-  });
-  if (!sub) return { tier: "FREE", subscription: null };
+  const [sub, user] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } })
+  ]);
+  const isAdmin = user?.isAdmin ?? false;
+  if (isAdmin) return { tier: "PRO", subscription: sub, isAdmin };
+  if (!sub) return { tier: "FREE", subscription: null, isAdmin };
   const active = sub.status === "ACTIVE" && (!sub.expiresAt || sub.expiresAt > /* @__PURE__ */ new Date());
   return {
     tier: active && sub.tier === "PRO" ? "PRO" : "FREE",
-    subscription: sub
+    subscription: sub,
+    isAdmin
   };
 }
 function limitsFor(tier) {
@@ -709,24 +777,90 @@ async function listProfileViewers(profileId) {
   };
 }
 
+// src/services/badges.service.ts
+var BADGES = {
+  EARLY_BIRD: {
+    code: "EARLY_BIRD",
+    label: "Early Bird",
+    emoji: "\u{1F426}",
+    description: "One of the first members",
+    tier: "BASIC"
+  },
+  SWAPPER: {
+    code: "SWAPPER",
+    label: "Swapper",
+    emoji: "\u{1F504}",
+    description: "Completed an exchange",
+    tier: "BASIC"
+  },
+  PRO_CROWN: {
+    code: "PRO_CROWN",
+    label: "Premium Crown",
+    emoji: "\u{1F451}",
+    description: "Pro membership active",
+    tier: "PRO"
+  },
+  TOP_TRADER: {
+    code: "TOP_TRADER",
+    label: "Top Trader",
+    emoji: "\u{1F3C6}",
+    description: "Premium skill trader",
+    tier: "PRO"
+  },
+  DIAMOND: {
+    code: "DIAMOND",
+    label: "Diamond Supporter",
+    emoji: "\u{1F48E}",
+    description: "Premium supporter of SkillSwap",
+    tier: "PRO"
+  }
+};
+function computeBadges(opts) {
+  const badges = [];
+  const joinedDays = opts.ageDays ?? 0;
+  const completed = opts.completedExchanges ?? 0;
+  if (joinedDays <= 60) {
+    badges.push(BADGES.EARLY_BIRD);
+  }
+  if (completed >= 1) {
+    badges.push(BADGES.SWAPPER);
+  }
+  if (opts.tier === "PRO") {
+    badges.push(BADGES.PRO_CROWN, BADGES.TOP_TRADER, BADGES.DIAMOND);
+  }
+  return badges;
+}
+
 // src/services/profile.service.ts
 async function getProfile(userId) {
-  const profile = await prisma.profile.findUnique({
-    where: { userId },
-    include: {
-      availabilities: true,
-      user: {
-        select: { id: true, email: true, displayName: true, createdAt: true, isAdmin: true }
+  const [profile, tierResult] = await Promise.all([
+    prisma.profile.findUnique({
+      where: { userId },
+      include: {
+        availabilities: true,
+        user: {
+          select: { id: true, email: true, displayName: true, createdAt: true, isAdmin: true }
+        }
       }
-    }
-  });
+    }),
+    getUserTier(userId)
+  ]);
   if (!profile) throw new NotFoundError("Profile not found");
   const userSkills = await prisma.userSkill.findMany({
     where: { userId },
     include: { skill: { select: { id: true, name: true, category: true } } },
     orderBy: [{ type: "asc" }, { skill: { name: "asc" } }]
   });
-  return { ...profile, userSkills };
+  const completedCount = await prisma.exchange.count({
+    where: { OR: [{ userAId: userId }, { userBId: userId }], status: "COMPLETED" }
+  });
+  const ageDays = Math.floor((Date.now() - profile.user.createdAt.getTime()) / 864e5);
+  const badges = computeBadges({
+    tier: tierResult.tier,
+    completedExchanges: completedCount,
+    ageDays
+  });
+  return { ...profile, tier: tierResult.tier, badges, userSkills };
 }
 async function updateProfile(userId, input) {
   const { availabilities, displayName, ...profileFields } = input;
@@ -804,6 +938,13 @@ async function getUserById(id, viewerId) {
   const ratings = user.reviewsReceived.map((r) => r.rating);
   const averageRating = ratings.length ? Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length * 10) / 10 : null;
   const completedCount = user._count.exchangesAsA + user._count.exchangesAsB;
+  const tierResult = await getUserTier(id);
+  const ageDays = Math.floor((Date.now() - user.createdAt.getTime()) / 864e5);
+  const badges = computeBadges({
+    tier: tierResult.tier,
+    completedExchanges: completedCount,
+    ageDays
+  });
   return {
     id: user.id,
     displayName: user.displayName,
@@ -814,6 +955,8 @@ async function getUserById(id, viewerId) {
     avatarUrl: user.profile?.avatarUrl ?? null,
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
+    tier: tierResult.tier,
+    badges,
     teachingSkills: user.userSkills.map((s) => ({
       ...s.skill,
       proficiency: s.proficiency
@@ -1979,7 +2122,12 @@ function initSocket(httpServer2) {
         const exchange = await prisma.exchange.findUnique({ where: { id: data.exchangeId } });
         if (!exchange || exchange.userAId !== userId && exchange.userBId !== userId || exchange.status !== "ACTIVE") return;
         const message = await prisma.message.create({
-          data: { exchangeId: data.exchangeId, senderId: userId, body: data.body },
+          data: {
+            exchangeId: data.exchangeId,
+            senderId: userId,
+            body: data.body,
+            type: data.type || "TEXT"
+          },
           include: { sender: { select: { id: true, displayName: true } } }
         });
         io.to(`exchange:${data.exchangeId}`).emit("message:new", message);
@@ -2001,6 +2149,52 @@ function initSocket(httpServer2) {
       socket.to(`exchange:${data.exchangeId}`).emit("typing", {
         exchangeId: data.exchangeId,
         userId
+      });
+    });
+    socket.on("call:request", async (data) => {
+      try {
+        const exchange = await prisma.exchange.findUnique({
+          where: { id: data.exchangeId },
+          select: { id: true, userAId: true, userBId: true, status: true }
+        });
+        if (!exchange || exchange.userAId !== userId && exchange.userBId !== userId || exchange.status !== "ACTIVE") {
+          return socket.emit("error", { message: "Cannot place call" });
+        }
+        const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+        const caller = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, displayName: true }
+        });
+        const payload = { exchangeId: data.exchangeId, caller };
+        io.to(`exchange:${data.exchangeId}`).emit("call:ringing", payload);
+        io.to(`user:${targetUserId}`).emit("call:ringing", payload);
+      } catch (e) {
+        socket.emit("error", { message: "Failed to initiate call" });
+      }
+    });
+    socket.on("call:accept", (data) => {
+      socket.to(`exchange:${data.exchangeId}`).emit("call:accepted", {
+        exchangeId: data.exchangeId,
+        acceptorId: userId
+      });
+    });
+    socket.on("call:reject", (data) => {
+      socket.to(`exchange:${data.exchangeId}`).emit("call:rejected", {
+        exchangeId: data.exchangeId,
+        rejectorId: userId
+      });
+    });
+    socket.on("call:hangup", (data) => {
+      socket.to(`exchange:${data.exchangeId}`).emit("call:ended", {
+        exchangeId: data.exchangeId,
+        endedBy: userId
+      });
+    });
+    socket.on("webrtc:signal", (data) => {
+      io.to(`user:${data.to}`).emit("webrtc:signal", {
+        exchangeId: data.exchangeId,
+        from: userId,
+        signal: data.signal
       });
     });
   });
@@ -2035,20 +2229,21 @@ async function listMessages(userId, exchangeId) {
   });
   return messages;
 }
-async function createMessage(userId, exchangeId, body) {
+async function createMessage(userId, exchangeId, body, type = "TEXT") {
   const exchange = await assertActiveParticipant(userId, exchangeId);
   const message = await prisma.message.create({
-    data: { exchangeId, senderId: userId, body },
+    data: { exchangeId, senderId: userId, body, type },
     include: { sender: { select: { id: true, displayName: true } } }
   });
   emitToExchange(exchangeId, "message:new", message);
   const otherUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+  const notifBody = type === "IMAGE" ? "\u{1F4F7} Image" : type === "STICKER" ? "\u{1F3A8} Sticker" : body.slice(0, 100);
   await prisma.notification.create({
     data: {
       userId: otherUserId,
       type: "NEW_MESSAGE",
       title: `New message from ${message.sender.displayName}`,
-      body: body.slice(0, 100),
+      body: notifBody,
       payload: { exchangeId, messageId: message.id }
     }
   });
@@ -2162,7 +2357,8 @@ router7.post(
     const msg = await createMessage(
       req.user.userId,
       req.params.id,
-      req.body.body
+      req.body.body,
+      req.body.type
     );
     ok(res, msg);
   })

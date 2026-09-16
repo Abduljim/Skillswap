@@ -105,7 +105,8 @@ export const updateSessionSchema = createSessionSchema.partial();
 
 // ============ Messages ============
 export const createMessageSchema = z.object({
-  body: z.string().min(1).max(2000),
+  body: z.string().min(1).max(2_000_000),
+  type: z.enum(['TEXT', 'IMAGE', 'STICKER']).default('TEXT'),
 });
 
 // ============ Reviews ============

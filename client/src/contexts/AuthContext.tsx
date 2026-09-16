@@ -1,6 +1,25 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, ApiError } from '../lib/api';
+import { getToken, setToken, clearToken } from '../lib/session';
 import type { User } from '../types';
+
+const USER_KEY = 'skillswap_user';
+
+function cacheUser(user: User | null) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  } catch { /* ignore */ }
+}
+
+function cachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -14,19 +33,28 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => (getToken() ? cachedUser() : null));
   const [loading, setLoading] = useState(true);
+
+  const setAndCache = (u: User | null) => {
+    setUser(u);
+    cacheUser(u);
+  };
 
   const refresh = async () => {
     try {
       const data = await api.get<User>('/auth/me');
-      setUser(data);
+      setAndCache(data);
     } catch (e) {
       // Only a real auth failure (expired/invalid token) should sign the user out.
       // Transient errors (offline on cold start, server restarting) must keep the
       // last known session so users aren't logged out when they reopen the app.
       const status = e instanceof ApiError ? e.status : 0;
-      if (status === 401 || status === 403) setUser(null);
+      if (status === 401 || status === 403) {
+        clearToken();
+        setAndCache(null);
+      }
+      // else: keep optimistic cached user; next successful request restores the session.
     } finally {
       setLoading(false);
     }
@@ -34,21 +62,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string) => {
-    const data = await api.post<{ user: User }>('/auth/login', { email, password });
-    setUser(data.user);
+    const data = await api.post<{ user: User; token?: string }>('/auth/login', { email, password });
+    if (data.token) setToken(data.token);
+    setAndCache(data.user);
   };
 
   const signup = async (email: string, password: string, displayName: string) => {
-    const data = await api.post<{ user: User }>('/auth/signup', { email, password, displayName });
-    setUser(data.user);
+    const data = await api.post<{ user: User; token?: string }>('/auth/signup', {
+      email,
+      password,
+      displayName,
+    });
+    if (data.token) setToken(data.token);
+    setAndCache(data.user);
   };
 
   const logout = async () => {
-    await api.post('/auth/logout');
-    setUser(null);
+    clearToken();
+    setAndCache(null);
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // ignore — local session dropped regardless
+    }
   };
 
   return (

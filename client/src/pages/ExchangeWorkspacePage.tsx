@@ -5,11 +5,43 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Avatar, EmptyState, Skeleton } from '../components/ui';
-import { ArrowLeft, Send, Calendar, CheckCircle2, Star } from 'lucide-react';
-import { io as socketIO, Socket } from 'socket.io-client';
+import { ArrowLeft, Send, Calendar, CheckCircle2, Star, Phone, Video } from 'lucide-react';
+import { Socket } from 'socket.io-client';
+import { createSocket } from '../lib/socket';
+import { useCall, CallOverlay } from '../components/CallOverlay';
 import type { Exchange, Message, Session } from '../types';
 
 type Tab = 'overview' | 'chat' | 'sessions';
+
+const FREE_STICKERS = ['👍', '👏', '😂', '😍', '🔥', '🙏', '🎉', '💯', '👀', '🤝'];
+const PRO_STICKERS = [...FREE_STICKERS, '✨', '🫡', '🦊', '💎', '🧠', '🚀', '⭐️', '💰', '🎯', '🍕', '☕', '🧩'];
+
+function useExchangeSocket(exchangeId: string, userId: string) {
+  const socketRef = useRef<Socket | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let s: Socket;
+    let cancelled = false;
+    (async () => {
+      s = await createSocket();
+      if (cancelled) return;
+      socketRef.current = s;
+      s.on('connect', () => {
+        s.emit('exchange:join', exchangeId);
+        setReady(true);
+      });
+    })();
+    return () => {
+      cancelled = true;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      setReady(false);
+    };
+  }, [exchangeId, userId]);
+
+  return { socket: socketRef.current, ready };
+}
 
 export default function ExchangeWorkspacePage() {
   const { id } = useParams<{ id: string }>();
@@ -49,7 +81,7 @@ export default function ExchangeWorkspacePage() {
             <div className="text-xs uppercase tracking-wide text-cream-300 font-semibold">Exchange with</div>
             <h1 className="font-display font-bold text-2xl">{partner.displayName}</h1>
           </div>
-          <div className="text-right">
+          <div className="flex items-center gap-2">
             <span className={`chip ${
               exchange.status === 'ACTIVE' ? 'bg-mint-500/30 text-mint-200' :
               exchange.status === 'COMPLETED' ? 'bg-cream-500/30 text-cream-200' :
@@ -69,23 +101,94 @@ export default function ExchangeWorkspacePage() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-ink-100">
-        {(['overview', 'chat', 'sessions'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-semibold capitalize -mb-px border-b-2 transition-colors ${
-              tab === t ? 'border-coral-500 text-ink-900' : 'border-transparent text-ink-500'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
+      {exchange.status === 'ACTIVE' && id && (
+        <WorkspaceWithCall exchangeId={id} partner={partner} tab={tab} setTab={setTab} exchange={exchange} />
+      )}
+      {exchange.status !== 'ACTIVE' && (
+        <div>
+          <TabBar tab={tab} setTab={setTab} />
+          {tab === 'overview' && <OverviewTab exchange={exchange} />}
+          {tab === 'sessions' && id && <SessionsTab exchangeId={id} user={user!} status={exchange.status} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceWithCall({
+  exchangeId,
+  partner,
+  tab,
+  setTab,
+  exchange,
+}: {
+  exchangeId: string;
+  partner: any;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  exchange: any;
+}) {
+  const { user } = useAuth();
+  const { socket } = useExchangeSocket(exchangeId, user!.id);
+  const call = useCall(socket, exchangeId, { id: user!.id, displayName: user!.displayName, avatarUrl: null }, {
+    id: partner.id,
+    displayName: partner.displayName,
+    avatarUrl: partner.profile?.avatarUrl ?? null,
+  });
+
+  const startCall = (video: boolean) => call.startCall(video).catch(() => {});
+
+  return (
+    <>
+      {/* Call buttons */}
+      <div className="flex justify-end gap-2 -mt-2">
+        {exchange.status === 'ACTIVE' && (
+          <>
+            <button onClick={() => startCall(false)} className="btn-outline text-xs px-3 py-2">
+              <Phone className="w-4 h-4" /> Voice call
+            </button>
+            <button onClick={() => startCall(true)} className="btn-outline text-xs px-3 py-2">
+              <Video className="w-4 h-4" /> Video call
+            </button>
+          </>
+        )}
       </div>
 
+      <TabBar tab={tab} setTab={setTab} />
       {tab === 'overview' && <OverviewTab exchange={exchange} />}
-      {tab === 'chat' && <ChatTab exchangeId={id!} user={user!} />}
-      {tab === 'sessions' && <SessionsTab exchangeId={id!} user={user!} status={exchange.status} />}
+      {tab === 'chat' && <ChatTab exchangeId={exchangeId} user={user!} socket={socket} />}
+      {tab === 'sessions' && <SessionsTab exchangeId={exchangeId} user={user!} status={exchange.status} />}
+
+      <CallOverlay
+        call={call.state}
+        partner={call.state.peer}
+        onAccept={call.acceptCall}
+        onDecline={call.declineCall}
+        onHangup={call.hangup}
+        onToggleMic={call.toggleMic}
+        onToggleCamera={call.toggleCamera}
+        micMuted={call.micMuted}
+        localVideoRef={call.localVideoRef}
+        remoteVideoRef={call.remoteVideoRef}
+      />
+    </>
+  );
+}
+
+function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  return (
+    <div className="flex gap-1 border-b border-ink-100">
+      {(['overview', 'chat', 'sessions'] as Tab[]).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTab(t)}
+          className={`px-4 py-2 text-sm font-semibold capitalize -mb-px border-b-2 transition-colors ${
+            tab === t ? 'border-coral-500 text-ink-900' : 'border-transparent text-ink-500'
+          }`}
+        >
+          {t}
+        </button>
+      ))}
     </div>
   );
 }
@@ -180,42 +283,59 @@ function OverviewTab({ exchange }: { exchange: any }) {
   );
 }
 
-function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
+function ChatTab({
+  exchangeId,
+  user,
+  socket: controlledSocket,
+}: {
+  exchangeId: string;
+  user: any;
+  socket?: Socket | null;
+}) {
   const { data: messages = [], refetch } = useQuery({
     queryKey: ['messages', exchangeId],
     queryFn: () => api.get<Message[]>(`/exchanges/${exchangeId}/messages`),
   });
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showStickers, setShowStickers] = useState(false);
+  const [stickerPack, setStickerPack] = useState<'free' | 'pro'>('free');
+  const socketRef = useRef<Socket | null>(controlledSocket ?? null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: subData } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
+  });
+  const isPro = subData?.tier === 'PRO';
+  const stickers = stickerPack === 'pro' && isPro ? PRO_STICKERS : FREE_STICKERS;
 
   useEffect(() => {
-    const s = socketIO('/', { withCredentials: true });
-    socketRef.current = s;
-    s.on('connect', () => {
-      s.emit('exchange:join', exchangeId);
-    });
-    s.on('message:new', (msg: Message) => {
-      refetch();
-    });
-    s.on('typing', (data: { userId: string }) => {
+    if (!controlledSocket) return;
+    socketRef.current = controlledSocket;
+    const onMsg = () => refetch();
+    const onTyping = (data: { userId: string }) => {
       if (data.userId !== user.id) setTyping(true);
       setTimeout(() => setTyping(false), 2000);
-    });
-    return () => {
-      s.disconnect();
     };
-  }, [exchangeId]);
+    controlledSocket.on('message:new', onMsg);
+    controlledSocket.on('typing', onTyping);
+    return () => {
+      controlledSocket.off('message:new', onMsg);
+      controlledSocket.off('typing', onTyping);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledSocket, exchangeId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  const sendMessage = async () => {
-    if (!text.trim()) return;
+  const sendMessage = async (body: string, type: string = 'TEXT') => {
+    if (!body.trim()) return;
     try {
-      await api.post(`/exchanges/${exchangeId}/messages`, { body: text });
+      await api.post(`/exchanges/${exchangeId}/messages`, { body, type });
       setText('');
       refetch();
     } catch (e) {
@@ -223,8 +343,55 @@ function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
     }
   };
 
+  const sendImage = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      return; // silently cap at 2MB
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      await sendMessage(dataUrl, 'IMAGE');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const sendSticker = (emoji: string) => {
+    sendMessage(emoji, 'STICKER');
+    setShowStickers(false);
+  };
+
   return (
     <div className="card p-4 md:p-5 flex flex-col h-[60vh]">
+      {/* Sticker panel */}
+      {showStickers && (
+        <div className="border-b border-ink-100 pb-3 mb-3 animate-slide-up">
+          <div className="flex items-center gap-2 mb-2">
+            {(['free', 'pro'] as const).map((pack) => (
+              <button
+                key={pack}
+                onClick={() => setStickerPack(pack)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                  stickerPack === pack ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-700'
+                } ${pack === 'pro' && !isPro ? 'opacity-50' : ''}`}
+              >
+                {pack} {pack === 'pro' && !isPro ? '(Pro)' : ''}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-6 gap-2">
+            {stickers.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => sendSticker(emoji)}
+                className="h-11 w-11 text-2xl flex items-center justify-center rounded-xl hover:bg-cream-100 active:scale-90 transition-transform"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto space-y-3 pb-2">
         {messages.length === 0 && (
           <div className="text-center text-sm text-ink-500 py-8">No messages yet. Say hello.</div>
@@ -238,8 +405,15 @@ function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
                   mine ? 'bg-ink-900 text-cream-50' : 'bg-cream-100 text-ink-900'
                 }`}
               >
-                <div className="text-sm">{m.body}</div>
+                {m.type === 'IMAGE' ? (
+                  <img src={m.body} alt="Shared image" className="rounded-xl max-w-[260px] max-h-64 object-cover" />
+                ) : m.type === 'STICKER' ? (
+                  <div className="text-5xl leading-none py-1">{m.body}</div>
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>
+                )}
                 <div className={`text-[10px] mt-1 ${mine ? 'text-cream-300' : 'text-ink-500'}`}>
+                  {m.type === 'IMAGE' && '📷 '}
                   {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -250,9 +424,36 @@ function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex gap-2 pt-3 border-t border-ink-100">
+      <div className="flex gap-2 pt-3 border-t border-ink-100 items-end">
+        <div className="relative flex items-center gap-1">
+          <button
+            onClick={() => setShowStickers((v) => !v)}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
+            title="Stickers"
+          >
+            😊
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg hover:bg-cream-100 active:scale-90"
+            title="Send image"
+          >
+            📷
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) sendImage(f);
+            }}
+          />
+        </div>
         <input
-          className="input"
+          className="input flex-1"
           placeholder="Type a message…"
           value={text}
           onChange={(e) => {
@@ -262,11 +463,11 @@ function ChatTab({ exchangeId, user }: { exchangeId: string; user: any }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              sendMessage();
+              sendMessage(text);
             }
           }}
         />
-        <button onClick={sendMessage} className="btn-coral">
+        <button onClick={() => sendMessage(text)} className="btn-coral shrink-0">
           <Send className="w-4 h-4" />
         </button>
       </div>

@@ -23,18 +23,22 @@ export const LIMITS = {
 
 export type Tier = 'FREE' | 'PRO';
 
-export async function getUserTier(userId: string): Promise<{ tier: Tier; subscription: any | null }> {
-  const sub = await prisma.subscription.findUnique({
-    where: { userId },
-    include: { user: false },
-  });
-  if (!sub) return { tier: 'FREE', subscription: null };
+export async function getUserTier(userId: string): Promise<{ tier: Tier; subscription: any | null; isAdmin: boolean }> {
+  const [sub, user] = await Promise.all([
+    prisma.subscription.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } }),
+  ]);
+  const isAdmin = user?.isAdmin ?? false;
+  // Admins always get Pro/Premium for free (operator perk).
+  if (isAdmin) return { tier: 'PRO', subscription: sub, isAdmin };
+  if (!sub) return { tier: 'FREE', subscription: null, isAdmin };
   // Active if status ACTIVE and not expired
   const active =
     sub.status === 'ACTIVE' && (!sub.expiresAt || sub.expiresAt > new Date());
   return {
     tier: active && sub.tier === 'PRO' ? 'PRO' : 'FREE',
     subscription: sub,
+    isAdmin,
   };
 }
 

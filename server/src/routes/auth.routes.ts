@@ -20,7 +20,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await authService.signup(req.body);
     setAuthCookie(res, result.token);
-    ok(res, { user: result.user });
+    ok(res, { user: result.user, token: result.token });
   })
 );
 
@@ -30,7 +30,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await authService.login(req.body);
     setAuthCookie(res, result.token);
-    ok(res, { user: result.user });
+    ok(res, { user: result.user, token: result.token });
   })
 );
 
@@ -52,17 +52,17 @@ router.post(
   '/forgot-password',
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    const raw = await authService.requestPasswordReset(req.body.email);
-    if (!raw) {
+    const result = await authService.requestPasswordReset(req.body.email);
+    // When email was actually sent, just acknowledge — don't leak the token.
+    if (result.delivered) {
       ok(res, { message: 'If the email exists, a reset link has been sent.' });
       return;
     }
-    // Temporarily return the reset token to the client because no email provider
-    // is configured. Remove once real email delivery exists (then revert to the
-    // generic "If the email exists…" response above).
+    // No SMTP configured: return the token to the caller so the dev flow still
+    // completes. Strip in production once SMTP is live.
     ok(res, {
       message: 'Reset link generated.',
-      resetToken: raw,
+      resetToken: result.token ?? null,
     });
   })
 );

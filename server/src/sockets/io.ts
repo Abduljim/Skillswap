@@ -59,7 +59,7 @@ export function initSocket(httpServer: HTTPServer) {
       socket.leave(`exchange:${exchangeId}`);
     });
 
-    socket.on('message:send', async (data: { exchangeId: string; body: string }) => {
+    socket.on('message:send', async (data: { exchangeId: string; body: string; type?: string }) => {
       try {
         const exchange = await prisma.exchange.findUnique({ where: { id: data.exchangeId } });
         if (
@@ -69,7 +69,12 @@ export function initSocket(httpServer: HTTPServer) {
         ) return;
 
         const message = await prisma.message.create({
-          data: { exchangeId: data.exchangeId, senderId: userId, body: data.body },
+          data: {
+            exchangeId: data.exchangeId,
+            senderId: userId,
+            body: data.body,
+            type: (data.type as any) || 'TEXT',
+          },
           include: { sender: { select: { id: true, displayName: true } } },
         });
         io!.to(`exchange:${data.exchangeId}`).emit('message:new', message);
@@ -93,6 +98,59 @@ export function initSocket(httpServer: HTTPServer) {
       socket.to(`exchange:${data.exchangeId}`).emit('typing', {
         exchangeId: data.exchangeId,
         userId,
+      });
+    });
+
+    // ── Call signaling ────────────────────────────────────────────────
+    socket.on('call:request', async (data: { exchangeId: string }) => {
+      try {
+        const exchange = await prisma.exchange.findUnique({
+          where: { id: data.exchangeId },
+          select: { id: true, userAId: true, userBId: true, status: true },
+        });
+        if (!exchange || (exchange.userAId !== userId && exchange.userBId !== userId) || exchange.status !== 'ACTIVE') {
+          return socket.emit('error', { message: 'Cannot place call' });
+        }
+        const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+        const caller = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, displayName: true },
+        });
+        // Ring both the exchange room (if target is there) AND the user room
+        const payload = { exchangeId: data.exchangeId, caller };
+        io!.to(`exchange:${data.exchangeId}`).emit('call:ringing', payload);
+        io!.to(`user:${targetUserId}`).emit('call:ringing', payload);
+      } catch (e) {
+        socket.emit('error', { message: 'Failed to initiate call' });
+      }
+    });
+
+    socket.on('call:accept', (data: { exchangeId: string }) => {
+      socket.to(`exchange:${data.exchangeId}`).emit('call:accepted', {
+        exchangeId: data.exchangeId,
+        acceptorId: userId,
+      });
+    });
+
+    socket.on('call:reject', (data: { exchangeId: string }) => {
+      socket.to(`exchange:${data.exchangeId}`).emit('call:rejected', {
+        exchangeId: data.exchangeId,
+        rejectorId: userId,
+      });
+    });
+
+    socket.on('call:hangup', (data: { exchangeId: string }) => {
+      socket.to(`exchange:${data.exchangeId}`).emit('call:ended', {
+        exchangeId: data.exchangeId,
+        endedBy: userId,
+      });
+    });
+
+    socket.on('webrtc:signal', (data: { exchangeId: string; to: string; signal: any }) => {
+      io!.to(`user:${data.to}`).emit('webrtc:signal', {
+        exchangeId: data.exchangeId,
+        from: userId,
+        signal: data.signal,
       });
     });
   });

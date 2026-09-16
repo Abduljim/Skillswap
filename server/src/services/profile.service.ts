@@ -1,24 +1,37 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../utils/errors';
-import { recordProfileView } from './entitlements.service';
+import { recordProfileView, getUserTier } from './entitlements.service';
+import { computeBadges } from './badges.service';
 
 export async function getProfile(userId: string) {
-  const profile = await prisma.profile.findUnique({
-    where: { userId },
-    include: {
-      availabilities: true,
-      user: {
-        select: { id: true, email: true, displayName: true, createdAt: true, isAdmin: true },
+  const [profile, tierResult] = await Promise.all([
+    prisma.profile.findUnique({
+      where: { userId },
+      include: {
+        availabilities: true,
+        user: {
+          select: { id: true, email: true, displayName: true, createdAt: true, isAdmin: true },
+        },
       },
-    },
-  });
+    }),
+    getUserTier(userId),
+  ]);
   if (!profile) throw new NotFoundError('Profile not found');
   const userSkills = await prisma.userSkill.findMany({
     where: { userId },
     include: { skill: { select: { id: true, name: true, category: true } } },
     orderBy: [{ type: 'asc' }, { skill: { name: 'asc' } }],
   });
-  return { ...profile, userSkills };
+  const completedCount = await prisma.exchange.count({
+    where: { OR: [{ userAId: userId }, { userBId: userId }], status: 'COMPLETED' },
+  });
+  const ageDays = Math.floor((Date.now() - profile.user.createdAt.getTime()) / 86400000);
+  const badges = computeBadges({
+    tier: tierResult.tier,
+    completedExchanges: completedCount,
+    ageDays,
+  });
+  return { ...profile, tier: tierResult.tier, badges, userSkills };
 }
 
 export async function updateProfile(
@@ -120,6 +133,13 @@ export async function getUserById(id: string, viewerId?: string) {
     : null;
 
   const completedCount = user._count.exchangesAsA + user._count.exchangesAsB;
+  const tierResult = await getUserTier(id);
+  const ageDays = Math.floor((Date.now() - user.createdAt.getTime()) / 86400000);
+  const badges = computeBadges({
+    tier: tierResult.tier,
+    completedExchanges: completedCount,
+    ageDays,
+  });
 
   return {
     id: user.id,
@@ -131,6 +151,8 @@ export async function getUserById(id: string, viewerId?: string) {
     avatarUrl: user.profile?.avatarUrl ?? null,
     learningFormat: user.profile?.learningFormat ?? null,
     availabilities: user.profile?.availabilities ?? [],
+    tier: tierResult.tier,
+    badges,
     teachingSkills: user.userSkills.map((s) => ({
       ...s.skill,
       proficiency: s.proficiency,
