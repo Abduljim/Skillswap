@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { MatchScoreBadge, Avatar, EmptyState } from '../components/ui';
-import { Users, ArrowRight, Repeat, CheckCircle2, Star, Plus, MessageSquare } from 'lucide-react';
+import { Users, ArrowRight, Repeat, CheckCircle2, Star, Plus, MessageSquare, Crown, Sparkles } from 'lucide-react';
 import type { Match, ExchangeRequest, Exchange, Notification } from '../types';
 
 export default function DashboardPage() {
@@ -24,11 +24,16 @@ export default function DashboardPage() {
     queryKey: ['notifications'],
     queryFn: () => api.get<{ notifications: Notification[]; unreadCount: number }>('/notifications'),
   });
+  const { data: subData } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
+  });
 
   const bestMatches = matchesData?.matches || [];
   const pending = receivedRequests?.filter((r) => r.status === 'PENDING') || [];
   const activeExchanges = exchanges?.filter((e) => e.status === 'ACTIVE') || [];
   const completed = exchanges?.filter((e) => e.status === 'COMPLETED') || [];
+  const isPro = subData?.tier === 'PRO';
   const greeting = greetingFor();
 
   return (
@@ -67,6 +72,9 @@ export default function DashboardPage() {
           icon={<CheckCircle2 className="w-4 h-4" />}
         />
       </div>
+
+      {/* Upgrade teaser (shown only on Free tier) */}
+      {!isPro && <MembershipTeaser />}
 
       {/* Pending requests */}
       {pending.length > 0 && (
@@ -286,4 +294,31 @@ function greetingFor() {
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+function MembershipTeaser() {
+  return (
+    <Link
+      to="/membership"
+      className="block card p-6 bg-gradient-to-br from-coral-500 to-coral-600 text-white hover:shadow-soft-lg transition-shadow relative overflow-hidden"
+    >
+      <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+      <div className="relative flex items-center gap-4">
+        <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+          <Crown className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display font-bold text-lg leading-tight">
+            Go Pro — skip the limits
+          </div>
+          <div className="text-sm text-coral-100 mt-0.5">
+            Unlimited requests, who-viewed-me, boosts &amp; a Pro badge.
+          </div>
+        </div>
+        <div className="hidden sm:flex items-center gap-1 text-sm font-semibold bg-white/20 rounded-lg px-3 py-2">
+          Upgrade <ArrowRight className="w-4 h-4" />
+        </div>
+      </div>
+    </Link>
+  );
 }

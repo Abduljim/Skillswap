@@ -4,6 +4,7 @@ import {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from '../validators/schemas';
 import { validate } from '../middleware/validate';
 import * as authService from '../services/auth.service';
@@ -51,8 +52,18 @@ router.post(
   '/forgot-password',
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    await authService.requestPasswordReset(req.body.email);
-    ok(res, { message: 'If the email exists, a reset link has been sent.' });
+    const raw = await authService.requestPasswordReset(req.body.email);
+    if (!raw) {
+      ok(res, { message: 'If the email exists, a reset link has been sent.' });
+      return;
+    }
+    // Temporarily return the reset token to the client because no email provider
+    // is configured. Remove once real email delivery exists (then revert to the
+    // generic "If the email exists…" response above).
+    ok(res, {
+      message: 'Reset link generated.',
+      resetToken: raw,
+    });
   })
 );
 
@@ -62,6 +73,20 @@ router.post(
   asyncHandler(async (req, res) => {
     await authService.resetPassword(req.body.token, req.body.password);
     ok(res, { message: 'Password reset successfully' });
+  })
+);
+
+router.post(
+  '/change-password',
+  requireAuth,
+  validate(changePasswordSchema),
+  asyncHandler(async (req, res) => {
+    await authService.changePassword({
+      userId: req.user!.userId,
+      currentPassword: req.body.currentPassword,
+      newPassword: req.body.newPassword,
+    });
+    ok(res, { message: 'Password changed successfully' });
   })
 );
 

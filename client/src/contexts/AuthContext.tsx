@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 
 interface AuthState {
@@ -21,8 +21,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api.get<User>('/auth/me');
       setUser(data);
-    } catch {
-      setUser(null);
+    } catch (e) {
+      // Only a real auth failure (expired/invalid token) should sign the user out.
+      // Transient errors (offline on cold start, server restarting) must keep the
+      // last known session so users aren't logged out when they reopen the app.
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 401 || status === 403) setUser(null);
     } finally {
       setLoading(false);
     }

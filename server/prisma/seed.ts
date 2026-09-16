@@ -1,22 +1,27 @@
 /**
  * Seed script for SkillSwap.
- * Creates 8 demo users with skills each teaches/wants, plus a curated
- * catalogue of 200+ skills across 13 categories.
+ *   1. Upserts the 200+ skill catalogue (additive, idempotent).
+ *   2. Permanently removes the built-in demo accounts (they were placeholders;
+ *      real user accounts are never touched).
  *
  * Run: cd server && npm run seed           (uses tsx)
- *   or: cd server && node scripts/seed-prod.js   (pure CJS, prod-friendly)
  */
-import {
-  PrismaClient,
-  Proficiency,
-  UserSkillType, // not in schema as enum — using string literal 'TEACH' | 'WANT' instead
-  LearningFormat,
-  Weekday,
-  TimeOfDay,
-} from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+// Built-in demo accounts that must never appear in production. Only these exact
+// emails are removed — every other account is preserved.
+const DEMO_EMAILS = [
+  'alice@example.com',
+  'bob@example.com',
+  'sarah@example.com',
+  'david@example.com',
+  'fatima@example.com',
+  'emma@example.com',
+  'james@example.com',
+  'zainab@example.com',
+];
 
 // ---------- Skill catalogue (200+ skills) ----------
 const SKILLS: Array<{ name: string; category: string; description?: string }> = [
@@ -277,198 +282,18 @@ const SKILLS: Array<{ name: string; category: string; description?: string }> = 
   { name: 'Video Game Coaching', category: 'Games', description: 'Aim, strategy, and rank-up help' },
 ];
 
-const USERS = [
-  {
-    email: 'alice@example.com',
-    displayName: 'Alice Adebayo',
-    university: 'University of Lagos',
-    department: 'Computer Science',
-    yearLevel: '3rd Year',
-    bio: 'CS senior. Love teaching Python and SQL. Looking to learn photography and cooking.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=47',
-    learningFormat: LearningFormat.EITHER,
-    avail: [
-      { weekday: Weekday.MONDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.WEDNESDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.SATURDAY, timeOfDay: TimeOfDay.MORNING },
-    ],
-    teach: [
-      { name: 'Python', proficiency: Proficiency.ADVANCED },
-      { name: 'SQL', proficiency: Proficiency.ADVANCED },
-      { name: 'Git', proficiency: Proficiency.EXPERT },
-      { name: 'Data Analysis', proficiency: Proficiency.INTERMEDIATE },
-      { name: 'Public Speaking', proficiency: Proficiency.ADVANCED },
-    ],
-    want: ['Photography', 'Cooking', 'Yoga', 'UI Design', 'Spanish'],
-    isAdmin: true,
-  },
-  {
-    email: 'bob@example.com',
-    displayName: 'Bob Okeke',
-    university: 'University of Lagos',
-    department: 'Design',
-    yearLevel: '4th Year',
-    bio: 'Product designer by day, musician by night. Can teach Figma and guitar.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=12',
-    learningFormat: LearningFormat.EITHER,
-    avail: [
-      { weekday: Weekday.TUESDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.THURSDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.SATURDAY, timeOfDay: TimeOfDay.MORNING },
-    ],
-    teach: [
-      { name: 'Figma', proficiency: Proficiency.EXPERT },
-      { name: 'UI Design', proficiency: Proficiency.ADVANCED },
-      { name: 'Photography', proficiency: Proficiency.INTERMEDIATE },
-      { name: 'Guitar', proficiency: Proficiency.ADVANCED },
-      { name: 'Branding', proficiency: Proficiency.INTERMEDIATE },
-    ],
-    want: ['Python', 'SQL', 'Machine Learning', 'Data Analysis'],
-  },
-  {
-    email: 'sarah@example.com',
-    displayName: 'Sarah Kim',
-    university: 'Yale University',
-    department: 'Linguistics',
-    yearLevel: '2nd Year',
-    bio: 'Linguistics major, polyglot. I teach French and Spanish, want to learn guitar and cooking.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=49',
-    learningFormat: LearningFormat.ONLINE,
-    avail: [
-      { weekday: Weekday.MONDAY, timeOfDay: TimeOfDay.AFTERNOON },
-      { weekday: Weekday.WEDNESDAY, timeOfDay: TimeOfDay.AFTERNOON },
-      { weekday: Weekday.FRIDAY, timeOfDay: TimeOfDay.MORNING },
-    ],
-    teach: [
-      { name: 'French', proficiency: Proficiency.EXPERT },
-      { name: 'Spanish', proficiency: Proficiency.ADVANCED },
-      { name: 'Creative Writing', proficiency: Proficiency.ADVANCED },
-      { name: 'English as a Second Language', proficiency: Proficiency.EXPERT },
-      { name: 'Storytelling', proficiency: Proficiency.ADVANCED },
-    ],
-    want: ['Guitar', 'Cooking', 'Yoga', 'Photography'],
-    isPro: true,
-  },
-  {
-    email: 'david@example.com',
-    displayName: 'David Mensah',
-    university: 'University of Cape Coast',
-    department: 'Visual Arts',
-    yearLevel: '3rd Year',
-    bio: 'Pro photographer. Swap with me for code or business help.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=33',
-    learningFormat: LearningFormat.IN_PERSON,
-    avail: [
-      { weekday: Weekday.MONDAY, timeOfDay: TimeOfDay.AFTERNOON },
-      { weekday: Weekday.WEDNESDAY, timeOfDay: TimeOfDay.AFTERNOON },
-      { weekday: Weekday.FRIDAY, timeOfDay: TimeOfDay.MORNING },
-    ],
-    teach: [
-      { name: 'Photography', proficiency: Proficiency.EXPERT },
-      { name: 'Portrait Photography', proficiency: Proficiency.ADVANCED },
-      { name: 'Photo Editing', proficiency: Proficiency.ADVANCED },
-      { name: 'Storytelling', proficiency: Proficiency.INTERMEDIATE },
-    ],
-    want: ['JavaScript', 'React', 'SEO', 'Marketing'],
-  },
-  {
-    email: 'fatima@example.com',
-    displayName: 'Fatima Hassan',
-    university: 'University of Edinburgh',
-    department: 'Marketing',
-    yearLevel: '4th Year',
-    bio: 'Marketing strategist and yoga teacher.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=45',
-    learningFormat: LearningFormat.ONLINE,
-    avail: [
-      { weekday: Weekday.TUESDAY, timeOfDay: TimeOfDay.MORNING },
-      { weekday: Weekday.THURSDAY, timeOfDay: TimeOfDay.MORNING },
-      { weekday: Weekday.SATURDAY, timeOfDay: TimeOfDay.AFTERNOON },
-    ],
-    teach: [
-      { name: 'Marketing', proficiency: Proficiency.EXPERT },
-      { name: 'SEO', proficiency: Proficiency.ADVANCED },
-      { name: 'Yoga', proficiency: Proficiency.EXPERT },
-      { name: 'Meditation', proficiency: Proficiency.ADVANCED },
-      { name: 'Social Media Marketing', proficiency: Proficiency.ADVANCED },
-    ],
-    want: ['Arabic', 'Cooking', 'Web Development', 'Data Analysis'],
-    isPro: true,
-  },
-  {
-    email: 'emma@example.com',
-    displayName: 'Emma Larsson',
-    university: 'KTH Royal Institute of Technology',
-    department: 'Computer Science',
-    yearLevel: '4th Year',
-    bio: 'ML engineer. Teach data science, want to learn music production.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=44',
-    learningFormat: LearningFormat.EITHER,
-    avail: [
-      { weekday: Weekday.MONDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.WEDNESDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.SUNDAY, timeOfDay: TimeOfDay.AFTERNOON },
-    ],
-    teach: [
-      { name: 'Machine Learning', proficiency: Proficiency.EXPERT },
-      { name: 'Python', proficiency: Proficiency.ADVANCED },
-      { name: 'Data Science', proficiency: Proficiency.ADVANCED },
-      { name: 'Deep Learning', proficiency: Proficiency.ADVANCED },
-    ],
-    want: ['Music Production', 'Piano', 'DJing', 'Cooking'],
-  },
-  {
-    email: 'james@example.com',
-    displayName: 'James Wright',
-    university: 'Stanford University',
-    department: 'Business Administration',
-    yearLevel: '4th Year',
-    bio: 'Career changer. Teach business and sales, want to learn coding.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=15',
-    learningFormat: LearningFormat.EITHER,
-    avail: [
-      { weekday: Weekday.FRIDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.SATURDAY, timeOfDay: TimeOfDay.EVENING },
-      { weekday: Weekday.SUNDAY, timeOfDay: TimeOfDay.MORNING },
-    ],
-    teach: [
-      { name: 'Sales', proficiency: Proficiency.EXPERT },
-      { name: 'Public Speaking', proficiency: Proficiency.ADVANCED },
-      { name: 'Negotiation', proficiency: Proficiency.ADVANCED },
-      { name: 'Entrepreneurship', proficiency: Proficiency.ADVANCED },
-      { name: 'Interview Prep', proficiency: Proficiency.ADVANCED },
-    ],
-    want: ['JavaScript', 'Python', 'Web Development', 'Photography'],
-  },
-  {
-    email: 'zainab@example.com',
-    displayName: 'Zainab Okafor',
-    university: 'University of Ibadan',
-    department: 'Medicine',
-    yearLevel: '3rd Year',
-    bio: 'Med student. Teach biology and chemistry, want to learn design.',
-    avatarUrl: 'https://i.pravatar.cc/300?img=20',
-    learningFormat: LearningFormat.ONLINE,
-    avail: [
-      { weekday: Weekday.MONDAY, timeOfDay: TimeOfDay.MORNING },
-      { weekday: Weekday.WEDNESDAY, timeOfDay: TimeOfDay.MORNING },
-      { weekday: Weekday.FRIDAY, timeOfDay: TimeOfDay.AFTERNOON },
-    ],
-    teach: [
-      { name: 'Biology', proficiency: Proficiency.EXPERT },
-      { name: 'Chemistry', proficiency: Proficiency.ADVANCED },
-      { name: 'Statistics', proficiency: Proficiency.ADVANCED },
-      { name: 'Research Methods', proficiency: Proficiency.INTERMEDIATE },
-    ],
-    want: ['UI Design', 'Photoshop', 'Figma', 'Content Creation'],
-  },
-];
+// ──────────────────────────────────────────────────────────────────────────────
+// Demo accounts — these are fixture data only and must never exist in a running
+// instance. The seed permanently removes any that were created by an older
+// version of this script. The app starts with zero user accounts.
+// ──────────────────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('🌱 Seeding SkillSwap…');
 
-  // Skills — upsert so re-running keeps everything idempotent
-  console.log(`Creating ${SKILLS.length} skills…`);
+  // ── Skills (always additive, idempotent) ──────────────────────────────────
+  const skillCount = await prisma.skill.count();
+  console.log(`Upserting ${SKILLS.length} skills…`);
   for (const s of SKILLS) {
     await prisma.skill.upsert({
       where: { name: s.name },
@@ -476,93 +301,29 @@ async function main() {
       create: { name: s.name, category: s.category, description: s.description ?? null, isActive: true },
     });
   }
+  console.log(`Skills: ${skillCount} → ${await prisma.skill.count()} (missing ones added).`);
 
-  // Wipe in dependency order
-  console.log('Clearing existing users…');
-  await prisma.message.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.review.deleteMany();
-  await prisma.exchangeCompletionConfirmation.deleteMany();
-  await prisma.exchange.deleteMany();
-  await prisma.exchangeRequest.deleteMany();
-  await prisma.userSkill.deleteMany();
-  await prisma.availability.deleteMany();
-  await prisma.profile.deleteMany();
-  await prisma.passwordResetToken.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.report.deleteMany();
-  await prisma.block.deleteMany();
-  await prisma.profileView.deleteMany();
-  await prisma.boost.deleteMany();
-  await prisma.subscription.deleteMany();
-  await prisma.user.deleteMany();
-
-  console.log(`Creating ${USERS.length} users…`);
-  const passwordHash = await bcrypt.hash('password123', 10);
-
-  for (const u of USERS) {
-    const user = await prisma.user.create({
-      data: {
-        email: u.email,
-        passwordHash,
-        displayName: u.displayName,
-        isAdmin: u.isAdmin ?? false,
-        profile: {
-          create: {
-            university: u.university,
-            department: u.department,
-            yearLevel: u.yearLevel,
-            bio: u.bio,
-            avatarUrl: u.avatarUrl,
-            learningFormat: u.learningFormat,
-            availabilities: { create: u.avail },
-          },
-        },
-      },
-    });
-
-    const allNames = [...u.teach.map((t) => t.name), ...u.want];
-    const skills = await prisma.skill.findMany({ where: { name: { in: allNames } } });
-    const skillMap = new Map(skills.map((s) => [s.name, s.id]));
-
-    for (const t of u.teach) {
-      const skillId = skillMap.get(t.name);
-      if (!skillId) continue;
-      await prisma.userSkill.create({
-        data: { userId: user.id, skillId, type: 'TEACH', proficiency: t.proficiency },
-      });
-    }
-    for (const w of u.want) {
-      const skillId = skillMap.get(w);
-      if (!skillId) continue;
-      await prisma.userSkill.create({
-        data: { userId: user.id, skillId, type: 'WANT', proficiency: Proficiency.BEGINNER },
-      });
-    }
-
-    if (u.isPro) {
-      await prisma.subscription.create({
-        data: {
-          userId: user.id,
-          tier: 'PRO',
-          status: 'ACTIVE',
-          platform: 'WEB',
-          productId: 'skillswap_pro_web_yearly',
-          startedAt: new Date(),
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-          autoRenew: true,
-        },
-      });
-    }
+  // ── Remove built-in demo accounts ─────────────────────────────────────────
+  const demo = await prisma.user.findMany({
+    where: { email: { in: DEMO_EMAILS } },
+    select: { id: true, email: true },
+  });
+  if (demo.length) {
+    // User delete cascades to profile, userSkills, subscriptions, etc. Some
+    // FK constraints (messages, exchanges) can hold up a plain deleteMany, so
+    // delete individually in a transaction — the cascade handles cleanup.
+    await prisma.$transaction(
+      demo.map((u) => prisma.user.delete({ where: { id: u.id } })),
+    );
+    console.log(`Removed ${demo.length} demo accounts: ${demo.map((u) => u.email).join(', ')}`);
+  } else {
+    console.log('No demo accounts present (clean state).');
   }
 
+  const realUsers = await prisma.user.count();
+  console.log(`Registered users remaining: ${realUsers}`);
   console.log('✅ Seed complete!');
-  console.log('📧 Test logins (password: password123):');
-  for (const u of USERS) {
-    const tags = [u.isPro && 'Pro', u.isAdmin && 'admin'].filter(Boolean).join(', ');
-    console.log(`   ${u.email}${tags ? ' (' + tags + ')' : ''}`);
-  }
-  console.log(`\n📊 ${SKILLS.length} skills across ${new Set(SKILLS.map((s) => s.category)).size} categories`);
+  console.log(`📊 ${await prisma.skill.count()} skills across ${new Set(SKILLS.map((s) => s.category)).size} categories`);
 }
 
 main()

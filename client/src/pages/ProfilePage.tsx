@@ -1,19 +1,46 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { Avatar, EmptyState, ProficiencyBadge, Skeleton } from '../components/ui';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Avatar, EmptyState, Skeleton } from '../components/ui';
+import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays } from 'lucide-react';
 import type { Skill, LearningFormat, Weekday, TimeOfDay } from '../types';
 
 const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const TIMES: TimeOfDay[] = ['MORNING', 'AFTERNOON', 'EVENING'];
 
+const AVATAR_SIZE = 256;
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5MB source cap — client downscales to 256px
+
+function resizeImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Not a valid image'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = AVATAR_SIZE;
+        canvas.height = AVATAR_SIZE;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas unavailable'));
+        ctx.drawImage(img, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ProfilePage() {
   const { user, refresh } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['my-profile'],
@@ -23,9 +50,15 @@ export default function ProfilePage() {
     queryKey: ['skills'],
     queryFn: () => api.get<Skill[]>('/skills'),
   });
+  const { data: subData } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
+  });
+  const isPro = subData?.tier === 'PRO';
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const startEdit = () => {
     setForm({
@@ -52,6 +85,29 @@ export default function ProfilePage() {
     },
   });
 
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.push({ type: 'error', title: 'Please choose an image file' });
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.push({ type: 'error', title: 'Image too large', body: 'Max 5MB before resizing.' });
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const dataUrl = await resizeImage(file);
+      setForm({ ...form, avatarUrl: dataUrl });
+    } catch (err: any) {
+      toast.push({ type: 'error', title: 'Could not load image', body: err.message });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const addSkill = async (skillId: string, type: 'TEACH' | 'WANT') => {
     try {
       await api.post(`/skills/${skillId}/add`, { skillId, type, proficiency: 'INTERMEDIATE' });
@@ -76,25 +132,94 @@ export default function ProfilePage() {
 
   const teaching = profile?.userSkills?.filter((s: any) => s.type === 'TEACH') || [];
   const wanting = profile?.userSkills?.filter((s: any) => s.type === 'WANT') || [];
+  const joined = profile?.user?.createdAt ? new Date(profile.user.createdAt) : null;
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="card p-6 md:p-8">
-        <div className="flex items-start gap-4">
-          <Avatar src={profile?.avatarUrl} alt={user?.displayName || ''} size={80} />
-          <div className="flex-1">
+      {/* Profile header */}
+      <div className="card p-6 md:p-8 overflow-hidden relative">
+        <div className="absolute -top-16 -right-16 w-48 h-48 bg-coral-100/70 rounded-full blur-3xl" />
+        <div className="relative flex items-start gap-4 md:gap-6">
+          <div className="relative shrink-0">
+            <Avatar src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
+            {editing && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-ink-900 text-cream-50 flex items-center justify-center border-2 border-white hover:bg-ink-700"
+                  title="Upload photo"
+                >
+                  {uploadingAvatar ? (
+                    <span className="w-3 h-3 border-2 border-cream-50 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Camera className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                {form?.avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, avatarUrl: '' })}
+                    className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-white text-ink-700 flex items-center justify-center border border-ink-200 hover:text-coral-600"
+                    title="Remove photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarFile}
+                />
+              </>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
             {!editing ? (
               <>
-                <h1 className="font-display font-bold text-2xl text-ink-900">{user?.displayName}</h1>
-                <p className="text-sm text-ink-600">{profile?.email}</p>
-                {profile?.university && <p className="text-sm text-ink-700 mt-1">{profile.university} · {profile.department}</p>}
-                {profile?.bio && <p className="text-sm text-ink-700 mt-3">{profile.bio}</p>}
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <span className="chip-cream">Format: {profile?.learningFormat?.toLowerCase()}</span>
-                  {profile?.availabilities?.length > 0 && (
-                    <span className="chip-cream">{profile.availabilities.length} availability slots</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="font-display font-bold text-2xl text-ink-900">{user?.displayName}</h1>
+                  {profile?.user?.isAdmin && (
+                    <span className="chip-cream text-xs">Admin</span>
                   )}
                 </div>
+                <p className="text-sm text-ink-600">{user?.email}</p>
+                {(profile?.university || profile?.department) && (
+                  <p className="text-sm text-ink-700 mt-1 font-medium">
+                    {[profile.university, profile.department].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+                {profile?.bio && <p className="text-sm text-ink-700 mt-3 leading-relaxed">{profile.bio}</p>}
+
+                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                  <span className="chip-cream flex items-center gap-1">
+                    <Crown className="w-3 h-3" /> {isPro ? 'Pro' : 'Free'}
+                  </span>
+                  <span className="chip-cream">Format: {profile?.learningFormat?.toLowerCase()}</span>
+                  {profile?.availabilities?.length > 0 && (
+                    <span className="chip-cream">{profile.availabilities.length} time slots</span>
+                  )}
+                  {joined && (
+                    <span className="chip-cream flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3" /> Joined {joined.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-ink-600">
+                  <span className="flex items-center gap-1.5">
+                    <Repeat className="w-4 h-4 text-coral-500" />
+                    <strong className="text-ink-900">{teaching.length}</strong> skills taught
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Star className="w-4 h-4 text-coral-500" />
+                    <strong className="text-ink-900">{wanting.length}</strong> skills to learn
+                  </span>
+                </div>
+
                 <button onClick={startEdit} className="btn-outline mt-4">Edit profile</button>
               </>
             ) : (
@@ -103,10 +228,6 @@ export default function ProfilePage() {
                   <div>
                     <label className="label">Display name</label>
                     <input className="input" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Avatar URL</label>
-                    <input className="input" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
                   </div>
                   <div>
                     <label className="label">University</label>
@@ -127,6 +248,20 @@ export default function ProfilePage() {
                       <option value="IN_PERSON">In person</option>
                       <option value="EITHER">Either</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="label">Profile photo</label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => fileRef.current?.click()} className="btn-outline text-xs px-3 py-1.5">
+                        <Camera className="w-3 h-3" /> {form?.avatarUrl ? 'Change photo' : 'Upload photo'}
+                      </button>
+                      {form?.avatarUrl && (
+                        <button type="button" onClick={() => setForm({ ...form, avatarUrl: '' })} className="btn-ghost text-xs px-3 py-1.5 text-ink-500">
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-ink-500 mt-1">Photos are resized to 256px before saving.</p>
                   </div>
                 </div>
                 <div>
@@ -169,8 +304,8 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => saveMutation.mutate(form)} className="btn-primary">
-                    <Save className="w-4 h-4" /> Save
+                  <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                    <Save className="w-4 h-4" /> {saveMutation.isPending ? 'Saving…' : 'Save'}
                   </button>
                   <button onClick={() => setEditing(false)} className="btn-outline">Cancel</button>
                 </div>
@@ -178,6 +313,31 @@ export default function ProfilePage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Member status */}
+      <div className={`card p-5 flex items-center justify-between gap-3 ${isPro ? 'bg-gradient-to-br from-ink-900 to-ink-800 text-cream-50' : ''}`}>
+        <div className="flex items-center gap-3">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isPro ? 'bg-coral-500/20 text-coral-300' : 'bg-cream-100 text-ink-600'}`}>
+            <Crown className="w-4 h-4" />
+          </div>
+          <div>
+            <div className={`text-sm font-semibold ${isPro ? 'text-cream-50' : 'text-ink-900'}`}>
+              {isPro ? 'Pro plan' : 'Free plan'}
+            </div>
+            <div className={`text-xs ${isPro ? 'text-cream-300' : 'text-ink-500'}`}>
+              {isPro
+                ? 'Unlimited requests, boosts, who-viewed-me & Pro badge.'
+                : 'Upgrade to Pro for unlimited requests, boosts & more.'}
+            </div>
+          </div>
+        </div>
+        {!isPro && (
+          <Link to="/membership" className="btn-coral text-xs px-3 py-2 shrink-0">Upgrade</Link>
+        )}
+        {isPro && (
+          <Link to="/membership" className="btn-ghost text-xs px-3 py-2 shrink-0 text-cream-100">Manage</Link>
+        )}
       </div>
 
       {/* Teaching skills */}
@@ -197,7 +357,8 @@ export default function ProfilePage() {
           <div className="flex flex-wrap gap-2">
             {teaching.map((s: any) => (
               <div key={s.id} className="chip-ink">
-                {s.skill?.name} · {s.proficiency.toLowerCase()}
+                {s.skill?.name}
+                <ProficiencyPill level={s.proficiency} />
                 <button onClick={() => removeSkill(s.skillId, 'TEACH')} className="ml-2 opacity-60 hover:opacity-100">
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -234,6 +395,14 @@ export default function ProfilePage() {
         )}
       </div>
     </div>
+  );
+}
+
+function ProficiencyPill({ level }: { level: string }) {
+  return (
+    <span className="ml-2 text-[10px] uppercase tracking-wide bg-cream-100 text-ink-500 rounded px-1.5 py-0.5">
+      {level.toLowerCase()}
+    </span>
   );
 }
 

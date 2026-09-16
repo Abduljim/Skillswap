@@ -133,7 +133,20 @@ export default function AppLayout() {
           </div>
           <span className="font-display font-bold text-base text-ink-900">SkillSwap</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <NavLink
+            to="/membership"
+            className={({ isActive }) =>
+              clsx(
+                'p-2 rounded-lg text-ink-600',
+                isPro ? 'text-coral-500' : '',
+                isActive ? 'bg-cream-100 text-ink-900' : ''
+              )
+            }
+            title={isPro ? 'Pro active' : 'Upgrade to Pro'}
+          >
+            <Crown className="w-5 h-5" />
+          </NavLink>
           <NavLink to="/notifications" className="relative p-2 text-ink-600">
             <Bell className="w-5 h-5" />
             {unread > 0 && (

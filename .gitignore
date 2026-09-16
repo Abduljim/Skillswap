@@ -67,7 +67,9 @@ server/prisma/*.db-journal
 # Misc
 .history/
 .tmp/
-*.tsbuildinfoclient/.env.production
+*.tsbuildinfo
+
+client/.env.production
 
 # Build-time API URL override
 # Copy .env.production.example → .env.production and set VITE_API_URL

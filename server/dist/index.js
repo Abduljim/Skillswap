@@ -48,7 +48,7 @@ var init_env = __esm({
       PORT: parseInt(process.env.PORT || "4000", 10),
       DATABASE_URL: process.env.DATABASE_URL || "",
       JWT_SECRET: process.env.JWT_SECRET || "dev-secret-change-me",
-      JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
+      JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "365d",
       CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
       SERVER_URL: process.env.SERVER_URL || "http://localhost:4000",
       COOKIE_SECRET: process.env.COOKIE_SECRET || "dev-cookie-secret-change-me",
@@ -131,6 +131,15 @@ var import_cookie_parser = __toESM(require("cookie-parser"));
 var import_express_rate_limit = __toESM(require("express-rate-limit"));
 var import_http = __toESM(require("http"));
 init_env();
+
+// src/lib/prisma.ts
+var import_client = require("@prisma/client");
+var prisma = global.__prisma || new import_client.PrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") {
+  global.__prisma = prisma;
+}
 
 // src/middleware/error.ts
 var import_zod = require("zod");
@@ -238,13 +247,17 @@ var resetPasswordSchema = import_zod2.z.object({
   token: import_zod2.z.string().min(10),
   password: import_zod2.z.string().min(8).max(100)
 });
+var avatarUrlSchema = import_zod2.z.string().max(2e6).refine(
+  (v) => v.startsWith("data:image/") || /^https?:\/\/.+/i.test(v),
+  { message: "Must be an image URL or data URL" }
+).nullable().optional();
 var updateProfileSchema = import_zod2.z.object({
   displayName: import_zod2.z.string().min(2).max(80).optional(),
   university: import_zod2.z.string().max(200).nullable().optional(),
   department: import_zod2.z.string().max(200).nullable().optional(),
   yearLevel: import_zod2.z.string().max(50).nullable().optional(),
   bio: import_zod2.z.string().max(1e3).nullable().optional(),
-  avatarUrl: import_zod2.z.string().url().max(500).nullable().optional(),
+  avatarUrl: avatarUrlSchema,
   learningFormat: import_zod2.z.enum(["ONLINE", "IN_PERSON", "EITHER"]).optional(),
   availabilities: import_zod2.z.array(
     import_zod2.z.object({
@@ -254,6 +267,10 @@ var updateProfileSchema = import_zod2.z.object({
   ).optional()
 });
 var updatePasswordSchema = import_zod2.z.object({
+  currentPassword: import_zod2.z.string().min(1),
+  newPassword: import_zod2.z.string().min(8).max(100)
+});
+var changePasswordSchema = import_zod2.z.object({
   currentPassword: import_zod2.z.string().min(1),
   newPassword: import_zod2.z.string().min(8).max(100)
 });
@@ -343,15 +360,6 @@ var validate = (schema, source = "body") => (req, _res, next) => {
 // src/services/auth.service.ts
 var import_bcryptjs = __toESM(require("bcryptjs"));
 
-// src/lib/prisma.ts
-var import_client = require("@prisma/client");
-var prisma = global.__prisma || new import_client.PrismaClient({
-  log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"]
-});
-if (process.env.NODE_ENV !== "production") {
-  global.__prisma = prisma;
-}
-
 // src/middleware/auth.ts
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 init_env();
@@ -359,12 +367,13 @@ var COOKIE_NAME = "skillswap_token";
 function signToken(payload) {
   return import_jsonwebtoken.default.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
 }
+var COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1e3;
 function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
     sameSite: env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1e3,
+    maxAge: COOKIE_MAX_AGE_MS,
     path: "/"
   });
 }
@@ -474,7 +483,7 @@ async function requestPasswordReset(email) {
     select: { id: true }
   });
   if (!user) {
-    return;
+    return null;
   }
   const raw = (0, import_crypto.randomBytes)(32).toString("hex");
   const tokenHash = (0, import_crypto.createHash)("sha256").update(raw).digest("hex");
@@ -485,10 +494,16 @@ async function requestPasswordReset(email) {
       expiresAt: new Date(Date.now() + 60 * 60 * 1e3)
     }
   });
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`[DEV] Password reset token for ${email}: ${raw}`);
-  }
+  console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
   return raw;
+}
+async function changePassword(input) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId } });
+  if (!user) throw new NotFoundError("User not found");
+  const ok2 = await import_bcryptjs.default.compare(input.currentPassword, user.passwordHash);
+  if (!ok2) throw new UnauthorizedError("Current password is incorrect");
+  const passwordHash = await import_bcryptjs.default.hash(input.newPassword, 10);
+  await prisma.user.update({ where: { id: input.userId }, data: { passwordHash } });
 }
 async function resetPassword(token, newPassword) {
   const tokenHash = (0, import_crypto.createHash)("sha256").update(token).digest("hex");
@@ -552,8 +567,15 @@ router.post(
   "/forgot-password",
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    await requestPasswordReset(req.body.email);
-    ok(res, { message: "If the email exists, a reset link has been sent." });
+    const raw = await requestPasswordReset(req.body.email);
+    if (!raw) {
+      ok(res, { message: "If the email exists, a reset link has been sent." });
+      return;
+    }
+    ok(res, {
+      message: "Reset link generated.",
+      resetToken: raw
+    });
   })
 );
 router.post(
@@ -562,6 +584,19 @@ router.post(
   asyncHandler(async (req, res) => {
     await resetPassword(req.body.token, req.body.password);
     ok(res, { message: "Password reset successfully" });
+  })
+);
+router.post(
+  "/change-password",
+  requireAuth,
+  validate(changePasswordSchema),
+  asyncHandler(async (req, res) => {
+    await changePassword({
+      userId: req.user.userId,
+      currentPassword: req.body.currentPassword,
+      newPassword: req.body.newPassword
+    });
+    ok(res, { message: "Password changed successfully" });
   })
 );
 var auth_routes_default = router;
@@ -682,18 +717,31 @@ async function getProfile(userId) {
   return { ...profile, userSkills };
 }
 async function updateProfile(userId, input) {
-  const { availabilities, ...rest } = input;
-  const data = { ...rest };
-  await prisma.user.update({ where: { id: userId }, data: { displayName: rest.displayName } });
+  const { availabilities, displayName, ...profileFields } = input;
+  if (displayName !== void 0) {
+    await prisma.user.update({ where: { id: userId }, data: { displayName } });
+  }
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  if (!profile) throw new NotFoundError("Profile not found");
+  if (Object.keys(profileFields).length > 0) {
+    await prisma.profile.update({
+      where: { userId },
+      data: {
+        university: profileFields.university ?? void 0,
+        department: profileFields.department ?? void 0,
+        yearLevel: profileFields.yearLevel ?? void 0,
+        bio: profileFields.bio ?? void 0,
+        avatarUrl: profileFields.avatarUrl ?? void 0,
+        learningFormat: profileFields.learningFormat ?? void 0
+      }
+    });
+  }
   if (availabilities) {
     await prisma.availability.deleteMany({ where: { profile: { userId } } });
-    const profile = await prisma.profile.findUnique({ where: { userId } });
-    if (profile) {
-      await prisma.availability.createMany({
-        data: availabilities.map((a) => ({ ...a, profileId: profile.id })),
-        skipDuplicates: true
-      });
-    }
+    await prisma.availability.createMany({
+      data: availabilities.map((a) => ({ ...a, profileId: profile.id })),
+      skipDuplicates: true
+    });
   }
   return getProfile(userId);
 }
@@ -2542,8 +2590,22 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 var httpServer = import_http.default.createServer(app);
 initSocket(httpServer);
+async function autoSeedIfEmpty() {
+  try {
+    const userCount = await prisma.user.count();
+    if (userCount > 0) {
+      console.log(`\u{1F331} Database already seeded (${userCount} users). Skipping.`);
+      return;
+    }
+    console.log("\u{1F331} Empty database detected. Run `npm run seed` once to populate demo data.");
+    console.log("   (Render Shell tab: cd server && npm run seed)");
+  } catch (e) {
+    console.error("\u26A0\uFE0F  DB check failed (non-fatal):", e?.message || e);
+  }
+}
 httpServer.listen(env.PORT, () => {
   console.log(`\u{1F680} SkillSwap API running on http://localhost:${env.PORT}`);
   console.log(`\u{1F4E6} Environment: ${env.NODE_ENV}`);
+  autoSeedIfEmpty();
 });
 var index_default = app;

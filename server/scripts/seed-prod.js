@@ -1,11 +1,27 @@
 // Run with: node scripts/seed-prod.js
-// Used in production to seed the database once after first deploy.
+// Used in production on every deploy (in the build command).
+//  1. Upserts the 220+ skill catalogue (additive, idempotent).
+//  2. Permanently removes the built-in demo accounts (they were placeholders;
+//     real user accounts are never touched).
 // Uses compiled Prisma client only. No TypeScript, no tsx needed at runtime.
 
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
+
+// Built-in demo accounts that must never appear in production. Only these exact
+// emails are removed — every other account is preserved. The app starts empty:
+// only real sign-ups create user accounts.
+const DEMO_EMAILS = [
+  'alice@example.com',
+  'bob@example.com',
+  'sarah@example.com',
+  'david@example.com',
+  'fatima@example.com',
+  'emma@example.com',
+  'james@example.com',
+  'zainab@example.com',
+];
 
 // ---------- 220+ skills across 13 categories ----------
 const SKILLS = [
@@ -257,32 +273,19 @@ const SKILLS = [
   { name: 'Video Game Coaching', category: 'Games', description: 'Aim, strategy, and rank-up help' },
 ];
 
-const USERS = [
-  { email: 'alice@example.com', displayName: 'Alice Adebayo', university: 'University of Lagos', department: 'Computer Science', yearLevel: '3rd Year', bio: 'CS senior. Love teaching Python and SQL. Looking to learn photography and cooking.', avatarUrl: 'https://i.pravatar.cc/300?img=47', learningFormat: 'EITHER', avail: [{ weekday: 'MONDAY', timeOfDay: 'EVENING' }, { weekday: 'WEDNESDAY', timeOfDay: 'EVENING' }, { weekday: 'SATURDAY', timeOfDay: 'MORNING' }], teach: [{ name: 'Python', proficiency: 'ADVANCED' }, { name: 'SQL', proficiency: 'ADVANCED' }, { name: 'Git', proficiency: 'EXPERT' }, { name: 'Data Analysis', proficiency: 'INTERMEDIATE' }, { name: 'Public Speaking', proficiency: 'ADVANCED' }], want: ['Photography', 'Cooking', 'Yoga', 'UI Design', 'Spanish'], isAdmin: true },
-  { email: 'bob@example.com', displayName: 'Bob Okeke', university: 'University of Lagos', department: 'Design', yearLevel: '4th Year', bio: 'Product designer by day, musician by night. Can teach Figma and guitar.', avatarUrl: 'https://i.pravatar.cc/300?img=12', learningFormat: 'EITHER', avail: [{ weekday: 'TUESDAY', timeOfDay: 'EVENING' }, { weekday: 'THURSDAY', timeOfDay: 'EVENING' }, { weekday: 'SATURDAY', timeOfDay: 'MORNING' }], teach: [{ name: 'Figma', proficiency: 'EXPERT' }, { name: 'UI Design', proficiency: 'ADVANCED' }, { name: 'Photography', proficiency: 'INTERMEDIATE' }, { name: 'Guitar', proficiency: 'ADVANCED' }, { name: 'Branding', proficiency: 'INTERMEDIATE' }], want: ['Python', 'SQL', 'Machine Learning', 'Data Analysis'] },
-  { email: 'sarah@example.com', displayName: 'Sarah Kim', university: 'Yale University', department: 'Linguistics', yearLevel: '2nd Year', bio: 'Linguistics major, polyglot. I teach French and Spanish, want to learn guitar and cooking.', avatarUrl: 'https://i.pravatar.cc/300?img=49', learningFormat: 'ONLINE', avail: [{ weekday: 'MONDAY', timeOfDay: 'AFTERNOON' }, { weekday: 'WEDNESDAY', timeOfDay: 'AFTERNOON' }, { weekday: 'FRIDAY', timeOfDay: 'MORNING' }], teach: [{ name: 'French', proficiency: 'EXPERT' }, { name: 'Spanish', proficiency: 'ADVANCED' }, { name: 'Creative Writing', proficiency: 'ADVANCED' }, { name: 'English as a Second Language', proficiency: 'EXPERT' }, { name: 'Storytelling', proficiency: 'ADVANCED' }], want: ['Guitar', 'Cooking', 'Yoga', 'Photography'], isPro: true },
-  { email: 'david@example.com', displayName: 'David Mensah', university: 'University of Cape Coast', department: 'Visual Arts', yearLevel: '3rd Year', bio: 'Pro photographer. Swap with me for code or business help.', avatarUrl: 'https://i.pravatar.cc/300?img=33', learningFormat: 'IN_PERSON', avail: [{ weekday: 'MONDAY', timeOfDay: 'AFTERNOON' }, { weekday: 'WEDNESDAY', timeOfDay: 'AFTERNOON' }, { weekday: 'FRIDAY', timeOfDay: 'MORNING' }], teach: [{ name: 'Photography', proficiency: 'EXPERT' }, { name: 'Portrait Photography', proficiency: 'ADVANCED' }, { name: 'Photo Editing', proficiency: 'ADVANCED' }, { name: 'Storytelling', proficiency: 'INTERMEDIATE' }], want: ['JavaScript', 'React', 'SEO', 'Marketing'] },
-  { email: 'fatima@example.com', displayName: 'Fatima Hassan', university: 'University of Edinburgh', department: 'Marketing', yearLevel: '4th Year', bio: 'Marketing strategist and yoga teacher.', avatarUrl: 'https://i.pravatar.cc/300?img=45', learningFormat: 'ONLINE', avail: [{ weekday: 'TUESDAY', timeOfDay: 'MORNING' }, { weekday: 'THURSDAY', timeOfDay: 'MORNING' }, { weekday: 'SATURDAY', timeOfDay: 'AFTERNOON' }], teach: [{ name: 'Marketing', proficiency: 'EXPERT' }, { name: 'SEO', proficiency: 'ADVANCED' }, { name: 'Yoga', proficiency: 'EXPERT' }, { name: 'Meditation', proficiency: 'ADVANCED' }, { name: 'Social Media Marketing', proficiency: 'ADVANCED' }], want: ['Arabic', 'Cooking', 'Web Development', 'Data Analysis'], isPro: true },
-  { email: 'emma@example.com', displayName: 'Emma Larsson', university: 'KTH Royal Institute of Technology', department: 'Computer Science', yearLevel: '4th Year', bio: 'ML engineer. Teach data science, want to learn music production.', avatarUrl: 'https://i.pravatar.cc/300?img=44', learningFormat: 'EITHER', avail: [{ weekday: 'MONDAY', timeOfDay: 'EVENING' }, { weekday: 'WEDNESDAY', timeOfDay: 'EVENING' }, { weekday: 'SUNDAY', timeOfDay: 'AFTERNOON' }], teach: [{ name: 'Machine Learning', proficiency: 'EXPERT' }, { name: 'Python', proficiency: 'ADVANCED' }, { name: 'Data Science', proficiency: 'ADVANCED' }, { name: 'Deep Learning', proficiency: 'ADVANCED' }], want: ['Music Production', 'Piano', 'DJing', 'Cooking'] },
-  { email: 'james@example.com', displayName: 'James Wright', university: 'Stanford University', department: 'Business Administration', yearLevel: '4th Year', bio: 'Career changer. Teach business and sales, want to learn coding.', avatarUrl: 'https://i.pravatar.cc/300?img=15', learningFormat: 'EITHER', avail: [{ weekday: 'FRIDAY', timeOfDay: 'EVENING' }, { weekday: 'SATURDAY', timeOfDay: 'EVENING' }, { weekday: 'SUNDAY', timeOfDay: 'MORNING' }], teach: [{ name: 'Sales', proficiency: 'EXPERT' }, { name: 'Public Speaking', proficiency: 'ADVANCED' }, { name: 'Negotiation', proficiency: 'ADVANCED' }, { name: 'Entrepreneurship', proficiency: 'ADVANCED' }, { name: 'Interview Prep', proficiency: 'ADVANCED' }], want: ['JavaScript', 'Python', 'Web Development', 'Photography'] },
-  { email: 'zainab@example.com', displayName: 'Zainab Okafor', university: 'University of Ibadan', department: 'Medicine', yearLevel: '3rd Year', bio: 'Med student. Teach biology and chemistry, want to learn design.', avatarUrl: 'https://i.pravatar.cc/300?img=20', learningFormat: 'ONLINE', avail: [{ weekday: 'MONDAY', timeOfDay: 'MORNING' }, { weekday: 'WEDNESDAY', timeOfDay: 'MORNING' }, { weekday: 'FRIDAY', timeOfDay: 'AFTERNOON' }], teach: [{ name: 'Biology', proficiency: 'EXPERT' }, { name: 'Chemistry', proficiency: 'ADVANCED' }, { name: 'Statistics', proficiency: 'ADVANCED' }, { name: 'Research Methods', proficiency: 'INTERMEDIATE' }], want: ['UI Design', 'Photoshop', 'Figma', 'Content Creation'] },
-];
-
 async function main() {
   console.log('🌱 Seeding SkillSwap…');
 
   const skillCount = await prisma.skill.count();
-  const userCount = await prisma.user.count();
 
-  console.log(`Refreshing/adding ${SKILLS.length} skills…`);
-  const skillMap = new Map();
+  // ── Skills ────────────────────────────────────────────────────────────────
+  console.log(`Upserting ${SKILLS.length} skills…`);
   for (const skill of SKILLS) {
-    const created = await prisma.skill.upsert({
+    await prisma.skill.upsert({
       where: { name: skill.name },
       update: { category: skill.category, description: skill.description || null, isActive: true },
       create: { name: skill.name, category: skill.category, description: skill.description || null, isActive: true },
     });
-    skillMap.set(skill.name, created.id);
   }
   if (skillCount > 0) {
     console.log(`Skills: ${skillCount} → ${await prisma.skill.count()} (missing ones added).`);
@@ -290,75 +293,30 @@ async function main() {
     console.log(`Created ${SKILLS.length} skills.`);
   }
 
-  // Non-destructive: if the DB already has users, never touch them.
-  // This lets the seed run safely on every deploy (build command) — it only
-  // adds new skills/metadata, it never wipes accounts, profiles, or data.
-  if (userCount > 0) {
-    console.log(`Database already has ${userCount} users — skipping user seed (data preserved).`);
-    console.log('✅ Seed complete!');
-    console.log(`📊 ${await prisma.skill.count()} skills total.`);
-    return;
+  // ── Remove built-in demo accounts ─────────────────────────────────────────
+  // The demo accounts are purely fixtures for screenshots/early testing. They are
+  // no longer created. If any exist from an older seed they are deleted now, along
+  // with their related data (cascades handle most of it).
+  const demo = await prisma.user.findMany({
+    where: { email: { in: DEMO_EMAILS } },
+    select: { id: true, email: true },
+  });
+  if (demo.length) {
+    // CASCADE covers profile, userSkills, subscriptions, etc. but message &
+    // exchange constraints can hold up a plain deleteMany. Wrap in a transaction.
+    await prisma.$transaction(
+      demo.map((u) => prisma.user.delete({ where: { id: u.id } })),
+    );
+    console.log(`Removed ${demo.length} demo accounts: ${demo.map((u) => u.email).join(', ')}`);
+  } else {
+    console.log('No demo accounts present (clean state).');
   }
 
-  console.log(`Creating ${USERS.length} users…`);
-  const passwordHash = await bcrypt.hash('password123', 10);
-
-  for (const user of USERS) {
-    const created = await prisma.user.create({
-      data: {
-        email: user.email,
-        passwordHash,
-        displayName: user.displayName,
-        isAdmin: user.isAdmin || false,
-        profile: {
-          create: {
-            university: user.university,
-            department: user.department,
-            yearLevel: user.yearLevel,
-            bio: user.bio,
-            avatarUrl: user.avatarUrl,
-            learningFormat: user.learningFormat,
-            availabilities: { create: user.avail },
-          },
-        },
-      },
-    });
-
-    for (const t of user.teach) {
-      const skillId = skillMap.get(t.name);
-      if (!skillId) continue;
-      await prisma.userSkill.create({
-        data: { userId: created.id, skillId, type: 'TEACH', proficiency: t.proficiency },
-      });
-    }
-    for (const w of user.want) {
-      const skillId = skillMap.get(w);
-      if (!skillId) continue;
-      await prisma.userSkill.create({
-        data: { userId: created.id, skillId, type: 'WANT', proficiency: 'BEGINNER' },
-      });
-    }
-
-    if (user.isPro) {
-      await prisma.subscription.create({
-        data: {
-          userId: created.id,
-          tier: 'PRO',
-          status: 'ACTIVE',
-          platform: 'WEB',
-          productId: 'skillswap_pro_web_yearly',
-          startedAt: new Date(),
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-          autoRenew: true,
-        },
-      });
-    }
-  }
+  const realUsers = await prisma.user.count();
+  console.log(`Registered users remaining: ${realUsers}`);
 
   console.log('✅ Seed complete!');
-  console.log(`📊 ${SKILLS.length} skills across ${new Set(SKILLS.map((s) => s.category)).size} categories`);
-  console.log('📧 Test logins (password: password123):');
-  USERS.forEach((u) => console.log('   ' + u.email + (u.isPro ? ' (Pro)' : '') + (u.isAdmin ? ' (admin)' : '')));
+  console.log(`📊 ${await prisma.skill.count()} skills across ${new Set(SKILLS.map((s) => s.category)).size} categories`);
 }
 
 main()

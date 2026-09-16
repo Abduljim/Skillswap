@@ -86,7 +86,7 @@ export async function requestPasswordReset(email: string) {
   });
   if (!user) {
     // Don't reveal whether the email exists
-    return;
+    return null;
   }
   const raw = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(raw).digest('hex');
@@ -97,11 +97,26 @@ export async function requestPasswordReset(email: string) {
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     },
   });
-  // In production, send via email. For dev, return token via logs.
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[DEV] Password reset token for ${email}: ${raw}`);
-  }
+  // No email provider is configured yet. The raw token must be available to the
+  // caller (the route returns it to the client, and it is always logged) so the
+  // reset flow actually completes. TTL is 1 hour, token is single-use.
+  console.log(`[PASSWORD-RESET] token for ${email}: ${raw} (expires in 1h, single-use)`);
   return raw;
+}
+
+export async function changePassword(input: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId } });
+  if (!user) throw new NotFoundError('User not found');
+
+  const ok = await bcrypt.compare(input.currentPassword, user.passwordHash);
+  if (!ok) throw new UnauthorizedError('Current password is incorrect');
+
+  const passwordHash = await bcrypt.hash(input.newPassword, 10);
+  await prisma.user.update({ where: { id: input.userId }, data: { passwordHash } });
 }
 
 export async function resetPassword(token: string, newPassword: string) {

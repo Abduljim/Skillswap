@@ -31,7 +31,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 30d
+        value: 365d
       - key: COOKIE_SECRET
         generateValue: true
       - key: CLIENT_URL

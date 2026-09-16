@@ -22,13 +22,28 @@ export const resetPasswordSchema = z.object({
 });
 
 // ============ Profile ============
+// avatarUrl accepts either a normal http(s) image URL or a data URL (client
+// downscales uploaded photos to a small JPEG before sending). Cap length so a
+// single profile can't bloat the database.
+export const avatarUrlSchema = z
+  .string()
+  .max(2_000_000)
+  .refine(
+    (v) =>
+      v.startsWith('data:image/') ||
+      /^https?:\/\/.+/i.test(v),
+    { message: 'Must be an image URL or data URL' }
+  )
+  .nullable()
+  .optional();
+
 export const updateProfileSchema = z.object({
   displayName: z.string().min(2).max(80).optional(),
   university: z.string().max(200).nullable().optional(),
   department: z.string().max(200).nullable().optional(),
   yearLevel: z.string().max(50).nullable().optional(),
   bio: z.string().max(1000).nullable().optional(),
-  avatarUrl: z.string().url().max(500).nullable().optional(),
+  avatarUrl: avatarUrlSchema,
   learningFormat: z.enum(['ONLINE', 'IN_PERSON', 'EITHER']).optional(),
   availabilities: z
     .array(
@@ -41,6 +56,11 @@ export const updateProfileSchema = z.object({
 });
 
 export const updatePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(100),
+});
+
+export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(100),
 });

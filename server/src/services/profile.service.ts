@@ -34,19 +34,35 @@ export async function updateProfile(
     availabilities?: { weekday: any; timeOfDay: any }[];
   }
 ) {
-  const { availabilities, ...rest } = input;
-  const data: any = { ...rest };
-  await prisma.user.update({ where: { id: userId }, data: { displayName: rest.displayName } });
+  const { availabilities, displayName, ...profileFields } = input;
+
+  if (displayName !== undefined) {
+    await prisma.user.update({ where: { id: userId }, data: { displayName } });
+  }
+
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  if (!profile) throw new NotFoundError('Profile not found');
+
+  if (Object.keys(profileFields).length > 0) {
+    await prisma.profile.update({
+      where: { userId },
+      data: {
+        university: profileFields.university ?? undefined,
+        department: profileFields.department ?? undefined,
+        yearLevel: profileFields.yearLevel ?? undefined,
+        bio: profileFields.bio ?? undefined,
+        avatarUrl: profileFields.avatarUrl ?? undefined,
+        learningFormat: profileFields.learningFormat ?? undefined,
+      },
+    });
+  }
 
   if (availabilities) {
     await prisma.availability.deleteMany({ where: { profile: { userId } } });
-    const profile = await prisma.profile.findUnique({ where: { userId } });
-    if (profile) {
-      await prisma.availability.createMany({
-        data: availabilities.map((a) => ({ ...a, profileId: profile.id })),
-        skipDuplicates: true,
-      });
-    }
+    await prisma.availability.createMany({
+      data: availabilities.map((a) => ({ ...a, profileId: profile.id })),
+      skipDuplicates: true,
+    });
   }
 
   return getProfile(userId);

@@ -1,25 +1,33 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { api } from '../lib/api';
-import { Shield, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Shield, KeyRound } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, refresh } = useAuth();
+  const { user } = useAuth();
   const toast = useToast();
-  const nav = useNavigate();
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [loading, setLoading] = useState(false);
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (newPwd.length < 8) {
+      toast.push({ type: 'error', title: 'New password must be at least 8 characters' });
+      return;
+    }
     setLoading(true);
     try {
-      // No direct /change-password endpoint exposed; use reset for now.
-      toast.push({ type: 'info', title: 'Use forgot password to reset.' });
+      await api.post('/auth/change-password', {
+        currentPassword: currentPwd,
+        newPassword: newPwd,
+      });
+      toast.push({ type: 'success', title: 'Password changed' });
+      setCurrentPwd('');
+      setNewPwd('');
+    } catch (err: any) {
+      toast.push({ type: 'error', title: 'Could not change password', body: err.message });
     } finally {
       setLoading(false);
     }
@@ -39,17 +47,37 @@ export default function SettingsPage() {
       </div>
 
       <div className="card p-6">
-        <h2 className="font-display font-bold text-lg text-ink-900 mb-3">Password</h2>
+        <h2 className="font-display font-bold text-lg text-ink-900 mb-3 flex items-center gap-2">
+          <KeyRound className="w-4 h-4" /> Password
+        </h2>
         <form onSubmit={changePassword} className="space-y-3">
-          <input className="input" type="password" placeholder="Current password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} />
-          <input className="input" type="password" placeholder="New password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
-          <Link to="/forgot-password" className="text-xs text-coral-600 hover:underline">
-            Forgot your password?
-          </Link>
           <div>
-            <button type="button" className="btn-outline" disabled>
-              Use forgot password flow to change password
-            </button>
+            <label className="label">Current password</label>
+            <input
+              className="input"
+              type="password"
+              required
+              value={currentPwd}
+              onChange={(e) => setCurrentPwd(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">New password</label>
+            <input
+              className="input"
+              type="password"
+              required
+              minLength={8}
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+            />
+          </div>
+          <button type="submit" disabled={loading} className="btn-primary">
+            {loading ? 'Saving…' : 'Change password'}
+          </button>
+          <div className="text-xs text-ink-500">
+            Forgot your password? Use the <span className="text-coral-600 font-medium">Forgot password</span> flow
+            on the login screen instead.
           </div>
         </form>
       </div>
