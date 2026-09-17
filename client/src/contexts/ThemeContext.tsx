@@ -29,7 +29,7 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   { id: 'light', label: 'Light', desc: 'Clean & bright', swatch: 'bg-gradient-to-br from-cream-50 to-cream-200', dark: false, cardCls: 'card-color-light', cardDark: false, pro: false },
-  { id: 'dark', label: 'Dark', desc: 'Easy on the eyes', swatch: 'bg-gradient-to-br from-ink-900 to-ink-700', dark: true, cardCls: 'card-color-dark', cardDark: true, pro: false },
+  { id: 'dark', label: 'Dark', desc: 'Easy on the eyes, Pro perk', swatch: 'bg-gradient-to-br from-ink-900 to-ink-700', dark: true, cardCls: 'card-color-dark', cardDark: true, pro: true },
   { id: 'ocean', label: 'Ocean', desc: 'Cool teal waters', swatch: 'bg-gradient-to-br from-teal-200 via-cyan-100 to-cyan-300', dark: false, cardCls: 'card-color-ocean', cardDark: true, pro: true },
   { id: 'forest', label: 'Forest', desc: 'Fresh green calm', swatch: 'bg-gradient-to-br from-emerald-200 via-green-100 to-green-300', dark: false, cardCls: 'card-color-forest', cardDark: true, pro: true },
   { id: 'sunset', label: 'Sunset', desc: 'Warm golden hour', swatch: 'bg-gradient-to-br from-amber-200 via-orange-100 to-orange-300', dark: false, cardCls: 'card-color-sunset', cardDark: true, pro: true },

@@ -97,8 +97,8 @@ export default function SettingsPage() {
           <Moon className="w-4 h-4" /> Appearance
         </h2>
         <p className="text-xs text-ink-500 mb-4">
-          Pick an appearance colour. It also styles your profile card. Light &amp; Dark are free; the eight
-          gradient colours are a Pro perk.
+          Pick an appearance colour. It also styles your profile card. Light (cream) is free for
+          everyone; Dark mode and the colour gradients are a Pro perk.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {THEMES.map((t) => {
@@ -107,19 +107,32 @@ export default function SettingsPage() {
             return (
               <button
                 key={t.id}
-                disabled={locked}
-                onClick={() => setTheme(t.id)}
+                onClick={() => {
+                  if (locked) {
+                    toast.push({
+                      type: 'info',
+                      title: `${t.label} is a Pro perk`,
+                      body: 'Upgrade to Pro to unlock this appearance.',
+                    });
+                    return;
+                  }
+                  setTheme(t.id);
+                }}
                 className={`relative rounded-xl border p-3 text-left transition-all ${
                   active
                     ? 'border-coral-500 ring-2 ring-coral-500/30'
                     : 'border-ink-100 hover:border-ink-200'
-                } ${locked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                } ${locked ? 'opacity-60' : ''}`}
               >
                 <div className={`h-9 rounded-lg ${t.swatch} ${t.dark ? 'border border-white/10' : 'border border-ink-900/5'}`} />
                 <div className="mt-2 flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-ink-900">{t.label}</span>
                   {active && <Check className="w-4 h-4 text-coral-500" />}
-                  {locked && <Lock className="w-3.5 h-3.5 text-ink-400" />}
+                  {locked && (
+                    <span className="flex items-center gap-1 bg-cream-100 text-ink-700 text-[9px] font-bold rounded-full px-1.5 py-0.5">
+                      <Lock className="w-2.5 h-2.5" /> PRO
+                    </span>
+                  )}
                 </div>
                 <div className="text-[11px] text-ink-500">{t.desc}</div>
               </button>

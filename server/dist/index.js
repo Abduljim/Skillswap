@@ -2329,8 +2329,8 @@ function initSocket(httpServer2) {
     });
     socket.on("message:read", async (data) => {
       await prisma.message.updateMany({
-        where: { exchangeId: data.exchangeId, senderId: { not: userId }, readAt: null },
-        data: { readAt: /* @__PURE__ */ new Date() }
+        where: { exchangeId: data.exchangeId, senderId: { not: userId }, status: { not: "READ" } },
+        data: { status: "READ", readAt: /* @__PURE__ */ new Date() }
       });
       io.to(`exchange:${data.exchangeId}`).emit("message:read", {
         exchangeId: data.exchangeId,
@@ -2433,10 +2433,11 @@ async function listMessages(userId, exchangeId) {
     orderBy: { createdAt: "asc" },
     include: { sender: { select: { id: true, displayName: true } } }
   });
-  await prisma.message.updateMany({
-    where: { exchangeId, readAt: null, senderId: { not: userId } },
-    data: { readAt: /* @__PURE__ */ new Date() }
+  const delivered = await prisma.message.updateMany({
+    where: { exchangeId, senderId: { not: userId }, status: "SENT" },
+    data: { status: "DELIVERED" }
   });
+  if (delivered.count > 0) emitToExchange(exchangeId, "message:delivered", { exchangeId });
   return messages;
 }
 async function listConversations(userId) {
@@ -2488,17 +2489,6 @@ async function createMessage(userId, exchangeId, body, type = "TEXT") {
     include: { sender: { select: { id: true, displayName: true } } }
   });
   emitToExchange(exchangeId, "message:new", message);
-  const otherUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
-  const notifBody = type === "IMAGE" ? "\u{1F4F7} Image" : type === "STICKER" ? "\u{1F3A8} Sticker" : body.slice(0, 100);
-  await prisma.notification.create({
-    data: {
-      userId: otherUserId,
-      type: "NEW_MESSAGE",
-      title: `New message from ${message.sender.displayName}`,
-      body: notifBody,
-      payload: { exchangeId, messageId: message.id }
-    }
-  });
   return message;
 }
 

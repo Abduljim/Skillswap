@@ -118,6 +118,7 @@ export interface Message {
   body: string;
   type?: MessageType;
   createdAt: string;
+  status?: 'SENT' | 'DELIVERED' | 'READ';
   readAt?: string | null;
   sender?: { id: string; displayName: string };
 }

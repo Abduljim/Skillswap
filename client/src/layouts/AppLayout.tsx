@@ -2,16 +2,20 @@ import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { ensureMediaPermissions } from '../lib/media-permissions';
-import type { Conversation } from '../types';
+import { requestCallNotificationPermission } from '../lib/call-notifier';
+import { unlockAudio } from '../lib/ringtone';
+import type { Conversation, ExchangeRequest } from '../types';
 import clsx from 'clsx';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
+  const { theme, setTheme } = useTheme();
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // Chat conversations fill the whole screen (like WhatsApp), so the app chrome is hidden there.
@@ -31,6 +35,19 @@ export default function AppLayout() {
   // One-time permission prompt for camera + mic so calls work for everyone.
   useEffect(() => {
     void ensureMediaPermissions();
+  }, []);
+
+  // Ask for Android notification permission up front (incoming call ringtone).
+  useEffect(() => {
+    void requestCallNotificationPermission();
+  }, []);
+
+  // WebViews suspend audio until the first real tap; unlock it once so the
+  // incoming-call ringtone and call audio can start without an extra tap.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
   const { data: notifData } = useQuery({
@@ -53,10 +70,23 @@ export default function AppLayout() {
   });
   const isPro = sub ? sub.tier === 'PRO' : (user as any)?.tier === 'PRO';
 
+  // Dark mode is a Pro perk again: free users are held on the creamy Light theme.
+  useEffect(() => {
+    if (sub && !isPro && theme === 'dark') setTheme('light');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, isPro, theme]);
+
+  const { data: reqData } = useQuery({
+    queryKey: ['exchange-requests', 'received'],
+    queryFn: () => api.get<ExchangeRequest[]>('/exchange-requests?type=received'),
+    refetchInterval: 30_000,
+  });
+  const exchangesUnread = reqData?.filter((r) => r.status === 'PENDING').length ?? 0;
+
   const navItems = [
     { to: '/dashboard', icon: Home, label: 'Home', badge: 0 },
     { to: '/discover', icon: Compass, label: 'Discover', badge: 0 },
-    { to: '/exchanges', icon: Repeat, label: 'Exchanges', badge: 0 },
+    { to: '/exchanges', icon: Repeat, label: 'Exchanges', badge: exchangesUnread },
     { to: '/messages', icon: MessageSquare, label: 'Messages', badge: messagesUnread },
     { to: '/profile', icon: User, label: 'Profile', badge: 0 },
   ];

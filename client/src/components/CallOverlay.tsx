@@ -19,7 +19,14 @@ interface RTCSignal {
 }
 
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    // Public relay so peers behind symmetric NAT / mobile carriers can still
+    // pass audio-video to each other (TURN relays when STUN can't).
+    { urls: 'stun:openrelay.metered.ca:80' },
+    { urls: 'turn:openrelay.metered.ca:80' },
+    { urls: 'turn:openrelay.metered.ca:443' },
+  ],
 };
 
 export interface CallState {
@@ -47,6 +54,7 @@ export function useCall(
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const candidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const videoEnabledRef = useRef(false);
   const micMutedRef = useRef(false);
@@ -164,6 +172,7 @@ export function useCall(
 
   // ── Peer helpers ────────────────────────────────────────────────
   const attachRemote = (stream: MediaStream) => {
+    remoteStreamRef.current = stream;
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
       (remoteVideoRef.current as any).playsInline = true;
@@ -178,6 +187,16 @@ export function useCall(
       (localVideoRef.current as any).play?.().catch(() => {});
     }
   };
+
+  // ontrack can fire before the overlay renders the <video> elements, which
+  // left remote video black on the answering side. Re-attach the last known
+  // streams whenever the call enters the active/video UI.
+  useEffect(() => {
+    if (state.status !== 'active' || !state.video) return;
+    attachRemote(remoteStreamRef.current as MediaStream);
+    attachLocal(streamRef.current as MediaStream);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status, state.video]);
 
   // Acquire the camera/microphone now, while we have a user gesture.
   // getUserMedia is denied outside a gesture on mobile WebViews, and both the
@@ -280,6 +299,7 @@ export function useCall(
       streamRef.current = null;
     }
     candidateQueueRef.current = [];
+    remoteStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     videoEnabledRef.current = false;

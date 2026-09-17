@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, Smile } from 'lucide-react';
+import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import type { Message } from '../types';
@@ -31,6 +31,7 @@ export default function ChatTab({
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(socket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
 
   const m = dark
@@ -41,6 +42,7 @@ export default function ChatTab({
         bubbleTheirs: 'bg-[#1a1e29] text-[#eef0f4] ring-1 ring-[#2a2f3d]',
         infoMine: 'text-[#ffffff]/70',
         infoTheirs: 'text-[#76819a]',
+        tickRead: 'text-[#12131a]',
         input: 'bg-[#1a1e29] border-[#2a2f3d] text-[#eef0f4]',
         inputPlaceholder: 'placeholder:text-[#76819a]',
         iconBtn: 'text-[#cdd1da] hover:bg-[#1f2430]',
@@ -53,6 +55,7 @@ export default function ChatTab({
         bubbleTheirs: 'bg-[#f5f2ec] text-[#12131a]',
         infoMine: 'text-[#fdfaf4]/70',
         infoTheirs: 'text-[#8a8a8f]',
+        tickRead: 'text-[#fb4f1d]',
         input: 'bg-white border-[#e2dcd1] text-[#12131a]',
         inputPlaceholder: 'placeholder:text-[#8a8a8f]',
         iconBtn: 'text-[#12131a] hover:bg-[#f5f2ec]',
@@ -62,15 +65,24 @@ export default function ChatTab({
   useEffect(() => {
     if (!socket) return;
     socketRef.current = socket;
-    const onMsg = () => refetch();
+    const onMsg = () => {
+      refetch();
+      socket.emit('message:read', { exchangeId });
+    };
+    const onStatus = () => refetch();
     const onTyping = (data: { userId: string }) => {
       if (data.userId !== user?.id) setTyping(true);
       setTimeout(() => setTyping(false), 2000);
     };
     socket.on('message:new', onMsg);
+    socket.on('message:read', onStatus);
+    socket.on('message:delivered', onStatus);
     socket.on('typing', onTyping);
+    socket.emit('message:read', { exchangeId });
     return () => {
       socket.off('message:new', onMsg);
+      socket.off('message:read', onStatus);
+      socket.off('message:delivered', onStatus);
       socket.off('typing', onTyping);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,9 +138,17 @@ export default function ChatTab({
                 ) : (
                   <div className="text-sm whitespace-pre-wrap break-words">{message.body}</div>
                 )}
-                <div className={`text-[10px] mt-1 ${mine ? m.infoMine : m.infoTheirs}`}>
-                  {message.type === 'IMAGE' && '📷 '}
+                <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 ${mine ? m.infoMine : m.infoTheirs}`}>
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {mine && (
+                    message.status === 'READ' ? (
+                      <CheckCheck className={`w-3 h-3 ${m.tickRead}`} />
+                    ) : message.status === 'DELIVERED' ? (
+                      <CheckCheck className="w-3 h-3" />
+                    ) : (
+                      <Check className="w-3 h-3" />
+                    )
+                  )}
                 </div>
               </div>
             </div>
@@ -163,12 +183,34 @@ export default function ChatTab({
           </button>
           <button
             type="button"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => cameraInputRef.current?.click()}
+            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+            title="Take a photo"
+          >
+            <Camera className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.preventDefault()}
             onClick={() => fileInputRef.current?.click()}
             className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-            title="Send image"
+            title="Send an image"
           >
-            📷
+            <ImageIcon className="w-5 h-5" />
           </button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) sendImage(f);
+            }}
+          />
           <input
             ref={fileInputRef}
             type="file"

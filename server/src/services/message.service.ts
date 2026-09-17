@@ -21,11 +21,13 @@ export async function listMessages(userId: string, exchangeId: string) {
     orderBy: { createdAt: 'asc' },
     include: { sender: { select: { id: true, displayName: true } } },
   });
-  // Mark unread as read for this user
-  await prisma.message.updateMany({
-    where: { exchangeId, readAt: null, senderId: { not: userId } },
-    data: { readAt: new Date() },
+  // Their messages become "delivered" once the other side pulls the thread.
+  // "Read" is set by the reader via the socket a moment later.
+  const delivered = await prisma.message.updateMany({
+    where: { exchangeId, senderId: { not: userId }, status: 'SENT' },
+    data: { status: 'DELIVERED' },
   });
+  if (delivered.count > 0) emitToExchange(exchangeId, 'message:delivered', { exchangeId });
   return messages;
 }
 
@@ -82,19 +84,5 @@ export async function createMessage(userId: string, exchangeId: string, body: st
     include: { sender: { select: { id: true, displayName: true } } },
   });
   emitToExchange(exchangeId, 'message:new', message);
-
-  // Notify other user (truncate notification body for images)
-  const otherUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
-  const notifBody = type === 'IMAGE' ? '📷 Image' : type === 'STICKER' ? '🎨 Sticker' : body.slice(0, 100);
-  await prisma.notification.create({
-    data: {
-      userId: otherUserId,
-      type: 'NEW_MESSAGE',
-      title: `New message from ${message.sender.displayName}`,
-      body: notifBody,
-      payload: { exchangeId, messageId: message.id },
-    },
-  });
-
   return message;
 }

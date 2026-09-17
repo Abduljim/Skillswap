@@ -10,6 +10,8 @@ import { useCall, CallOverlay } from '../components/CallOverlay';
 import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle, Sun, Moon } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
+import { startRingtone, stopRingtone } from '../lib/ringtone';
+import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing } from '../lib/call-notifier';
 import type { CallLog, Exchange } from '../types';
 
 type Tab = 'chat' | 'voice' | 'video' | 'calls';
@@ -135,6 +137,29 @@ function ConversationContent({
   const { user } = useAuth();
   const toast = useToast();
   const call = useCall(socket, id, me, peer);
+
+  // Ask for the notification permission up front so an incoming call can ring
+  // with a full notification, exactly like WhatsApp.
+  useEffect(() => {
+    void requestCallNotificationPermission();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ring on incoming calls (native notification + in-app tone) and give the
+  // caller a ringback while their call is ringing out.
+  useEffect(() => {
+    const status = call.state.status;
+    if (status === 'incoming') {
+      void ringIncomingCall(peer);
+      startRingtone();
+    } else if (status === 'outgoing') {
+      startRingtone();
+    } else {
+      stopRingtone();
+      void stopIncomingCallRing();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.state.status, id]);
 
   // Chat mode: White for everyone, Dark for Pro. Free users pick White only.
   const [dark, setDark] = useState<boolean>(() => {

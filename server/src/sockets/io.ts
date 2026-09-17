@@ -116,8 +116,8 @@ export function initSocket(httpServer: HTTPServer) {
 
     socket.on('message:read', async (data: { exchangeId: string }) => {
       await prisma.message.updateMany({
-        where: { exchangeId: data.exchangeId, senderId: { not: userId }, readAt: null },
-        data: { readAt: new Date() },
+        where: { exchangeId: data.exchangeId, senderId: { not: userId }, status: { not: 'READ' } },
+        data: { status: 'READ', readAt: new Date() },
       });
       io!.to(`exchange:${data.exchangeId}`).emit('message:read', {
         exchangeId: data.exchangeId,

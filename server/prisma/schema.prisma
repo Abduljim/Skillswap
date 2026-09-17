@@ -300,6 +300,7 @@ model Message {
   type       MessageType @default(TEXT)
   body       String
   createdAt  DateTime    @default(now())
+  status     String      @default("SENT")
   readAt     DateTime?
 
   @@index([exchangeId, createdAt])

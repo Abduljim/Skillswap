@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         // Register the Play Billing bridge plugin
         registerPlugin(app.skillswap.client.billing.PlayBillingBridge.class);
         registerPlugin(KeyboardBridge.class);
+        registerPlugin(CallNotifier.class);
         super.onCreate(savedInstanceState);
 
         // Disable pinch-zoom system-wide on the WebView so the app feels native.
