@@ -21,6 +21,7 @@ public class PushPlugin extends Plugin {
     private static final String PREFS = "call_state";
     private static final String KEY_EXCHANGE = "exchange_id";
     private static final String KEY_CALLER = "caller_name";
+    private static final String KEY_CALLER_ID = "caller_id";
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
     private static final long FRESH_MS = 5 * 60 * 1000L;
@@ -51,6 +52,7 @@ public class PushPlugin extends Plugin {
             JSObject ret = new JSObject();
             ret.put("exchangeId", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_EXCHANGE, ""));
             ret.put("callerName", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CALLER, ""));
+            ret.put("callerId", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CALLER_ID, ""));
             ret.put("video", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_VIDEO, false));
             call.resolve(ret);
         });

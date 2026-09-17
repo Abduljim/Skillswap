@@ -3,7 +3,7 @@ import { api } from './api';
 
 interface PushPlugin {
   getToken(): Promise<{ token: string }>;
-  getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; video: boolean } | null>;
+  getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; callerId: string; video: boolean } | null>;
   clearLaunchedCall(): Promise<void>;
 }
 
@@ -34,7 +34,7 @@ export async function registerPushToken(): Promise<void> {
  * If the app was opened from an incoming-call notification, return the call so
  * we can drop the user straight into that conversation.
  */
-export async function getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; video: boolean } | null> {
+export async function getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; callerId: string; video: boolean } | null> {
   try {
     if (Capacitor.getPlatform() !== 'android') return null;
     return await Push.getLaunchedCall();

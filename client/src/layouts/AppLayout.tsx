@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { ensureMediaPermissions } from '../lib/media-permissions';
 import { requestCallNotificationPermission } from '../lib/call-notifier';
-import { registerPushToken, getLaunchedCall, clearLaunchedCall } from '../lib/push';
+import { registerPushToken } from '../lib/push';
 import { unlockAudio } from '../lib/ringtone';
 import type { Conversation, ExchangeRequest } from '../types';
 import clsx from 'clsx';
@@ -44,20 +44,11 @@ export default function AppLayout() {
   }, []);
 
   // Push registration: after login, keep the device registered so calls ring
-  // when the app is closed. Then handle being opened from a call notification.
+  // when the app is closed. (Opening the app from a call notification is
+  // handled by CallsProvider, which seeds the ringing overlay and navigation.)
   useEffect(() => {
     if (!user) return;
-    let cancelled = false;
     void registerPushToken();
-    void getLaunchedCall().then((call) => {
-      if (cancelled || !call?.exchangeId) return;
-      void clearLaunchedCall();
-      if (isFullScreenChat) return;
-      nav(`/messages/${call.exchangeId}`);
-    });
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

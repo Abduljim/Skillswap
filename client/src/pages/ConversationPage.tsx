@@ -4,44 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useGlobalSocket } from '../contexts/SocketContext';
+import { useCalls } from '../contexts/CallsContext';
 import { EmptyState, Skeleton } from '../components/ui';
 import ChatTab from '../components/ChatTab';
-import { useCall, CallOverlay } from '../components/CallOverlay';
 import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle, Sun, Moon } from 'lucide-react';
-import { Socket } from 'socket.io-client';
-import { createSocket } from '../lib/socket';
-import { startRingtone, stopRingtone } from '../lib/ringtone';
-import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing, getCallSoundSource, setCallUiActive } from '../lib/call-notifier';
+import type { Socket } from 'socket.io-client';
 import type { CallLog, Exchange } from '../types';
 
 type Tab = 'chat' | 'voice' | 'video' | 'calls';
-
-function useExchangeSocket(exchangeId: string) {
-  const socketRef = useRef<Socket | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let s: Socket;
-    let cancelled = false;
-    (async () => {
-      s = await createSocket();
-      if (cancelled) return;
-      socketRef.current = s;
-      s.on('connect', () => {
-        s.emit('exchange:join', exchangeId);
-        setReady(true);
-      });
-    })();
-    return () => {
-      cancelled = true;
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-      setReady(false);
-    };
-  }, [exchangeId]);
-
-  return { socket: socketRef.current, ready };
-}
 
 const LOCAL_LOGS_KEY = (exchangeId: string) => `skillswap_call_logs_${exchangeId}`;
 
@@ -63,7 +34,23 @@ export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const { user } = useAuth();
+  const calls = useCalls();
   const [tab, setTab] = useState<Tab>('chat');
+
+  const { socket, ready } = useGlobalSocket();
+
+  // One global socket is used across the whole app, so join this conversation's
+  // room while we are open (re-joins automatically if the socket reconnects).
+  useEffect(() => {
+    if (!socket || !id) return;
+    const join = () => socket.emit('exchange:join', id);
+    join();
+    socket.on('connect', join);
+    return () => {
+      socket.off('connect', join);
+      socket.emit('exchange:leave', id);
+    };
+  }, [socket, id]);
 
   const { data: exchange, isLoading } = useQuery({
     queryKey: ['exchange', id],
@@ -75,8 +62,6 @@ export default function ConversationPage() {
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
   const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
-
-  const { socket, ready } = useExchangeSocket(id!);
 
   if (isLoading) return <Skeleton className="h-64" />;
   if (!exchange || !id) return <EmptyState title="Conversation not found" />;
@@ -103,6 +88,7 @@ export default function ConversationPage() {
       ready={ready}
       me={me}
       peer={peer}
+      calls={calls}
       pro={isPro}
       tab={tab}
       setTab={setTab}
@@ -118,6 +104,7 @@ function ConversationContent({
   ready,
   me,
   peer,
+  calls,
   pro,
   tab,
   setTab,
@@ -129,6 +116,7 @@ function ConversationContent({
   ready: boolean;
   me: any;
   peer: any;
+  calls: any;
   pro: boolean;
   tab: Tab;
   setTab: (t: Tab) => void;
@@ -136,39 +124,6 @@ function ConversationContent({
 }) {
   const { user } = useAuth();
   const toast = useToast();
-  const call = useCall(socket, id, me, peer);
-
-  // Ask for the notification permission up front so an incoming call can ring
-  // with a full notification, exactly like WhatsApp.
-  useEffect(() => {
-    void requestCallNotificationPermission();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Full-screen "simulated call alarm": hide the Android system bars and keep
-  // the screen awake for the whole call, restored the moment it ends.
-  useEffect(() => {
-    void setCallUiActive(call.state.status !== 'none');
-    return () => {
-      void setCallUiActive(false);
-    };
-  }, [call.state.status]);
-
-  // Ring on incoming calls (native notification + in-app tone) and give the
-  // caller a ringback while their call is ringing out.
-  useEffect(() => {
-    const status = call.state.status;
-    if (status === 'incoming') {
-      void ringIncomingCall(peer, getCallSoundSource());
-      startRingtone(true); // native notification rings with the user's chosen sound
-    } else if (status === 'outgoing') {
-      startRingtone(false); // ringback tone
-    } else {
-      stopRingtone();
-      void stopIncomingCallRing();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [call.state.status, id]);
 
   // Chat mode: White for everyone, Dark for Pro. Free users pick White only.
   const [dark, setDark] = useState<boolean>(() => {
@@ -194,7 +149,7 @@ function ConversationContent({
 
   const startCall = (video: boolean) => {
     if (!socket) return;
-    call.startCall(video).catch(() => {});
+    void calls.startCall(peer, id, video);
   };
 
   // ── Local call-log mirror (works even before the DB schema syncs) ──
@@ -203,10 +158,10 @@ function ConversationContent({
   const callSeenRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const status = call.state.status;
+    const status = calls.status;
     if (status === 'outgoing' || status === 'incoming') {
       callSeenRef.current = true;
-      callVideoRef.current = call.state.video;
+      callVideoRef.current = calls.video;
     }
     if (status === 'active' && !callStartRef.current) callStartRef.current = new Date().toISOString();
     if (status === 'none' && callSeenRef.current) {
@@ -230,7 +185,7 @@ function ConversationContent({
       };
       writeLocalLogs(id, [entry, ...readLocalLogs(id)]);
     }
-  }, [call.state.status, call.state.video, id, me.id, me.displayName, peer.id, peer.displayName]);
+  }, [calls.status, calls.video, id, me.id, me.displayName, peer.id, peer.displayName]);
 
   const { data: serverLogs, isError } = useQuery({
     queryKey: ['calls', id],
@@ -344,19 +299,6 @@ function ConversationContent({
         )}
         {tab === 'calls' && <CallLogsTab dark={dark} logs={logs} myId={user?.id} />}
       </div>
-
-      <CallOverlay
-        call={call.state}
-        partner={call.state.peer}
-        onAccept={call.acceptCall}
-        onDecline={call.declineCall}
-        onHangup={call.hangup}
-        onToggleMic={call.toggleMic}
-        onToggleCamera={call.toggleCamera}
-        micMuted={call.micMuted}
-        localVideoRef={call.localVideoRef}
-        remoteVideoRef={call.remoteVideoRef}
-      />
     </div>
   );
 }

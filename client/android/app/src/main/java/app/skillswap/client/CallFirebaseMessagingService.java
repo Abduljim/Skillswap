@@ -27,6 +27,7 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
     private static final String PREFS = "call_state";
     private static final String KEY_EXCHANGE = "exchange_id";
     private static final String KEY_CALLER = "caller_name";
+    private static final String KEY_CALLER_ID = "caller_id";
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
 
@@ -39,6 +40,7 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
         }
         String exchangeId = data.get("exchangeId") != null ? data.get("exchangeId") : "";
         String callerName = data.get("callerName") != null ? data.get("callerName") : "Someone";
+        String callerId = data.get("callerId") != null ? data.get("callerId") : "";
         boolean video = "1".equals(data.get("video"));
 
         if (!exchangeId.isEmpty()) {
@@ -46,6 +48,7 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
                     .edit()
                     .putString(KEY_EXCHANGE, exchangeId)
                     .putString(KEY_CALLER, callerName)
+                    .putString(KEY_CALLER_ID, callerId)
                     .putBoolean(KEY_VIDEO, video)
                     .putLong(KEY_TS, System.currentTimeMillis())
                     .apply();

@@ -66,13 +66,17 @@ export default function ChatTab({
   useEffect(() => {
     if (!socket) return;
     socketRef.current = socket;
-    const onMsg = () => {
+    const onMsg = (data: { exchangeId: string }) => {
+      if (data.exchangeId !== exchangeId) return;
       refetch();
       socket.emit('message:read', { exchangeId });
     };
-    const onStatus = () => refetch();
-    const onTyping = (data: { userId: string }) => {
-      if (data.userId !== user?.id) setTyping(true);
+    const onStatus = (data: { exchangeId: string }) => {
+      if (data.exchangeId !== exchangeId) return;
+      refetch();
+    };
+    const onTyping = (data: { exchangeId: string; userId: string }) => {
+      if (data.exchangeId !== exchangeId || data.userId !== user?.id) setTyping(true);
       setTimeout(() => setTyping(false), 2000);
     };
     socket.on('message:new', onMsg);
@@ -197,68 +201,10 @@ export default function ChatTab({
         {typing && <div className={`text-xs italic px-2 ${m.muted}`}>typing…</div>}
       </div>
 
-      <div className={`flex gap-2 pt-3 px-4 pb-4 border-t items-end ${m.rowBorder}`}>
-        <div className="relative flex items-center gap-1">
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-            }}
-            onClick={() => {
-              const input = textInputRef.current;
-              if (!input) return;
-              // Focus the input, pop the system keyboard (Gboard), then re-focus so
-              // the keyboard stays attached. Users reach emoji via Gboard's smiley key.
-              input.focus({ preventScroll: true });
-              setTimeout(() => {
-                void showAndroidKeyboard().catch(() => {});
-                input.focus({ preventScroll: true });
-              }, 0);
-            }}
-            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-            aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
-            title="Open keyboard; use your system keyboard's emoji key for emoji"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => cameraInputRef.current?.click()}
-            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-            title="Take a photo"
-          >
-            <Camera className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => fileInputRef.current?.click()}
-            className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-            title="Send an image"
-          >
-            <ImageIcon className="w-5 h-5" />
-          </button>
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleMediaFile}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleMediaFile}
-          />
-        </div>
-
-        {pendingImage && (
-          <div className={`flex items-center gap-2 pl-3 pr-1 py-2 border-t ${m.rowBorder}`}>
-            <img src={pendingImage} alt="Photo to send" className="w-14 h-14 rounded-lg object-cover border" />
+      <div className={`pt-3 px-4 pb-4 border-t ${m.rowBorder}`}>
+        {pendingImage ? (
+          <div className="flex items-center gap-3">
+            <img src={pendingImage} alt="Photo to send" className="w-16 h-16 rounded-xl object-cover border shrink-0" />
             <div className="flex-1 min-w-0">
               <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>Photo ready</div>
               <div className={`text-xs ${m.muted}`}>Tap Send to share it.</div>
@@ -266,43 +212,100 @@ export default function ChatTab({
             <button
               type="button"
               onClick={() => setPendingImage(null)}
-              className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${m.iconBtn}`}
               title="Remove photo"
             >
               <X className="w-5 h-5" />
             </button>
-            <button type="button" onClick={() => void sendPending()} className="btn-coral text-sm px-4 py-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => void sendPending()}
+              className="btn-coral text-sm px-4 py-2 shrink-0 whitespace-nowrap"
+            >
               <Send className="w-4 h-4" /> Send
             </button>
           </div>
-        )}
+        ) : (
+          <div className="flex gap-2 items-end">
+            <div className="relative flex items-center gap-1">
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                }}
+                onClick={() => {
+                  const input = textInputRef.current;
+                  if (!input) return;
+                  // Focus the input, pop the system keyboard (Gboard), then re-focus so
+                  // the keyboard stays attached. Users reach emoji via Gboard's smiley key.
+                  input.focus({ preventScroll: true });
+                  setTimeout(() => {
+                    void showAndroidKeyboard().catch(() => {});
+                    input.focus({ preventScroll: true });
+                  }, 0);
+                }}
+                className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+                aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
+                title="Open keyboard; use your system keyboard's emoji key for emoji"
+              >
+                <Smile className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => cameraInputRef.current?.click()}
+                className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+                title="Take a photo"
+              >
+                <Camera className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+                title="Send an image"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleMediaFile}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleMediaFile}
+              />
+            </div>
 
-        <input
-          ref={textInputRef}
-          className={`input flex-1 ${m.input} ${m.inputPlaceholder}`}
-          placeholder="Type a message…"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            socketRef.current?.emit('typing', { exchangeId });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              if (pendingImage) void sendPending();
-              else sendMessage(text);
-            }
-          }}
-        />
-        <button
-          onClick={() => {
-            if (pendingImage) void sendPending();
-            else sendMessage(text);
-          }}
-          className="btn-coral shrink-0"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+            <input
+              ref={textInputRef}
+              className={`input flex-1 min-w-0 ${m.input} ${m.inputPlaceholder}`}
+              placeholder="Type a message…"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                socketRef.current?.emit('typing', { exchangeId });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage(text);
+                }
+              }}
+            />
+            <button onClick={() => sendMessage(text)} className="btn-coral shrink-0">
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
