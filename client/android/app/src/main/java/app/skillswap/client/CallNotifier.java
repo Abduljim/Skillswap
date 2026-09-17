@@ -5,12 +5,18 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
-import android.media.RingtoneManager;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
+import android.view.View;
+import android.view.Window;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -34,6 +40,8 @@ import com.getcapacitor.annotation.PermissionCallback;
 public class CallNotifier extends Plugin {
     private static final String CHANNEL_ID = "calls";
     private static final int CALL_NOTIFICATION_ID = 9001;
+    private static final String PREFS = "skillswap_prefs";
+    private static final String KEY_FSI_PROMPTED = "fsi_prompted";
 
     private void ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
@@ -42,9 +50,10 @@ public class CallNotifier extends Plugin {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
         // Channel carries no default sound so each ring can use the user's
-        // chosen ringtone/alarm/silent without recreating the channel.
+        // chosen ringtone/chime/alarm/silent without recreating the channel.
         channel.setDescription("Incoming call ringtone");
         channel.enableVibration(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(channel);
     }
 
@@ -52,16 +61,18 @@ public class CallNotifier extends Plugin {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasPermission("notifications");
     }
 
+    // ── Permission plumbing ─────────────────────────────────────────
+
     @PluginMethod
     public void requestPermission(PluginCall call) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            call.resolve();
+            maybePromptFullScreenIntent(call);
             return;
         }
         if (hasPermission("notifications")) {
-            call.resolve();
+            maybePromptFullScreenIntent(call);
         } else {
-            requestPermissionForAlias("notifications", call, "permissionCallback");
+            requestPermissionForAlias("notifications", call, "notificationThenFullScreenCallback");
         }
     }
 
@@ -70,26 +81,82 @@ public class CallNotifier extends Plugin {
     // getUserMedia prompts fail outside a gesture, so we prompt natively first).
     @PluginMethod
     public void requestMediaPermissions(PluginCall call) {
-        boolean prepared = hasPermission("camera") && hasPermission("microphone");
-        if (prepared) {
-            call.resolve();
+        requestNotificationsIfNeeded(call);
+    }
+
+    private void requestNotificationsIfNeeded(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPermission("notifications")) {
+            requestPermissionForAlias("notifications", call, "mediaFirstCallback");
             return;
         }
+        requestCameraIfNeeded(call);
+    }
+
+    private void requestCameraIfNeeded(PluginCall call) {
         // Request camera first; requestMediaCameraCallback then asks for the mic.
         if (!hasPermission("camera")) {
             requestPermissionForAlias("camera", call, "requestMediaCameraCallback");
         } else {
-            requestPermissionForAlias("microphone", call, "requestMediaCallback");
+            requestMicrophoneIfNeeded(call);
+        }
+    }
+
+    private void maybePromptFullScreenIntent(PluginCall call) {
+        // Android 12+ hides full-screen call intents behind an opt-in. Prompt
+        // once (Settings page) so an incoming call takes over the screen. Old
+        // Android uses full-screen intents out of the box.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !canUseFullScreenIntent()) {
+            Context ctx = getContext();
+            boolean prompted = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_FSI_PROMPTED, false);
+            if (!prompted) {
+                ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        .edit().putBoolean(KEY_FSI_PROMPTED, true).apply();
+                try {
+                    Intent i = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    i.setData(Uri.fromParts("package", ctx.getPackageName(), null));
+                    ctx.startActivity(i);
+                } catch (Exception e) {
+                    // Settings not accessible — fall back to app details.
+                    try {
+                        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", ctx.getPackageName(), null));
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        ctx.startActivity(i);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+        call.resolve();
+    }
+
+    private boolean canUseFullScreenIntent() {
+        try {
+            NotificationManager nm = getActivity().getSystemService(NotificationManager.class);
+            return nm != null && nm.canUseFullScreenIntent();
+        } catch (Throwable t) {
+            return false;
         }
     }
 
     @PermissionCallback
-    private void permissionCallback(PluginCall call) {
-        call.resolve();
+    private void notificationThenFullScreenCallback(PluginCall call) {
+        maybePromptFullScreenIntent(call);
+    }
+
+    @PermissionCallback
+    private void mediaFirstCallback(PluginCall call) {
+        requestCameraIfNeeded(call);
     }
 
     @PermissionCallback
     private void requestMediaCameraCallback(PluginCall call) {
+        requestMicrophoneIfNeeded(call);
+    }
+
+    private void requestMicrophoneIfNeeded(PluginCall call) {
         if (hasPermission("microphone")) {
             call.resolve();
         } else {
@@ -102,6 +169,8 @@ public class CallNotifier extends Plugin {
         call.resolve();
     }
 
+    // ── Ringing ─────────────────────────────────────────────────────
+
     private Uri soundFor(String source) {
         return CallSound.uri(getContext());
     }
@@ -110,7 +179,7 @@ public class CallNotifier extends Plugin {
     // rings use the same sound as in-app rings.
     @PluginMethod
     public void setSoundSource(PluginCall call) {
-        String source = call.getString("source", "ringtone");
+        String source = call.getString("source", "chime");
         CallSound.set(getContext(), source);
         call.resolve();
     }
@@ -118,7 +187,7 @@ public class CallNotifier extends Plugin {
     @PluginMethod
     public void ring(PluginCall call) {
         String peerName = call.getString("displayName", "Incoming call");
-        String source = call.getString("soundSource", "ringtone");
+        String source = call.getString("soundSource", "chime");
         if (!notificationsAllowed()) {
             call.resolve();
             return;
@@ -167,5 +236,31 @@ public class CallNotifier extends Plugin {
             // Ignored
         }
         call.resolve();
+    }
+
+    // In-call full-screen "simulated call alarm": hide the Android system bars
+    // and keep the screen awake while a call is ringing/active, exactly like a
+    // real incoming-call screen. Restored when the call ends.
+    @PluginMethod
+    public void setCallUiActive(PluginCall call) {
+        boolean active = call.getBoolean("active", false);
+        Window window = getActivity().getWindow();
+        getActivity().runOnUiThread(() -> {
+            try {
+                View decor = window.getDecorView();
+                if (active) {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    WindowInsetsControllerCompat ctrl = new WindowInsetsControllerCompat(window, decor);
+                    ctrl.hide(WindowInsetsCompat.Type.systemBars());
+                    ctrl.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    new WindowInsetsControllerCompat(window, decor).show(WindowInsetsCompat.Type.systemBars());
+                }
+            } catch (Throwable t) {
+                // Ignored — cosmetic on exotic ROMs.
+            }
+            call.resolve();
+        });
     }
 }

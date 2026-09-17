@@ -5,10 +5,11 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 
 /**
- * Where the user's call-sound choice lives on the device: 'ringtone' (default),
- * 'alarm', or 'silent'. The JS Settings → Calls picker writes it via
- * CallNotifier.setSoundSource, and both the in-app ring and the FCM push ring
- * read it so they always use what the user picked.
+ * Where the user's call-sound choice lives on the device: 'chime' (default —
+ * the bundled marimba-style call chime), 'ringtone', 'alarm', or 'silent'.
+ * The JS Settings → Calls picker writes it via CallNotifier.setSoundSource, and
+ * both the in-app ring and the FCM push ring read it so they always use what
+ * the user picked.
  */
 public final class CallSound {
     private static final String PREFS = "skillswap_prefs";
@@ -18,16 +19,19 @@ public final class CallSound {
     }
 
     public static void set(Context context, String value) {
-        String v = value == null ? "ringtone" : value;
-        if (!"alarm".equals(v) && !"silent".equals(v)) v = "ringtone";
+        String v = normalize(value);
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY, v).apply();
     }
 
     public static String get(Context context) {
-        String v = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "ringtone");
-        if (!"alarm".equals(v) && !"silent".equals(v)) return "ringtone";
-        return v;
+        return normalize(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "chime"));
+    }
+
+    private static String normalize(String value) {
+        if (value == null) return "chime";
+        if ("ringtone".equals(value) || "alarm".equals(value) || "silent".equals(value)) return value;
+        return "chime";
     }
 
     public static Uri uri(Context context) {
@@ -36,8 +40,12 @@ public final class CallSound {
                 return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
             case "silent":
                 return null;
-            default:
+            case "ringtone":
                 return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            default:
+                // Bundled crisp marimba-style chime (res/raw/call_chime.wav) —
+                // cut through room noise without being jarring.
+                return Uri.parse("android.resource://" + context.getPackageName() + "/raw/call_chime");
         }
     }
 }

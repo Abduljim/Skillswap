@@ -47,10 +47,10 @@ export async function signup(input: {
 
 export async function login(input: { email: string; password: string }) {
   const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-  if (!user || !user.isActive) throw new UnauthorizedError('Invalid credentials');
+  if (!user || !user.isActive) throw new UnauthorizedError('Incorrect email or password');
 
   const ok = await bcrypt.compare(input.password, user.passwordHash);
-  if (!ok) throw new UnauthorizedError('Invalid credentials');
+  if (!ok) throw new UnauthorizedError('Incorrect email or password');
 
   await ensureAdminRole(user.email);
 

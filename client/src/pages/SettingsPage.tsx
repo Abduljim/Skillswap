@@ -13,6 +13,7 @@ import {
 } from '../lib/call-notifier';
 
 const CALL_SOUND_OPTIONS: { value: CallSoundSource; label: string; hint: string }[] = [
+  { value: 'chime', label: 'Marimba chime', hint: 'Crisp call chime (default)' },
   { value: 'ringtone', label: 'Default ringtone', hint: 'Your phone ringtone' },
   { value: 'alarm', label: 'Default alarm', hint: 'Your loudest alarm sound' },
   { value: 'silent', label: 'Silent', hint: 'Vibrate only' },
@@ -172,7 +173,7 @@ export default function SettingsPage() {
           Choose the sound used when someone calls you. It plays through the operating
           system using your chosen Android sound (works when the app is open or in the background).
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {CALL_SOUND_OPTIONS.map((o) => {
             const active = callSound === o.value;
             return (

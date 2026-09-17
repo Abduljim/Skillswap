@@ -67,6 +67,7 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
                             CHANNEL_ID, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
                     channel.setDescription("Incoming call ringtone");
                     channel.enableVibration(true);
+                    channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
                     nm.createNotificationChannel(channel);
                 }
             }

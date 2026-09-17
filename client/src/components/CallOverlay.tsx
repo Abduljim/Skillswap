@@ -202,20 +202,43 @@ export function useCall(
   // Acquire the camera/microphone now, while we have a user gesture.
   // getUserMedia is denied outside a gesture on mobile WebViews, and both the
   // caller (on Accepted) and callee (on Accept) flow through socket events.
+  // Retries natively first, then degrades to a voice-only call if the camera is
+  // unavailable, so a call never dies just because a device lacks a camera.
   const acquireLocalStream = useCallback(async (video: boolean) => {
     if (streamRef.current) {
-      const needsVideo = streamRef.current.getVideoTracks().length > 0;
-      if (video === needsVideo) return streamRef.current;
+      const hasVideo = streamRef.current.getVideoTracks().length > 0;
+      if (video === hasVideo) return { stream: streamRef.current, hasVideo };
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
     await ensureMediaPermissions();
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video,
-    });
-    streamRef.current = stream;
-    return stream;
+    await new Promise((r) => setTimeout(r, 250));
+    let got = await navigator.mediaDevices
+      .getUserMedia({ audio: true, video })
+      .then((s) => s)
+      .catch(() => null);
+    if (!got) {
+      // One retry after re-asking natively — covers OEM WebVViews that need a
+      // moment between the OS grant and the WebView permission handshake.
+      await ensureMediaPermissions();
+      await new Promise((r) => setTimeout(r, 400));
+      got = await navigator.mediaDevices
+        .getUserMedia({ audio: true, video })
+        .then((s) => s)
+        .catch(() => null);
+    }
+    let hasVideo = video && !!got;
+    if (!got) {
+      // Camera missing/busy — fall back to voice so the call still connects.
+      got = await navigator.mediaDevices
+        .getUserMedia({ audio: true, video: false })
+        .then((s) => s)
+        .catch(() => null);
+      hasVideo = false;
+    }
+    if (!got) return null;
+    streamRef.current = got;
+    return { stream: got, hasVideo };
   }, []);
 
   const startPeer = useCallback(async (isCallee: boolean) => {
@@ -268,7 +291,11 @@ export function useCall(
       pendingSignalsRef.current = [];
       for (const sig of queued) await handleSignal(pc, sig);
 
-      if (isCallee) {
+      // Only create an offer when we are the one placing media first AND we
+      // haven't already been handed a remote offer (guards against the
+      // InvalidStateError that would otherwise surface as a fake
+      // "could not access camera or microphone" failure).
+      if (isCallee && !pc.remoteDescription) {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         sock.emit('webrtc:signal', {
@@ -280,9 +307,15 @@ export function useCall(
     } catch (e: any) {
       console.error('[CALL] setup failed', e);
       cleanup(true);
+      const reason =
+        e && (e.name || e.message) && e.name !== 'No media available'
+          ? ` (${String(e.name || e.message).slice(0, 60)})`
+          : '';
       update({
         status: 'error',
-        error: 'Could not access the camera or microphone. Allow access in your browser and try again.',
+        error:
+          'Could not access the camera or microphone. Let the app use your camera and mic in Settings, then try again.' +
+          reason,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -319,7 +352,19 @@ export function useCall(
       update({ status: 'outgoing', peer: partner, video, incoming: false, error: undefined });
       try {
         // Inside the tap gesture: this is where the OS permission prompt fires.
-        await acquireLocalStream(video);
+        const got = await acquireLocalStream(video);
+        if (!got) {
+          update({
+            status: 'error',
+            error: 'Microphone or camera access was denied. Allow access in your device settings, then try again.',
+          });
+          return;
+        }
+        // Camera busy/missing → this call runs as a voice call instead.
+        if (!got.hasVideo) {
+          videoEnabledRef.current = false;
+          update({ status: 'outgoing', peer: partner, video: false, incoming: false, error: undefined });
+        }
       } catch (e) {
         console.error('[CALL] media denied', e);
         update({
@@ -328,7 +373,7 @@ export function useCall(
         });
         return;
       }
-      sock.emit('call:request', { exchangeId, video });
+      sock.emit('call:request', { exchangeId, video: videoEnabledRef.current });
     },
     [exchangeId, partner, update, acquireLocalStream]
   );
@@ -337,7 +382,15 @@ export function useCall(
     const sock = socketRef.current;
     if (!sock || rawRef.current.status !== 'incoming') return;
     try {
-      await acquireLocalStream(videoEnabledRef.current);
+      const got = await acquireLocalStream(videoEnabledRef.current);
+      if (!got) {
+        update({
+          status: 'error',
+          error: 'Microphone or camera access was denied. Allow access in your device settings, then try again.',
+        });
+        return;
+      }
+      if (!got.hasVideo) videoEnabledRef.current = false;
     } catch (e) {
       console.error('[CALL] media denied', e);
       // Tell the caller so their ringing screen clears.
@@ -348,7 +401,7 @@ export function useCall(
       });
       return;
     }
-    update({ status: 'active', incoming: false, error: undefined });
+    update({ status: 'active', incoming: false, video: videoEnabledRef.current, error: undefined });
     sock.emit('call:accept', { exchangeId });
     await startPeer(true).catch(() => {});
   }, [exchangeId, startPeer, update, acquireLocalStream]);

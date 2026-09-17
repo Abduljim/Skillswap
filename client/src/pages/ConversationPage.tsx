@@ -11,7 +11,7 @@ import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle, Sun, Moon }
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
 import { startRingtone, stopRingtone } from '../lib/ringtone';
-import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing, getCallSoundSource } from '../lib/call-notifier';
+import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing, getCallSoundSource, setCallUiActive } from '../lib/call-notifier';
 import type { CallLog, Exchange } from '../types';
 
 type Tab = 'chat' | 'voice' | 'video' | 'calls';
@@ -144,6 +144,15 @@ function ConversationContent({
     void requestCallNotificationPermission();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Full-screen "simulated call alarm": hide the Android system bars and keep
+  // the screen awake for the whole call, restored the moment it ends.
+  useEffect(() => {
+    void setCallUiActive(call.state.status !== 'none');
+    return () => {
+      void setCallUiActive(false);
+    };
+  }, [call.state.status]);
 
   // Ring on incoming calls (native notification + in-app tone) and give the
   // caller a ringback while their call is ringing out.

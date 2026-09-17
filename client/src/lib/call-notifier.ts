@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-export type CallSoundSource = 'ringtone' | 'alarm' | 'silent';
+export type CallSoundSource = 'chime' | 'ringtone' | 'alarm' | 'silent';
 
 interface CallNotifierPlugin {
   requestPermission(): Promise<void>;
@@ -8,6 +8,7 @@ interface CallNotifierPlugin {
   setSoundSource(opts: { source: CallSoundSource }): Promise<void>;
   ring(opts: { displayName: string; soundSource?: CallSoundSource }): Promise<void>;
   stop(): Promise<void>;
+  setCallUiActive(opts: { active: boolean }): Promise<void>;
 }
 
 const CallNotifier = registerPlugin<CallNotifierPlugin>('CallNotifier');
@@ -15,11 +16,11 @@ const CallNotifier = registerPlugin<CallNotifierPlugin>('CallNotifier');
 export function getCallSoundSource(): CallSoundSource {
   try {
     const saved = localStorage.getItem('skillswap_call_sound');
-    if (saved === 'alarm' || saved === 'silent' || saved === 'ringtone') return saved;
+    if (saved === 'chime' || saved === 'alarm' || saved === 'silent' || saved === 'ringtone') return saved;
   } catch {
     // Ignored
   }
-  return 'ringtone';
+  return 'chime';
 }
 
 export function setCallSoundSource(source: CallSoundSource): void {
@@ -39,8 +40,10 @@ export async function requestCallNotificationPermission(): Promise<void> {
   }
 }
 
-// Grants CAMERA + RECORD_AUDIO via the native bridge first, so the WebView
-// getUserMedia calls never fail with a "microphone/camera not enabled" error.
+// Grants POST_NOTIFICATIONS, CAMERA + RECORD_AUDIO via the native bridge first,
+// so the WebView getUserMedia calls never fail with a "microphone/camera not
+// enabled" error. Also prompts (once) to allow full-screen call intents on
+// Android 12+ so an incoming call takes over the screen like a real call.
 export async function requestCallMediaPermissions(): Promise<void> {
   try {
     if (Capacitor.getPlatform() === 'android') await CallNotifier.requestMediaPermissions();
@@ -49,7 +52,17 @@ export async function requestCallMediaPermissions(): Promise<void> {
   }
 }
 
-export async function ringIncomingCall(peer: { displayName: string }, sound: CallSoundSource = 'ringtone'): Promise<void> {
+// Hides the Android system bars and keeps the screen on while a call rings or
+// is active (a "simulated call alarm"). Restore with false when the call ends.
+export async function setCallUiActive(active: boolean): Promise<void> {
+  try {
+    if (Capacitor.getPlatform() === 'android') await CallNotifier.setCallUiActive({ active });
+  } catch {
+    // Web Preview / non-native builds have no native plugin.
+  }
+}
+
+export async function ringIncomingCall(peer: { displayName: string }, sound: CallSoundSource = 'chime'): Promise<void> {
   try {
     if (Capacitor.getPlatform() === 'android') await CallNotifier.ring({ ...peer, soundSource: sound });
   } catch {

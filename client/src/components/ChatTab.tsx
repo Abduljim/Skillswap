@@ -168,7 +168,11 @@ export default function ChatTab({
                 className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-sm ${mine ? m.bubbleMine : m.bubbleTheirs}`}
               >
                 {message.type === 'IMAGE' ? (
-                  <img src={message.body} alt="Shared image" className="rounded-xl max-w-[260px] max-h-64 object-cover" />
+                  <img
+                    src={message.body}
+                    alt="Shared image"
+                    className="rounded-xl max-w-[300px] max-h-96 w-auto h-auto object-contain"
+                  />
                 ) : message.type === 'STICKER' ? (
                   <div className="text-5xl leading-none py-1">{message.body}</div>
                 ) : (

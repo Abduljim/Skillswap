@@ -711,9 +711,9 @@ async function signup(input) {
 }
 async function login(input) {
   const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-  if (!user || !user.isActive) throw new UnauthorizedError("Invalid credentials");
+  if (!user || !user.isActive) throw new UnauthorizedError("Incorrect email or password");
   const ok2 = await import_bcryptjs.default.compare(input.password, user.passwordHash);
-  if (!ok2) throw new UnauthorizedError("Invalid credentials");
+  if (!ok2) throw new UnauthorizedError("Incorrect email or password");
   await ensureAdminRole(user.email);
   const [tierResult, streak] = await Promise.all([
     getUserTier(user.id),
