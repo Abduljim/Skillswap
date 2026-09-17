@@ -6,9 +6,10 @@ interface CallNotifierPlugin {
   requestPermission(): Promise<void>;
   requestMediaPermissions(): Promise<void>;
   setSoundSource(opts: { source: CallSoundSource }): Promise<void>;
+  setCallUiActive(opts: { active: boolean }): Promise<void>;
   ring(opts: { displayName: string; soundSource?: CallSoundSource }): Promise<void>;
   stop(): Promise<void>;
-  setCallUiActive(opts: { active: boolean }): Promise<void>;
+  openSettings(): Promise<void>;
 }
 
 const CallNotifier = registerPlugin<CallNotifierPlugin>('CallNotifier');
@@ -75,5 +76,15 @@ export async function stopIncomingCallRing(): Promise<void> {
     if (Capacitor.getPlatform() === 'android') await CallNotifier.stop();
   } catch {
     // Ignored
+  }
+}
+
+// Opens this app's Android Settings so a user who denied mic/camera/notification
+// can re-grant the permission a call needs.
+export async function openCallSettings(): Promise<void> {
+  try {
+    if (Capacitor.getPlatform() === 'android') await CallNotifier.openSettings();
+  } catch {
+    // Web Preview / non-native builds have no native plugin.
   }
 }

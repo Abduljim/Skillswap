@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Compass, Repeat, MessageSquare, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
+import { Home, Compass, Repeat, MessageSquare, PhoneCall, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
@@ -98,6 +98,7 @@ export default function AppLayout() {
     { to: '/discover', icon: Compass, label: 'Discover', badge: 0 },
     { to: '/exchanges', icon: Repeat, label: 'Exchanges', badge: exchangesUnread },
     { to: '/messages', icon: MessageSquare, label: 'Messages', badge: messagesUnread },
+    { to: '/calls', icon: PhoneCall, label: 'Calls', badge: 0 },
     { to: '/profile', icon: User, label: 'Profile', badge: 0 },
   ];
 
@@ -190,7 +191,7 @@ export default function AppLayout() {
       {/* Mobile bottom nav */}
       {!isFullScreenChat && (
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 glass-nav border-t border-ink-100 pb-safe">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {navItems.map((item) => (
             <NavLink
               key={item.to}

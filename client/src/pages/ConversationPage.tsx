@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -14,21 +14,7 @@ import type { CallLog, Exchange } from '../types';
 
 type Tab = 'chat' | 'voice' | 'video' | 'calls';
 
-const LOCAL_LOGS_KEY = (exchangeId: string) => `skillswap_call_logs_${exchangeId}`;
-
-function readLocalLogs(exchangeId: string): CallLog[] {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_LOGS_KEY(exchangeId)) || '[]') as CallLog[];
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalLogs(exchangeId: string, logs: CallLog[]) {
-  try {
-    localStorage.setItem(LOCAL_LOGS_KEY(exchangeId), JSON.stringify(logs.slice(0, 100)));
-  } catch {}
-}
+import { readLogs as readLocalLogs } from '../lib/call-logs';
 
 export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
@@ -151,41 +137,6 @@ function ConversationContent({
     if (!socket) return;
     void calls.startCall(peer, id, video);
   };
-
-  // ── Local call-log mirror (works even before the DB schema syncs) ──
-  const callStartRef = useRef<string | null>(null);
-  const callVideoRef = useRef<boolean>(false);
-  const callSeenRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const status = calls.status;
-    if (status === 'outgoing' || status === 'incoming') {
-      callSeenRef.current = true;
-      callVideoRef.current = calls.video;
-    }
-    if (status === 'active' && !callStartRef.current) callStartRef.current = new Date().toISOString();
-    if (status === 'none' && callSeenRef.current) {
-      const started = callStartRef.current ?? new Date().toISOString();
-      const outcome: CallLog['outcome'] = callStartRef.current ? 'COMPLETED' : 'DECLINED';
-      callSeenRef.current = false;
-      callStartRef.current = null;
-      const nowIso = new Date().toISOString();
-      const entry: CallLog = {
-        id: `local-${Date.now()}`,
-        exchangeId: id,
-        callerId: me.id,
-        calleeId: peer.id,
-        callerName: me.displayName,
-        calleeName: peer.displayName,
-        type: callVideoRef.current ? 'VIDEO' : 'VOICE',
-        outcome,
-        startedAt: started,
-        endedAt: nowIso,
-        createdAt: nowIso,
-      };
-      writeLocalLogs(id, [entry, ...readLocalLogs(id)]);
-    }
-  }, [calls.status, calls.video, id, me.id, me.displayName, peer.id, peer.displayName]);
 
   const { data: serverLogs, isError } = useQuery({
     queryKey: ['calls', id],

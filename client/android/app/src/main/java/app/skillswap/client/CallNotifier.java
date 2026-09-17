@@ -8,6 +8,8 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -47,13 +49,20 @@ public class CallNotifier extends Plugin {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager nm = getActivity().getSystemService(NotificationManager.class);
         if (nm == null) return;
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
-        // Channel carries no default sound so each ring can use the user's
-        // chosen ringtone/chime/alarm/silent without recreating the channel.
-        channel.setDescription("Incoming call ringtone");
+        NotificationChannel channel = nm.getNotificationChannel(CHANNEL_ID);
+        if (channel == null) {
+            channel = new NotificationChannel(
+                    CHANNEL_ID, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Incoming call ringtone");
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        }
+        // The channel is intentionally SILENT: the actual ringtone is played by a
+        // dedicated looping MediaPlayer (see startRingTone) so each option in
+        // Settings → Calls can use its own chime/ringtone/alarm/silent sound instead
+        // of the one static channel sound. The notification only carries the
+        // full-screen intent + vibration.
+        channel.setSound(null, null);
         channel.enableVibration(true);
-        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(channel);
     }
 
@@ -175,6 +184,51 @@ public class CallNotifier extends Plugin {
         return CallSound.uri(getContext());
     }
 
+    private MediaPlayer ringPlayer = null;
+    private final Object ringLock = new Object();
+
+    private void startRingTone(Uri sound) {
+        try {
+            stopRingToneInternal();
+            if (sound == null) return;
+            AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (audio != null) {
+                int ring = audio.getStreamVolume(AudioManager.STREAM_RING);
+                // Don't play in complete silence; everything else plays full volume.
+                if (ring <= 0) return;
+            }
+            MediaPlayer mp = new MediaPlayer();
+            mp.setAudioStreamType(AudioManager.STREAM_RING);
+            mp.setDataSource(getContext(), sound);
+            mp.setLooping(true);
+            mp.prepare();
+            synchronized (ringLock) {
+                ringPlayer = mp;
+            }
+            mp.start();
+        } catch (Exception e) {
+            // No audio device / unsupported URI — the ring stops silently.
+        }
+    }
+
+    private void stopRingToneInternal() {
+        MediaPlayer old;
+        synchronized (ringLock) {
+            old = ringPlayer;
+            ringPlayer = null;
+        }
+        if (old != null) {
+            try {
+                old.stop();
+            } catch (Exception ignored) {
+            }
+            try {
+                old.release();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     // Persist the user's Settings → Calls choice natively so incoming FCM push
     // rings use the same sound as in-app rings.
     @PluginMethod
@@ -192,6 +246,7 @@ public class CallNotifier extends Plugin {
             call.resolve();
             return;
         }
+        final Uri sound = soundFor(source);
         getActivity().runOnUiThread(() -> {
             try {
                 ensureChannel();
@@ -208,19 +263,21 @@ public class CallNotifier extends Plugin {
                         .setCategory(NotificationCompat.CATEGORY_CALL)
                         .setPriority(NotificationCompat.PRIORITY_MAX)
                         .setOngoing(true)
+                        .setSilent(true)
                         .setFullScreenIntent(showFullScreen, true)
                         .setContentIntent(showFullScreen)
                         .setAutoCancel(false)
                         .setOnlyAlertOnce(false)
                         .setVibrate(new long[] { 0, 700, 400, 700 });
 
-                Uri sound = soundFor(source);
-                if (sound != null) builder.setSound(sound);
-
                 Notification notification = builder.build();
-                notification.flags |= Notification.FLAG_INSISTENT;
 
                 NotificationManagerCompat.from(getContext()).notify(CALL_NOTIFICATION_ID, notification);
+
+                // The real ring: a dedicated looping player so the chosen
+                // chime / ringtone / alarm / silent genuinely differs and actually
+                // plays while the app is open (notification sounds are unreliable).
+                startRingTone(sound);
             } catch (Exception e) {
                 // Permission revoked mid-call or device policy; Web Audio tone still rings.
             }
@@ -230,12 +287,32 @@ public class CallNotifier extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        try {
-            NotificationManagerCompat.from(getContext()).cancel(CALL_NOTIFICATION_ID);
-        } catch (Exception e) {
-            // Ignored
-        }
-        call.resolve();
+        getActivity().runOnUiThread(() -> {
+            stopRingToneInternal();
+            try {
+                NotificationManagerCompat.from(getContext()).cancel(CALL_NOTIFICATION_ID);
+            } catch (Exception e) {
+                // Ignored
+            }
+            call.resolve();
+        });
+    }
+
+    // Deep link the user into this app's Settings so they can grant the MIC,
+    // camera, or notification permission that a call needs.
+    @PluginMethod
+    public void openSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", getContext().getPackageName(), null));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            } catch (Exception ignored) {
+                // No settings activity available.
+            }
+            call.resolve();
+        });
     }
 
     // In-call full-screen "simulated call alarm": hide the Android system bars
