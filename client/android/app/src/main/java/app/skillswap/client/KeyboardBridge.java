@@ -20,12 +20,20 @@ public class KeyboardBridge extends Plugin {
                 call.reject("System keyboard unavailable");
                 return;
             }
-            if (!webView.requestFocus()) {
-                call.reject("WebView could not receive focus");
-                return;
+            // Don't steal DOM focus from the text input — the WebView already has it.
+            if (!webView.hasFocus()) {
+                webView.requestFocus();
             }
-            keyboard.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT);
+            keyboard.showSoftInput(webView, InputMethodManager.SHOW_FORCED);
             call.resolve();
+            // Focus races (button tap → input focus) can dismiss the keyboard right
+            // after it opens; retry once shortly after so the emoji tab stays reachable.
+            webView.postDelayed(() -> {
+                if (getActivity().isFinishing() || getActivity().isDestroyed()) return;
+                if (!keyboard.isActive() && webView.hasFocus()) {
+                    keyboard.showSoftInput(webView, InputMethodManager.SHOW_FORCED);
+                }
+            }, 250);
         });
     }
 }

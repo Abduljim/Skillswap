@@ -51,7 +51,7 @@ export default function SettingsPage() {
         <h2 className="font-display font-bold text-lg text-ink-900 mb-3">Account</h2>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between"><span className="text-ink-500">Name</span><span>{user?.displayName}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-ink-500 shrink-0">Email</span><span className="break-all text-right">{user?.email}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-ink-500 shrink-0">Email</span><span className="text-ink-900 truncate text-right flex-1 min-w-0" title={user?.email}>{user?.email}</span></div>
           <div className="flex justify-between"><span className="text-ink-500">Role</span><span>{user?.isAdmin ? 'Admin' : 'Member'}</span></div>
         </div>
       </div>

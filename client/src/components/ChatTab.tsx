@@ -147,8 +147,13 @@ export default function ChatTab({
             onClick={() => {
               const input = textInputRef.current;
               if (!input) return;
+              // Focus the input, pop the system keyboard (Gboard), then re-focus so
+              // the keyboard stays attached. Users reach emoji via Gboard's smiley key.
               input.focus({ preventScroll: true });
-              void showAndroidKeyboard().catch(() => {});
+              setTimeout(() => {
+                void showAndroidKeyboard().catch(() => {});
+                input.focus({ preventScroll: true });
+              }, 0);
             }}
             className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
             aria-label="Open keyboard; use your system keyboard's emoji key for emoji"

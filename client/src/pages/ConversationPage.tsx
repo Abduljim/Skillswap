@@ -3,10 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { EmptyState, Skeleton } from '../components/ui';
 import ChatTab from '../components/ChatTab';
 import { useCall, CallOverlay } from '../components/CallOverlay';
-import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle, Sun, Moon } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
 import type { CallLog, Exchange } from '../types';
@@ -100,7 +101,7 @@ export default function ConversationPage() {
       ready={ready}
       me={me}
       peer={peer}
-      dark={isPro}
+      pro={isPro}
       tab={tab}
       setTab={setTab}
       onBack={() => nav('/messages')}
@@ -115,7 +116,7 @@ function ConversationContent({
   ready,
   me,
   peer,
-  dark,
+  pro,
   tab,
   setTab,
   onBack,
@@ -126,13 +127,36 @@ function ConversationContent({
   ready: boolean;
   me: any;
   peer: any;
-  dark: boolean;
+  pro: boolean;
   tab: Tab;
   setTab: (t: Tab) => void;
   onBack: () => void;
 }) {
   const { user } = useAuth();
+  const toast = useToast();
   const call = useCall(socket, id, me, peer);
+
+  // Chat mode: White for everyone, Dark for Pro. Free users pick White only.
+  const [dark, setDark] = useState<boolean>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('skillswap_chat_mode') : null;
+    if (saved === 'dark' || saved === 'light') return saved === 'dark';
+    return pro;
+  });
+
+  const chooseMode = (d: boolean) => {
+    if (d && !pro) {
+      toast.push({
+        type: 'info',
+        title: 'Dark chat is a Pro perk',
+        body: 'Upgrade to Pro to chat in dark mode.',
+      });
+      return;
+    }
+    setDark(d);
+    try {
+      localStorage.setItem('skillswap_chat_mode', d ? 'dark' : 'light');
+    } catch {}
+  };
 
   const startCall = (video: boolean) => {
     if (!socket) return;
@@ -207,8 +231,8 @@ function ConversationContent({
 
   return (
     <div className={`flex flex-col h-[100dvh] overflow-hidden ${shell.surface}`}>
-      {/* WhatsApp-style header: back icon only */}
-      <header className={`flex items-center h-12 px-1 shrink-0 border-b ${shell.border}`}>
+      {/* WhatsApp-style header with a chat-mode picker */}
+      <header className={`flex items-center h-12 px-1.5 shrink-0 border-b ${shell.border}`}>
         <button
           onClick={onBack}
           aria-label="Back to all messages"
@@ -216,6 +240,34 @@ function ConversationContent({
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
+
+        <div className={`ml-auto flex items-center gap-0.5 rounded-full p-0.5 ${shell.pillIdle} ${dark ? 'bg-[#161a23]' : 'bg-[#f2ede4]'}`}>
+          <button
+            onClick={() => chooseMode(false)}
+            aria-pressed={!dark}
+            title="White chat"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+              !dark ? shell.pillActive : ''
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5" /> White
+          </button>
+          <button
+            onClick={() => chooseMode(true)}
+            aria-pressed={dark}
+            title={pro ? 'Dark chat' : 'Dark chat is a Pro perk'}
+            className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+              dark ? shell.pillActive : ''
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5" /> Dark
+            {!pro && (
+              <span className="absolute -top-1.5 -right-1.5 text-[8px] font-bold bg-[#fb4f1d] text-white rounded-full px-1 py-px">
+                PRO
+              </span>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* Slim tab row */}
