@@ -67,7 +67,8 @@ var init_env = __esm({
       RESEND_API_KEY: process.env.RESEND_API_KEY || "",
       EMAIL_FROM: process.env.EMAIL_FROM || "",
       RESET_URL: process.env.RESET_URL || "",
-      FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || ""
+      FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || "",
+      FCM_SERVICE_ACCOUNT_JSON: process.env.FCM_SERVICE_ACCOUNT_JSON || ""
     };
     if (env.NODE_ENV === "production" && env.JWT_SECRET === "dev-secret-change-me") {
       throw new Error("JWT_SECRET must be set in production");
@@ -2254,13 +2255,93 @@ async function completeSession(userId, sessionId) {
 
 // src/sockets/io.ts
 var import_socket = require("socket.io");
-var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 init_env();
 
 // src/services/push.service.ts
 init_env();
+
+// src/services/fcm.service.ts
+var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
+init_env();
+var TOKEN_URL = "https://oauth2.googleapis.com/token";
+var SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+var cachedAccessToken = null;
+function parseServiceAccount() {
+  if (!env.FCM_SERVICE_ACCOUNT_JSON) return null;
+  try {
+    const parsed = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON);
+    if (!parsed.project_id || !parsed.client_email || !parsed.private_key) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+async function getAccessToken(sa) {
+  const now = Date.now();
+  if (cachedAccessToken && cachedAccessToken.expiresAt > now + 6e4) {
+    return cachedAccessToken.token;
+  }
+  const assertion = import_jsonwebtoken2.default.sign({ scope: SCOPE }, sa.private_key, {
+    algorithm: "RS256",
+    issuer: sa.client_email,
+    subject: sa.client_email,
+    audience: TOKEN_URL,
+    expiresIn: 3600
+  });
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  if (!res.ok) {
+    throw new Error(`OAuth token exchange failed: ${res.status}`);
+  }
+  const json = await res.json();
+  cachedAccessToken = {
+    token: json.access_token,
+    expiresAt: now + (json.expires_in ?? 3600) * 1e3
+  };
+  return json.access_token;
+}
+async function sendFcmV1(token, data) {
+  const sa = parseServiceAccount();
+  if (!sa) return "error";
+  try {
+    const accessToken = await getAccessToken(sa);
+    const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          data,
+          android: { priority: "HIGH" }
+        }
+      })
+    });
+    if (res.ok) return "ok";
+    if (res.status === 400 || res.status === 404 || res.status === 410) return "invalid";
+    if (res.status === 401 || res.status === 403) {
+      cachedAccessToken = null;
+    }
+    return "error";
+  } catch {
+    return "error";
+  }
+}
+var fcmV1Configured = () => parseServiceAccount() !== null;
+
+// src/services/push.service.ts
 async function sendIncomingCallPush(targetUserId, data) {
-  if (!env.FCM_SERVER_KEY) return { sent: 0, skipped: true };
+  const useV1 = fcmV1Configured();
+  if (!useV1 && !env.FCM_SERVER_KEY) return { sent: 0, skipped: true };
   let tokens = [];
   try {
     const rows = await prisma.pushToken.findMany({
@@ -2283,6 +2364,14 @@ async function sendIncomingCallPush(targetUserId, data) {
   };
   let sent = 0;
   for (const token of tokens) {
+    if (useV1) {
+      const result = await sendFcmV1(token, fcmData);
+      if (result === "ok") sent += 1;
+      else if (result === "invalid") {
+        await prisma.pushToken.deleteMany({ where: { token } });
+      }
+      continue;
+    }
     try {
       const res = await fetch("https://fcm.googleapis.com/fcm/send", {
         method: "POST",
@@ -2348,7 +2437,7 @@ function initSocket(httpServer2) {
         token = socket.handshake.auth.token;
       }
       if (!token) return next(new Error("Unauthorized"));
-      const payload = import_jsonwebtoken2.default.verify(token, env.JWT_SECRET);
+      const payload = import_jsonwebtoken3.default.verify(token, env.JWT_SECRET);
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
         select: { id: true, isActive: true }

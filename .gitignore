@@ -52,6 +52,11 @@ client/android/app/*.jks
 client/android/app/*.keystore
 client/android/app/google-services.json
 
+# Firebase service-account credentials — NEVER commit
+*service-account*.json
+*fcm*.key
+*firebase*.json
+
 # Test artifacts
 coverage/
 *.lcov

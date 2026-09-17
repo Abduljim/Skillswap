@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
+import { sendFcmV1, fcmV1Configured } from './fcm.service';
 
 interface IncomingCallPush {
   exchangeId: string;
@@ -11,9 +12,12 @@ interface IncomingCallPush {
  * Push an incoming-call alert to the callee's Android device(s) via Firebase
  * Cloud Messaging. This is what rings even when the app is fully closed. The
  * socket layer calls this when the callee has no live socket connection.
+ * Prefers the Firebase HTTP v1 API (service account); falls back to the legacy
+ * server-key API if only FCM_SERVER_KEY is configured.
  */
 export async function sendIncomingCallPush(targetUserId: string, data: IncomingCallPush): Promise<{ sent: number; skipped: boolean }> {
-  if (!env.FCM_SERVER_KEY) return { sent: 0, skipped: true };
+  const useV1 = fcmV1Configured();
+  if (!useV1 && !env.FCM_SERVER_KEY) return { sent: 0, skipped: true };
 
   let tokens: string[] = [];
   try {
@@ -39,6 +43,15 @@ export async function sendIncomingCallPush(targetUserId: string, data: IncomingC
 
   let sent = 0;
   for (const token of tokens) {
+    if (useV1) {
+      const result = await sendFcmV1(token, fcmData);
+      if (result === 'ok') sent += 1;
+      else if (result === 'invalid') {
+        // Dead device token — drop it so we stop pushing to it.
+        await prisma.pushToken.deleteMany({ where: { token } });
+      }
+      continue;
+    }
     try {
       const res = await fetch('https://fcm.googleapis.com/fcm/send', {
         method: 'POST',
@@ -54,7 +67,7 @@ export async function sendIncomingCallPush(targetUserId: string, data: IncomingC
       });
       if (res.ok) sent += 1;
       else if (res.status === 404) {
-        // Devicetoken expired — drop it so we stop pushing to a dead device.
+        // Device token expired — drop it so we stop pushing to a dead device.
         await prisma.pushToken.deleteMany({ where: { token } });
       }
     } catch (e) {

@@ -28,6 +28,7 @@ export const env = {
   EMAIL_FROM: process.env.EMAIL_FROM || '',
   RESET_URL: process.env.RESET_URL || '',
   FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || '',
+  FCM_SERVICE_ACCOUNT_JSON: process.env.FCM_SERVICE_ACCOUNT_JSON || '',
 };
 
 if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'dev-secret-change-me') {
