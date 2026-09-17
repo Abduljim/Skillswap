@@ -13,8 +13,51 @@
     />
     <title>SkillSwap | Trade what you know for what you want to learn</title>
   </head>
-  <body>
+  <body style="background:#f7f3ea">
+    <div id="app-splash">
+      <div class="splash-inner">
+        <img class="splash-logo" src="/favicon.svg" alt="" />
+        <div class="splash-word">Skill<span>Swap</span></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #f7f3ea;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 1;
+        transition: opacity 0.25s ease;
+      }
+      #app-splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .splash-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      .splash-logo {
+        width: 56px;
+        height: 56px;
+      }
+      .splash-word {
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+        font-weight: 800;
+        font-size: 30px;
+        letter-spacing: -0.02em;
+        color: #0d0f15;
+      }
+      .splash-word span {
+        color: #e2574c;
+      }
+    </style>
   </body>
 </html>

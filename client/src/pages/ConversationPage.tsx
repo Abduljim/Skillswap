@@ -11,7 +11,7 @@ import { ArrowLeft, Phone, Video, PhoneCall, History, MessageCircle, Sun, Moon }
 import { Socket } from 'socket.io-client';
 import { createSocket } from '../lib/socket';
 import { startRingtone, stopRingtone } from '../lib/ringtone';
-import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing } from '../lib/call-notifier';
+import { requestCallNotificationPermission, ringIncomingCall, stopIncomingCallRing, getCallSoundSource } from '../lib/call-notifier';
 import type { CallLog, Exchange } from '../types';
 
 type Tab = 'chat' | 'voice' | 'video' | 'calls';
@@ -150,10 +150,10 @@ function ConversationContent({
   useEffect(() => {
     const status = call.state.status;
     if (status === 'incoming') {
-      void ringIncomingCall(peer);
-      startRingtone();
+      void ringIncomingCall(peer, getCallSoundSource());
+      startRingtone(true); // native notification rings with the user's chosen sound
     } else if (status === 'outgoing') {
-      startRingtone();
+      startRingtone(false); // ringback tone
     } else {
       stopRingtone();
       void stopIncomingCallRing();

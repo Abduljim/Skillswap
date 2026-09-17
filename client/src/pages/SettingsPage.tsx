@@ -5,7 +5,18 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme, THEMES } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
 import { api } from '../lib/api';
-import { Shield, KeyRound, Moon, Crown, Check, Lock } from 'lucide-react';
+import { Shield, KeyRound, Moon, Crown, Check, Lock, Phone, BellRing } from 'lucide-react';
+import {
+  setCallSoundSource,
+  getCallSoundSource,
+  type CallSoundSource,
+} from '../lib/call-notifier';
+
+const CALL_SOUND_OPTIONS: { value: CallSoundSource; label: string; hint: string }[] = [
+  { value: 'ringtone', label: 'Default ringtone', hint: 'Your phone ringtone' },
+  { value: 'alarm', label: 'Default alarm', hint: 'Your loudest alarm sound' },
+  { value: 'silent', label: 'Silent', hint: 'Vibrate only' },
+];
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -14,6 +25,7 @@ export default function SettingsPage() {
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [loading, setLoading] = useState(false);
+  const [callSound, setCallSound] = useState<CallSoundSource>(() => getCallSoundSource());
 
   const { data: subData } = useQuery({
     queryKey: ['my-subscription'],
@@ -150,6 +162,43 @@ export default function SettingsPage() {
             </Link>
           </div>
         )}
+      </div>
+
+      <div className="card p-6">
+        <h2 className="font-display font-bold text-lg text-ink-900 mb-1 flex items-center gap-2">
+          <Phone className="w-4 h-4" /> Calls
+        </h2>
+        <p className="text-xs text-ink-500 mb-4">
+          Choose the sound used when someone calls you. It plays through the operating
+          system using your chosen Android sound (works when the app is open or in the background).
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {CALL_SOUND_OPTIONS.map((o) => {
+            const active = callSound === o.value;
+            return (
+              <button
+                key={o.value}
+                onClick={() => {
+                  setCallSound(o.value);
+                  setCallSoundSource(o.value);
+                  toast.push({ type: 'success', title: `Incoming calls: ${o.label}` });
+                }}
+                className={`relative rounded-xl border p-3 text-left transition-all ${
+                  active
+                    ? 'border-coral-500 ring-2 ring-coral-500/30'
+                    : 'border-ink-100 hover:border-ink-200'
+                }`}
+              >
+                <BellRing className={`w-4 h-4 mb-1 ${active ? 'text-coral-500' : 'text-ink-400'}`} />
+                <div className="text-sm font-semibold leading-tight">
+                  <span className="text-ink-900">{o.label}</span>
+                </div>
+                <div className="text-[11px] text-ink-500 mt-1">{o.hint}</div>
+                {active && <Check className="w-4 h-4 text-coral-500 absolute top-2 right-2" />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="card p-6">

@@ -4,8 +4,13 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { COOKIE_NAME } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
+import { sendIncomingCallPush } from '../services/push.service';
 
 let io: IOServer | null = null;
+
+// Live sockets per user (used to decide whether an incoming call needs an FCM
+// push because the callee has no connected app instance).
+const connectedUsers = new Set<string>();
 
 interface ActiveCall {
   callerId: string;
@@ -74,6 +79,11 @@ export function initSocket(httpServer: HTTPServer) {
   io.on('connection', (socket) => {
     const userId = (socket as any).userId as string;
     socket.join(`user:${userId}`);
+    connectedUsers.add(userId);
+
+    socket.on('disconnect', () => {
+      connectedUsers.delete(userId);
+    });
 
     socket.on('exchange:join', async (exchangeId: string) => {
       const exchange = await prisma.exchange.findUnique({ where: { id: exchangeId } });
@@ -166,6 +176,15 @@ export function initSocket(httpServer: HTTPServer) {
         const payload = { exchangeId: data.exchangeId, video: !!data.video, caller: callerPayload };
         io!.to(`exchange:${data.exchangeId}`).emit('call:ringing', payload);
         io!.to(`user:${targetUserId}`).emit('call:ringing', payload);
+        // Callee isn't running the app — ring their phone via FCM so they still
+        // get told "someone is calling" even with the app fully closed.
+        if (!connectedUsers.has(targetUserId)) {
+          void sendIncomingCallPush(targetUserId, {
+            exchangeId: data.exchangeId,
+            video: !!data.video,
+            caller: callerPayload,
+          });
+        }
       } catch (e) {
         socket.emit('error', { message: 'Failed to initiate call' });
       }

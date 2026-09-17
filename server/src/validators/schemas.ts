@@ -26,15 +26,17 @@ export const resetPasswordSchema = z.object({
 // downscales uploaded photos to a small JPEG before sending). Cap length so a
 // single profile can't bloat the database.
 export const avatarUrlSchema = z
-  .string()
-  .max(2_000_000)
-  .refine(
-    (v) =>
-      v.startsWith('data:image/') ||
-      /^https?:\/\/.+/i.test(v),
-    { message: 'Must be an image URL or data URL' }
+  .preprocess(
+    (v) => (v === '' ? null : v),
+    z
+      .string()
+      .max(2_000_000)
+      .refine(
+        (v) => v.startsWith('data:image/') || /^https?:\/\/.+/i.test(v),
+        { message: 'Must be an image URL or data URL' }
+      )
+      .nullable()
   )
-  .nullable()
   .optional();
 
 export const updateProfileSchema = z.object({
@@ -47,10 +49,19 @@ export const updateProfileSchema = z.object({
   learningFormat: z.enum(['ONLINE', 'IN_PERSON', 'EITHER']).optional(),
   avatarFrame: z.enum(['default', 'frame_0', 'frame_1', 'frame_2', 'frame_3', 'frame_4', 'frame_5', 'frame_6', 'frame_7', 'frame_8', 'frame_9', 'frame_10', 'frame_11']).optional(),
   bannerStyle: z.enum(['cream', 'purple', 'blue', 'teal', 'orange', 'pink', 'gold', 'indigo', 'green']).optional(),
-  occupation: z.enum(['student', 'employed', 'self_employed', 'unemployed', 'other']).nullable().optional(),
+  // Empty selects come in as "" from the web/APK forms; treat them as "not set"
+  // instead of failing the entire profile save (which made saved fields vanish).
+  occupation: z
+    .preprocess((v) => (v === '' ? null : v), z.enum(['student', 'employed', 'self_employed', 'unemployed', 'other']).nullable())
+    .optional(),
   jobTitle: z.string().max(100).nullable().optional(),
   company: z.string().max(150).nullable().optional(),
-  gender: z.enum(['male', 'female', 'unspecified']).nullable().optional(),
+  gender: z
+    .preprocess((v) => (v === '' ? null : v), z.enum(['male', 'female', 'unspecified']).nullable())
+    .optional(),
+  age: z
+    .preprocess((v) => (v === '' || v === null ? null : typeof v === 'number' ? v : undefined), z.number().int().min(13).max(120).nullable())
+    .optional(),
   availabilities: z
     .array(
       z.object({

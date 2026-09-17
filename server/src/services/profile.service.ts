@@ -55,6 +55,7 @@ export async function updateProfile(
     jobTitle?: string | null;
     company?: string | null;
     gender?: string | null;
+    age?: number | null;
     bio?: string | null;
     avatarUrl?: string | null;
     learningFormat?: 'ONLINE' | 'IN_PERSON' | 'EITHER';
@@ -83,6 +84,7 @@ export async function updateProfile(
         jobTitle: profileFields.jobTitle ?? undefined,
         company: profileFields.company ?? undefined,
         gender: profileFields.gender ?? undefined,
+        age: profileFields.age ?? undefined,
         bio: profileFields.bio ?? undefined,
         avatarUrl: profileFields.avatarUrl ?? undefined,
         learningFormat: profileFields.learningFormat ?? undefined,
@@ -122,6 +124,7 @@ export async function getUserById(id: string, viewerId?: string) {
           jobTitle: true,
           company: true,
           gender: true,
+          age: true,
           bio: true,
           avatarUrl: true,
           learningFormat: true,
@@ -179,6 +182,7 @@ export async function getUserById(id: string, viewerId?: string) {
     jobTitle: user.profile?.jobTitle ?? null,
     company: user.profile?.company ?? null,
     gender: user.profile?.gender ?? null,
+    age: user.profile?.age ?? null,
     bio: user.profile?.bio ?? null,
     avatarUrl: user.profile?.avatarUrl ?? null,
     avatarFrame: user.profile?.avatarFrame ?? null,

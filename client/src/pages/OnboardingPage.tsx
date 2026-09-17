@@ -29,9 +29,10 @@ export default function OnboardingPage() {
     university: '',
     department: '',
     yearLevel: '',
+    age: '',
     jobTitle: '',
     company: '',
-    gender: '',
+    gender: 'unspecified',
     bio: '',
     learningFormat: 'EITHER' as LearningFormat,
     availabilities: [] as { weekday: Weekday; timeOfDay: TimeOfDay }[],
@@ -54,13 +55,47 @@ export default function OnboardingPage() {
   });
 
   const skip = async () => {
-    setStep((s) => s + 1);
+    try {
+      // Step 0 (bio/occupation/age) is required — skipping still saves it.
+      if (step === 0) {
+        const err = validateStep0();
+        if (err) {
+          toast.push({ type: 'error', title: 'Almost there', body: err });
+          return;
+        }
+        await api.put('/profile', step0Payload());
+      }
+      setStep((s) => s + 1);
+    } catch (err) {
+      if (err instanceof ApiError) toast.push({ type: 'error', title: 'Could not save', body: err.message });
+    }
   };
+
+  const validateStep0 = () => {
+    const ageNum = Number(profile.age);
+    if (!profile.occupation) return 'Please choose what you do.';
+    if (!profile.age || !Number.isInteger(ageNum) || ageNum < 13 || ageNum > 120) {
+      return 'Please enter a valid age (13–120).';
+    }
+    return null;
+  };
+
+  const step0Payload = () => ({
+    ...profile,
+    age: profile.age ? Number(profile.age) : null,
+    occupation: profile.occupation || null,
+    gender: profile.gender || null,
+  });
 
   const next = async () => {
     try {
       if (step === 0) {
-        await api.put('/profile', profile);
+        const err = validateStep0();
+        if (err) {
+          toast.push({ type: 'error', title: 'Almost there', body: err });
+          return;
+        }
+        await api.put('/profile', step0Payload());
       } else if (step === 1) {
         for (const s of teachSkills) {
           await addSkillMutation.mutateAsync({ skillId: s.id, type: 'TEACH' });
@@ -116,9 +151,9 @@ export default function OnboardingPage() {
             <h2 className="font-display font-bold text-2xl text-ink-900">Introduce yourself</h2>
             <p className="text-sm text-ink-600">A few quick details to help people get to know you.</p>
             <div>
-              <label className="label">What do you do? {profile.occupation === 'student' ? '(Student)' : ''}</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['student', 'employed', 'self_employed'] as const).map((o) => (
+              <label className="label">What do you do? <span className="text-coral-600">*</span></label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(['student', 'employed', 'self_employed', 'unemployed'] as const).map((o) => (
                   <button
                     key={o}
                     type="button"
@@ -143,11 +178,23 @@ export default function OnboardingPage() {
                   value={profile.gender}
                   onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
                 >
-                  <option value="">Select…</option>
+                  <option value="unspecified">Prefer not to say</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
-                  <option value="unspecified">Prefer not to say</option>
                 </select>
+              </div>
+              <div>
+                <label className="label">Age <span className="text-coral-600">*</span></label>
+                <input
+                  className="input"
+                  type="number"
+                  min={13}
+                  max={120}
+                  required
+                  value={profile.age}
+                  onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+                  placeholder="e.g. 22"
+                />
               </div>
             </div>
             {profile.occupation === 'student' ? (
@@ -407,7 +454,10 @@ function SkillPicker({
         onChange={(e) => setQ(e.target.value)}
       />
 
-      <div className="mt-3 max-h-72 overflow-y-auto space-y-1">
+      <div key={q} className="mt-3 max-h-[50vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-1">
+        {filtered.length > 0 && (
+          <div className="px-1 text-[10px] uppercase tracking-wide text-ink-400">{filtered.length} matching</div>
+        )}
         {filtered.map((s) => {
           const isSelected = selected.some((x) => x.id === s.id);
           return (

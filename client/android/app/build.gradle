@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// FCM needs app/google-services.json (from your Firebase project). Until that
+// file exists we drop the FCM-only sources + dependency so the APK still builds;
+// once you paste the file in, drop the stack in comment below to re-enable push.
+def fcmEnabled = file('google-services.json').exists()
+
 android {
     namespace "app.skillswap.client"
     compileSdk rootProject.ext.compileSdkVersion
@@ -14,6 +19,14 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    if (!fcmEnabled) {
+        sourceSets {
+            main {
+                java.exclude '**/CallFirebaseMessagingService.java'
+                java.exclude '**/PushPlugin.java'
+            }
         }
     }
     signingConfigs {
@@ -48,6 +61,11 @@ dependencies {
 
     // Google Play Billing
     implementation 'com.android.billingclient:billing:7.0.0'
+
+    // Firebase Cloud Messaging (only when google-services.json is present)
+    if (fcmEnabled) {
+        implementation 'com.google.firebase:firebase-messaging:23.4.1'
+    }
 
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

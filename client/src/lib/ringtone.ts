@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 let ctx: AudioContext | null = null;
 let ringTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -32,8 +34,15 @@ function beep(at: number, dur: number, freq: number) {
   osc.stop(at + dur + 0.05);
 }
 
-export function startRingtone(): void {
+/**
+ * Incoming ring (or outgoing ringback) tone. Pass skipAndroid=true for incoming
+ * calls on the installed app — the native CallNotifier notification rings there
+ * with the user's own chosen sound (ringtone/alarm), so a web beep would stack
+ * on top. Ringback (outgoing) keeps the beep, and so does the web preview.
+ */
+export function startRingtone(skipAndroid = false): void {
   stopRingtone();
+  if (skipAndroid && Capacitor.getPlatform() === 'android') return;
   try {
     const AC = window.AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;

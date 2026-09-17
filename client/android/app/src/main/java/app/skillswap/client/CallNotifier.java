@@ -27,7 +27,9 @@ import com.getcapacitor.annotation.PermissionCallback;
 @CapacitorPlugin(
         name = "CallNotifier",
         permissions = {
-            @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+            @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }),
+            @Permission(alias = "camera", strings = { Manifest.permission.CAMERA }),
+            @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
         })
 public class CallNotifier extends Plugin {
     private static final String CHANNEL_ID = "calls";
@@ -39,8 +41,8 @@ public class CallNotifier extends Plugin {
         if (nm == null) return;
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "Incoming calls", NotificationManager.IMPORTANCE_HIGH);
-        Uri ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        if (ringtone != null) channel.setSound(ringtone, null);
+        // Channel carries no default sound so each ring can use the user's
+        // chosen ringtone/alarm/silent without recreating the channel.
         channel.setDescription("Incoming call ringtone");
         channel.enableVibration(true);
         nm.createNotificationChannel(channel);
@@ -63,14 +65,60 @@ public class CallNotifier extends Plugin {
         }
     }
 
+    // Grants CAMERA + RECORD_AUDIO as real Android runtime permissions so the
+    // WebView's getUserMedia always succeeds once the user accepts (WebView
+    // getUserMedia prompts fail outside a gesture, so we prompt natively first).
+    @PluginMethod
+    public void requestMediaPermissions(PluginCall call) {
+        boolean prepared = hasPermission("camera") && hasPermission("microphone");
+        if (prepared) {
+            call.resolve();
+            return;
+        }
+        // Request camera first; requestMediaCameraCallback then asks for the mic.
+        if (!hasPermission("camera")) {
+            requestPermissionForAlias("camera", call, "requestMediaCameraCallback");
+        } else {
+            requestPermissionForAlias("microphone", call, "requestMediaCallback");
+        }
+    }
+
     @PermissionCallback
     private void permissionCallback(PluginCall call) {
+        call.resolve();
+    }
+
+    @PermissionCallback
+    private void requestMediaCameraCallback(PluginCall call) {
+        if (hasPermission("microphone")) {
+            call.resolve();
+        } else {
+            requestPermissionForAlias("microphone", call, "requestMediaCallback");
+        }
+    }
+
+    @PermissionCallback
+    private void requestMediaCallback(PluginCall call) {
+        call.resolve();
+    }
+
+    private Uri soundFor(String source) {
+        return CallSound.uri(getContext());
+    }
+
+    // Persist the user's Settings → Calls choice natively so incoming FCM push
+    // rings use the same sound as in-app rings.
+    @PluginMethod
+    public void setSoundSource(PluginCall call) {
+        String source = call.getString("source", "ringtone");
+        CallSound.set(getContext(), source);
         call.resolve();
     }
 
     @PluginMethod
     public void ring(PluginCall call) {
         String peerName = call.getString("displayName", "Incoming call");
+        String source = call.getString("soundSource", "ringtone");
         if (!notificationsAllowed()) {
             call.resolve();
             return;
@@ -97,8 +145,8 @@ public class CallNotifier extends Plugin {
                         .setOnlyAlertOnce(false)
                         .setVibrate(new long[] { 0, 700, 400, 700 });
 
-                Uri ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-                if (ringtone != null) builder.setSound(ringtone);
+                Uri sound = soundFor(source);
+                if (sound != null) builder.setSound(sound);
 
                 Notification notification = builder.build();
                 notification.flags |= Notification.FLAG_INSISTENT;

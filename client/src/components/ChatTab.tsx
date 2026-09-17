@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon } from 'lucide-react';
+import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import type { Message } from '../types';
@@ -28,6 +28,7 @@ export default function ChatTab({
   });
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(socket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,16 +107,51 @@ export default function ChatTab({
     }
   };
 
-  const sendImage = async (file: File) => {
-    if (file.size > 2 * 1024 * 1024) {
-      return; // silently cap at 2MB
-    }
+  const sendImage = async (body: string) => {
+    await sendMessage(body, 'IMAGE');
+  };
+
+  // Compress to a ~1600px JPEG so phone camera photos (often 3–8MB) never hit
+  // the DB cap and silently vanish. The result is staged as a preview and only
+  // sent when the user taps Send (OK).
+  const stageImage = (file: File) => {
     const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      await sendMessage(dataUrl, 'IMAGE');
+    reader.onerror = () => {};
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => {};
+      img.onload = () => {
+        const MAX = 1600;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        try {
+          setPendingImage(canvas.toDataURL('image/jpeg', 0.82));
+        } catch {
+          // fall back to the raw data URL if JPEG not supported
+          setPendingImage(reader.result as string);
+        }
+      };
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleMediaFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) stageImage(f);
+  };
+
+  const sendPending = async () => {
+    if (!pendingImage) return;
+    await sendImage(pendingImage);
+    setPendingImage(null);
+    setText('');
   };
 
   return (
@@ -205,24 +241,38 @@ export default function ChatTab({
             accept="image/*"
             capture="environment"
             className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f) sendImage(f);
-            }}
+            onChange={handleMediaFile}
           />
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f) sendImage(f);
-            }}
+            onChange={handleMediaFile}
           />
         </div>
+
+        {pendingImage && (
+          <div className={`flex items-center gap-2 pl-3 pr-1 py-2 border-t ${m.rowBorder}`}>
+            <img src={pendingImage} alt="Photo to send" className="w-14 h-14 rounded-lg object-cover border" />
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>Photo ready</div>
+              <div className={`text-xs ${m.muted}`}>Tap Send to share it.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingImage(null)}
+              className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
+              title="Remove photo"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <button type="button" onClick={() => void sendPending()} className="btn-coral text-sm px-4 py-2 shrink-0">
+              <Send className="w-4 h-4" /> Send
+            </button>
+          </div>
+        )}
+
         <input
           ref={textInputRef}
           className={`input flex-1 ${m.input} ${m.inputPlaceholder}`}
@@ -235,11 +285,18 @@ export default function ChatTab({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              sendMessage(text);
+              if (pendingImage) void sendPending();
+              else sendMessage(text);
             }
           }}
         />
-        <button onClick={() => sendMessage(text)} className="btn-coral shrink-0">
+        <button
+          onClick={() => {
+            if (pendingImage) void sendPending();
+            else sendMessage(text);
+          }}
+          className="btn-coral shrink-0"
+        >
           <Send className="w-4 h-4" />
         </button>
       </div>

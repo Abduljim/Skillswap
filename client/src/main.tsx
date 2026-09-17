@@ -42,3 +42,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+
+// Remove the static loading splash once the app has mounted.
+const splash = document.getElementById('app-splash');
+if (splash) {
+  splash.classList.add('hide');
+  window.setTimeout(() => splash.remove(), 300);
+}

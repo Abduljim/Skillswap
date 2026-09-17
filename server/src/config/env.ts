@@ -27,6 +27,7 @@ export const env = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
   EMAIL_FROM: process.env.EMAIL_FROM || '',
   RESET_URL: process.env.RESET_URL || '',
+  FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || '',
 };
 
 if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'dev-secret-change-me') {

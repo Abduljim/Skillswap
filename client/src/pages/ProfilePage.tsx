@@ -23,12 +23,6 @@ const OCCUPATIONS: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-const GENDERS: { value: string; label: string }[] = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'unspecified', label: 'Prefer not to say' },
-];
-
 const AVATAR_SIZE = 256;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5MB source cap — client downscales to 256px
 
@@ -89,12 +83,31 @@ export default function ProfilePage() {
       jobTitle: profile?.jobTitle || '',
       company: profile?.company || '',
       gender: profile?.gender || '',
+      age: profile?.age || '',
       bio: profile?.bio || '',
       avatarUrl: profile?.avatarUrl || '',
       learningFormat: profile?.learningFormat || 'EITHER',
       availabilities: profile?.availabilities || [],
     });
     setEditing(true);
+  };
+
+  const handleSave = () => {
+    const ageNum = Number(form.age);
+    if (!form.occupation) {
+      toast.push({ type: 'error', title: 'Occupation is required', body: 'Please choose what you do.' });
+      return;
+    }
+    if (!form.age || !Number.isInteger(ageNum) || ageNum < 13 || ageNum > 120) {
+      toast.push({ type: 'error', title: 'Age is required', body: 'Please enter a valid age (13–120).' });
+      return;
+    }
+    saveMutation.mutate({
+      ...form,
+      age: ageNum,
+      occupation: form.occupation || null,
+      gender: form.gender || null,
+    });
   };
 
   const saveMutation = useMutation({
@@ -250,6 +263,7 @@ export default function ProfilePage() {
                   {profile?.gender && (
                     <span className="chip-cream capitalize">{profile.gender === 'unspecified' ? 'Prefer not to say' : profile.gender}</span>
                   )}
+                  {profile?.age && <span className="chip-cream">{profile.age} years</span>}
                   {profile?.availabilities?.length > 0 && (
                     <span className="chip-cream">{profile.availabilities.length} time slots</span>
                   )}
@@ -296,11 +310,23 @@ export default function ProfilePage() {
                   <div>
                     <label className="label">Gender</label>
                     <select className="input" value={form.gender || ''} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
-                      <option value="">Select…</option>
-                      {GENDERS.map((g) => (
-                        <option key={g.value} value={g.value}>{g.label}</option>
-                      ))}
+                      <option value="">Prefer not to say</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="label">Age <span className="text-coral-600">*</span></label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={13}
+                      max={120}
+                      required
+                      value={form?.age ?? ''}
+                      onChange={(e) => setForm({ ...form, age: e.target.value })}
+                      placeholder="e.g. 22"
+                    />
                   </div>
                   {form.occupation !== 'student' && (
                     <>
@@ -393,7 +419,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  <button onClick={handleSave} disabled={saveMutation.isPending} className="btn-primary">
                     <Save className="w-4 h-4" /> {saveMutation.isPending ? 'Saving…' : 'Save'}
                   </button>
                   <button onClick={() => setEditing(false)} className="btn-outline">Cancel</button>
@@ -603,10 +629,15 @@ function SkillAdder({
         <Plus className="w-3 h-3" /> {label}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-72 card p-3 z-20">
+        <div className="absolute right-0 mt-2 w-72 card p-3 z-20 max-h-[50vh] flex flex-col">
           <input className="input" placeholder="Search skills" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="mt-2 max-h-48 overflow-y-auto">
-            {filtered.slice(0, 30).map((s) => (
+          <div key={q} className="mt-2 min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
+            {filtered.length > 0 && (
+              <div className="px-2 pb-1 text-[10px] uppercase tracking-wide text-ink-400">
+                {filtered.length} matching
+              </div>
+            )}
+            {filtered.slice(0, 50).map((s) => (
               <button
                 key={s.id}
                 onClick={() => {

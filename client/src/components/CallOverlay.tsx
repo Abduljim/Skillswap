@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Socket } from 'socket.io-client';
 import { FrameAvatar } from './ui';
+import { ensureMediaPermissions } from '../lib/media-permissions';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 
 export type CallStatus = 'none' | 'outgoing' | 'incoming' | 'active' | 'error';
@@ -208,6 +209,7 @@ export function useCall(
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    await ensureMediaPermissions();
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video,
@@ -223,6 +225,7 @@ export function useCall(
     try {
       let stream = streamRef.current;
       if (!stream) {
+        await ensureMediaPermissions();
         stream = await navigator.mediaDevices
           .getUserMedia({ audio: true, video: videoEnabledRef.current })
           .catch(() => null);

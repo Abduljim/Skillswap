@@ -1,29 +1,33 @@
-let requestedOnce = false;
+import { Capacitor } from '@capacitor/core';
+import { requestCallMediaPermissions } from './call-notifier';
 
-async function queryPermission(name: PermissionName): Promise<PermissionState | null> {
-  try {
-    if (!navigator.permissions?.query) return null;
-    const res = await navigator.permissions.query({ name });
-    return res.state;
-  } catch {
-    return null;
-  }
-}
+// One-shot web prewarm; on Android the native grant above is what makes
+// getUserMedia work, so nothing more is needed there.
+let probed = false;
 
 /**
- * Ask Android/Chrome for camera + microphone access once per session so every
- * user (not just admins or the first caller) sees the OS permission dialog up
- * front. Rights to the stream are released immediately after the prompt.
+ * Ask Android for camera + microphone access as a real runtime permission.
+ * The WebView-only getUserMedia prompt fails outside a user gesture (and the
+ * old approach often surfaced as "cant call, microphone/camera not enabled"
+ * even when the OS toggles looked on). Calling this natively up front — at app
+ * launch and again right before a call — guarantees getUserMedia succeeds.
  */
 export async function ensureMediaPermissions(): Promise<void> {
-  if (requestedOnce || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
-  requestedOnce = true;
+  const android = Capacitor.getPlatform() === 'android';
   try {
-    const [cam, mic] = await Promise.all([queryPermission('camera' as PermissionName), queryPermission('microphone' as PermissionName)]);
-    if ((cam === 'granted' && mic === 'granted') || cam === 'denied' || mic === 'denied') return;
+    if (android) {
+      await requestCallMediaPermissions();
+      return;
+    }
+  } catch {
+    // Non-native build — fall through to the web prewarm.
+  }
+  if (probed || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+  probed = true;
+  try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
     stream.getTracks().forEach((t) => t.stop());
   } catch {
-    // Ignored — denied or unsupported. Turn-by-turn prompts still happen at call time.
+    // Ignored — denied or unsupported. Call-time prompts still apply.
   }
 }

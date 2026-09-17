@@ -23,6 +23,7 @@ import safetyRoutes from './routes/safety.routes';
 import adminRoutes from './routes/admin.routes';
 import billingRoutes from './routes/billing.routes';
 import { initSocket } from './sockets/io';
+import { SKILLS } from './catalogue';
 
 const app = express();
 
@@ -112,10 +113,37 @@ async function autoSeedIfEmpty() {
   }
 }
 
+// Keep the live skill catalogue in sync on every boot (additive/upsert). This is
+// what ships new skills (languages, university subjects, careers, …) to existing
+// deployments without a manual seed — the seed script uses the same list.
+async function ensureDefaultSkills() {
+  try {
+    const names = SKILLS.map((s) => s.name);
+    const existing = await prisma.skill.findMany({
+      where: { name: { in: names } },
+      select: { name: true },
+    });
+    const have = new Set(existing.map((s) => s.name));
+    const missing = SKILLS.filter((s) => !have.has(s.name));
+    if (!missing.length) return;
+    for (const s of missing) {
+      await prisma.skill.upsert({
+        where: { name: s.name },
+        update: { category: s.category, description: s.description ?? null, isActive: true },
+        create: { name: s.name, category: s.category, description: s.description ?? null, isActive: true },
+      });
+    }
+    console.log(`🌱 Catalogue synced: added ${missing.length} skills (${missing.map((s) => s.name).join(', ')}).`);
+  } catch (e: any) {
+    console.error('⚠️  Catalogue sync failed (non-fatal):', e?.message || e);
+  }
+}
+
 httpServer.listen(env.PORT, () => {
   console.log(`🚀 SkillSwap API running on http://localhost:${env.PORT}`);
   console.log(`📦 Environment: ${env.NODE_ENV}`);
   autoSeedIfEmpty();
+  ensureDefaultSkills();
 });
 
 export default app;
