@@ -78,3 +78,4 @@ client/.env.production
 
 # Build-time API URL override
 # Copy .env.production.example → .env.production and set VITE_API_URL
+server/dist/
