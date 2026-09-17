@@ -38,6 +38,7 @@ export interface CallState {
 
 interface CallsContextValue extends CallState {
   micMuted: boolean;
+  cameraAvailable: boolean;
   localVideoRef: React.RefObject<HTMLVideoElement>;
   remoteVideoRef: React.RefObject<HTMLVideoElement>;
   startCall: (peer: Peer, exchangeId: string, video: boolean) => Promise<void>;
@@ -66,6 +67,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const [incoming, setIncoming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [micMuted, setMicMuted] = useState(false);
+  const [cameraAvailable, setCameraAvailable] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -118,6 +120,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     }
     if (!got) return null;
     streamRef.current = got;
+    setCameraAvailable(got.getVideoTracks().length > 0);
     return { stream: got, hasVideo };
   }, []);
 
@@ -460,6 +463,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     incoming,
     error,
     micMuted,
+    cameraAvailable,
     localVideoRef,
     remoteVideoRef,
     startCall,
@@ -481,6 +485,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onToggleMic={toggleMic}
         onToggleCamera={toggleCamera}
         micMuted={micMuted}
+        cameraAvailable={cameraAvailable}
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
       />

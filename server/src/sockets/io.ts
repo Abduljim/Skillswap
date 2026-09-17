@@ -5,6 +5,7 @@ import { env } from '../config/env';
 import { COOKIE_NAME } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { sendIncomingCallPush } from '../services/push.service';
+import { createMessageSchema } from '../validators/schemas';
 
 let io: IOServer | null = null;
 
@@ -100,8 +101,10 @@ export function initSocket(httpServer: HTTPServer) {
       socket.leave(`exchange:${exchangeId}`);
     });
 
-    socket.on('message:send', async (data: { exchangeId: string; body: string; type?: string }) => {
+    socket.on('message:send', async (data: { exchangeId: string; body: string; type?: string; caption?: string | null }) => {
       try {
+        const parsed = createMessageSchema.safeParse({ body: data.body, type: data.type ?? 'TEXT', caption: data.caption });
+        if (!parsed.success) return;
         const exchange = await prisma.exchange.findUnique({ where: { id: data.exchangeId } });
         if (
           !exchange ||
@@ -113,8 +116,9 @@ export function initSocket(httpServer: HTTPServer) {
           data: {
             exchangeId: data.exchangeId,
             senderId: userId,
-            body: data.body,
-            type: (data.type as any) || 'TEXT',
+            body: parsed.data.body,
+            type: parsed.data.type,
+            caption: parsed.data.caption ?? null,
           },
           include: { sender: { select: { id: true, displayName: true } } },
         });

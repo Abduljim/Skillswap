@@ -77,10 +77,10 @@ export async function listConversations(userId: string) {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export async function createMessage(userId: string, exchangeId: string, body: string, type: string = 'TEXT') {
+export async function createMessage(userId: string, exchangeId: string, body: string, type: string = 'TEXT', caption?: string | null) {
   const exchange = await assertActiveParticipant(userId, exchangeId);
   const message = await prisma.message.create({
-    data: { exchangeId, senderId: userId, body, type: type as any },
+    data: { exchangeId, senderId: userId, body, type: type as any, caption: caption ?? null },
     include: { sender: { select: { id: true, displayName: true } } },
   });
   emitToExchange(exchangeId, 'message:new', message);

@@ -104,7 +104,8 @@ router.post(
       req.user!.userId,
       req.params.id,
       req.body.body,
-      req.body.type
+      req.body.type,
+      req.body.caption ?? null
     );
     ok(res, msg);
   })

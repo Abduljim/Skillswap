@@ -124,6 +124,13 @@ export const updateSessionSchema = createSessionSchema.partial();
 export const createMessageSchema = z.object({
   body: z.string().min(1).max(2_000_000),
   type: z.enum(['TEXT', 'IMAGE', 'STICKER']).default('TEXT'),
+  caption: z
+    .string()
+    .trim()
+    .max(2000)
+    .transform((v) => (v.length > 0 ? v : null))
+    .optional()
+    .nullable(),
 });
 
 // ============ Reviews ============

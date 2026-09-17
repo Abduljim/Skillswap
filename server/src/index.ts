@@ -35,7 +35,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '3mb' }));
 app.use(cookieParser(env.COOKIE_SECRET));
 
 // Global rate limiter

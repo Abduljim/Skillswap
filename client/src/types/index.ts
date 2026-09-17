@@ -116,6 +116,7 @@ export interface Message {
   exchangeId: string;
   senderId: string;
   body: string;
+  caption?: string | null;
   type?: MessageType;
   createdAt: string;
   status?: 'SENT' | 'DELIVERED' | 'READ';

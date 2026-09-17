@@ -313,6 +313,7 @@ model Message {
   sender     User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
   type       MessageType @default(TEXT)
   body       String
+  caption    String?
   createdAt  DateTime    @default(now())
   status     String      @default("SENT")
   readAt     DateTime?

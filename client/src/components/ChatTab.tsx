@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X } from 'lucide-react';
+import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X, Pencil } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import type { Message } from '../types';
@@ -29,6 +29,9 @@ export default function ChatTab({
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingCaption, setPendingCaption] = useState('');
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(socket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,20 +102,23 @@ export default function ChatTab({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, typing]);
 
-  const sendMessage = async (body: string, type: string = 'TEXT') => {
-    if (!body.trim()) return;
+  const sendMessage = async (body: string, type: string = 'TEXT', caption?: string | null) => {
+    if (!body.trim() || sending) return;
+    setSending(true);
     try {
-      await api.post(`/exchanges/${exchangeId}/messages`, { body, type });
+      await api.post(`/exchanges/${exchangeId}/messages`, { body, type, caption: caption || null });
       setText('');
       void qc.invalidateQueries({ queryKey: ['conversations'] });
       refetch();
     } catch (e) {
       if (e instanceof ApiError) console.error(e.message);
+    } finally {
+      setSending(false);
     }
   };
 
-  const sendImage = async (body: string) => {
-    await sendMessage(body, 'IMAGE');
+  const sendImage = async (body: string, caption?: string | null) => {
+    await sendMessage(body, 'IMAGE', caption);
   };
 
   // Compress to a ~1600px JPEG so phone camera photos (often 3–8MB) never hit
@@ -152,10 +158,21 @@ export default function ChatTab({
   };
 
   const sendPending = async () => {
-    if (!pendingImage) return;
-    await sendImage(pendingImage);
+    if (!pendingImage || sending) return;
+    const image = pendingImage;
+    const caption = pendingCaption;
+    setSending(true);
+    await sendImage(image, caption);
+    setSending(false);
     setPendingImage(null);
-    setText('');
+    setPendingCaption('');
+    setReviewOpen(false);
+  };
+
+  const discardPending = () => {
+    setPendingImage(null);
+    setPendingCaption('');
+    setReviewOpen(false);
   };
 
   return (
@@ -172,11 +189,16 @@ export default function ChatTab({
                 className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-sm ${mine ? m.bubbleMine : m.bubbleTheirs}`}
               >
                 {message.type === 'IMAGE' ? (
-                  <img
-                    src={message.body}
-                    alt="Shared image"
-                    className="rounded-xl max-w-[300px] max-h-96 w-auto h-auto object-contain"
-                  />
+                  <div>
+                    <img
+                      src={message.body}
+                      alt={message.caption || 'Shared image'}
+                      className="rounded-xl max-w-[300px] max-h-96 w-auto h-auto object-contain"
+                    />
+                    {message.caption && (
+                      <div className="text-sm whitespace-pre-wrap break-words mt-1.5">{message.caption}</div>
+                    )}
+                  </div>
                 ) : message.type === 'STICKER' ? (
                   <div className="text-5xl leading-none py-1">{message.body}</div>
                 ) : (
@@ -204,14 +226,25 @@ export default function ChatTab({
       <div className={`pt-3 px-4 pb-4 border-t ${m.rowBorder}`}>
         {pendingImage ? (
           <div className="flex items-center gap-3">
-            <img src={pendingImage} alt="Photo to send" className="w-16 h-16 rounded-xl object-cover border shrink-0" />
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="shrink-0 rounded-xl overflow-hidden border active:scale-95"
+              title="Review photo"
+            >
+              <img src={pendingImage} alt="Photo to send" className="w-12 h-12 object-cover" />
+            </button>
             <div className="flex-1 min-w-0">
-              <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>Photo ready</div>
-              <div className={`text-xs ${m.muted}`}>Tap Send to share it.</div>
+              <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>
+                {pendingCaption ? 'Photo with caption ready' : 'Photo ready'}
+              </div>
+              <div className={`text-xs truncate ${m.muted}`}>
+                {pendingCaption || 'Tap the photo to review and add a caption.'}
+              </div>
             </div>
             <button
               type="button"
-              onClick={() => setPendingImage(null)}
+              onClick={discardPending}
               className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${m.iconBtn}`}
               title="Remove photo"
             >
@@ -219,10 +252,10 @@ export default function ChatTab({
             </button>
             <button
               type="button"
-              onClick={() => void sendPending()}
+              onClick={() => setReviewOpen(true)}
               className="btn-coral text-sm px-4 py-2 shrink-0 whitespace-nowrap"
             >
-              <Send className="w-4 h-4" /> Send
+              <Pencil className="w-4 h-4" /> Review
             </button>
           </div>
         ) : (
@@ -307,6 +340,56 @@ export default function ChatTab({
           </div>
         )}
       </div>
+
+      {reviewOpen && pendingImage && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
+          <div className="flex items-center justify-between px-3 pt-3 pb-2 bg-gradient-to-b from-black/80 to-transparent">
+            <button
+              type="button"
+              onClick={() => setReviewOpen(false)}
+              className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95"
+              title="Back"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendPending()}
+              disabled={sending}
+              className="flex items-center gap-2 rounded-full bg-[#00a884] text-white text-sm font-semibold px-5 py-2.5 active:scale-95 disabled:opacity-60"
+            >
+              <Send className="w-4 h-4" /> {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+
+          <div className="flex-1 min-h-0 flex items-center justify-center px-2">
+            <img
+              src={pendingImage}
+              alt="Photo to send"
+              className="max-w-full max-h-full w-auto h-auto object-contain"
+            />
+          </div>
+
+          <div className="px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 bg-gradient-to-t from-black/80 to-transparent">
+            <div className="flex items-center gap-2 rounded-full bg-[#1f2c34] px-4 py-2.5">
+              <Smile className="w-5 h-5 text-[#8696a0] shrink-0" />
+              <input
+                autoFocus
+                className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none placeholder:text-[#8696a0]"
+                placeholder="Add a caption…"
+                value={pendingCaption}
+                onChange={(e) => setPendingCaption(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void sendPending();
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
