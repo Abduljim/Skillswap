@@ -100,8 +100,8 @@ VITE_API_URL=https://api.skillswap.app
 # TURN relay for calls. STUN alone cannot connect two peers that are both
 # behind carrier-grade NAT, which is the normal case on mobile networks, so a
 # TURN server is what makes calls actually work in the field.
-# Providers: metered.ca (free tier + API for short-lived credentials), Twilio
-# Network Traversal, or your own coturn. Separate multiple URLs with commas.
+# Providers and trade-offs: see "Calls: TURN credentials" in docs/DEPLOY.md.
+# Separate multiple URLs with commas.
 VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
 VITE_TURN_USERNAME=<username>
 VITE_TURN_CREDENTIAL=<password>
@@ -146,6 +146,54 @@ future update with it, and losing it means never being able to update the app:
 keytool -genkeypair -v -keystore client/android/app/skillswap-release.jks \
   -alias skillswap -keyalg RSA -keysize 2048 -validity 10950 \
   -dname "CN=SkillSwap, OU=Mobile, O=SkillSwap, L=Lagos, ST=Lagos, C=NG"
+```
+
+## 5b. Push notifications (FCM): two different files, both required
+
+These are constantly confused because both come from the Firebase console, and
+they are **not** interchangeable — one is public client config, the other is a
+server-side secret. Push only works when both are in place.
+
+| | `google-services.json` | `FCM_SERVICE_ACCOUNT_JSON` |
+| --- | --- | --- |
+| Where it lives | `client/android/app/google-services.json` | Render → `skillswap-api` → Environment |
+| What it is | Public per-app Firebase config: project id, app id, API key | Service-account **private key** (JSON), a secret |
+| Used by | the Android build + Firebase SDK in the app | the API (`server/src/services/fcm.service.ts`) |
+| Purpose | lets the app **receive** pushes and register a device token | lets the server **send** pushes |
+| In git? | No (gitignored) — but it is not sensitive | Never. Treat like a password |
+
+Get them from the same place: Firebase console → **Project settings**.
+
+1. *General* tab → **Your apps** → add an **Android** app with package name
+   `app.skillswap.client` (it must match `applicationId` in
+   `client/android/app/build.gradle` exactly, or registration fails) → download
+   `google-services.json` into `client/android/app/`.
+   Also add the release keystore's SHA-1 and SHA-256 to that Android app
+   (`keytool -list -v -keystore skillswap-release.jks`), so the config matches the
+   signed build you ship rather than only the debug one.
+2. *Service accounts* tab → **Generate new private key** → paste the entire JSON
+   into `FCM_SERVICE_ACCOUNT_JSON` on Render as a **single line** (Render env vars
+   keep newlines only awkwardly; collapse them, and make sure there is no trailing
+   newline inside the quotes).
+
+Behaviour when they are missing, so a silent failure is at least explicable:
+
+- No `google-services.json`: `client/android/app/build.gradle` sets
+  `fcmEnabled = false`, skips the `com.google.gms.google-services` plugin and the
+  Firebase dependencies, and the build still succeeds. `MainActivity` registers
+  the push plugin reflectively, so the app runs — it just never receives a push.
+  Gradle logs `google-services.json not found, google-services plugin not
+  applied. Push Notifications won't work`.
+- No `FCM_SERVICE_ACCOUNT_JSON`: `fcm.service.ts` returns `null` and every
+  notification is skipped. Calls still ring in-app via Socket.IO; the user simply
+  gets nothing when the app is closed.
+- `google-services.json` present but the service account missing (or vice versa)
+  is the most common half-working state: devices register, nothing is ever sent.
+
+After adding `google-services.json`, rebuild — it is consumed at build time:
+
+```bash
+cd client && npm run cap:sync && cd android && ./gradlew assembleRelease bundleRelease
 ```
 
 ## 6. Build & install

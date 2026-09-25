@@ -54,7 +54,62 @@ cd server && npm run migrate -- --name describe_the_change
 git add prisma/migrations && git commit -m "…" && git push   # Render redeploys
 ```
 
-Watch the build log. It will print `🚀 SkillSwap API running on http://localhost:4000` when ready (~2–3 min).
+#### If a deploy fails on migrations (P3009 / P3018)
+
+Symptom, verbatim from a real build log:
+
+```
+Applying migration `20260925124802_add_user_token_version`
+Error: P3018
+A migration failed to apply. New migrations cannot be applied before the error
+is recovered from.
+Database error code: 42701
+ERROR: column "tokenVersion" of relation "User" already exists
+==> Build failed 😞
+```
+
+Cause: the production database was originally created with `prisma db push`, so
+columns that a later migration adds can already exist. The bare `ADD COLUMN`
+collides, Prisma records that migration as **failed**, and from then on it refuses
+to apply *anything* — every following deploy dies in the same place, even after
+the SQL is corrected. Redeploying alone cannot clear it.
+
+This is handled automatically now, in two parts:
+
+1. Migrations are re-runnable. `ADD COLUMN IF NOT EXISTS`, so applying one to a
+   database that already has the column is a no-op instead of an error.
+2. `scripts/ensure-migrations.js` (which the build command runs immediately
+   before `migrate deploy`) clears any migration left in a failed state with
+   `prisma migrate resolve --rolled-back`, so the corrected SQL is retried on the
+   same deploy. It also re-records the checksum of an already-applied migration
+   whose file was hardened afterwards, because Prisma verifies a SHA-256 of each
+   file and would otherwise fail every database that applied the old copy.
+
+So the recovery is: **push, and let it redeploy.** The log should show
+`🩺 1 migration(s) left in a failed state … ↩ … → prisma migrate resolve
+--rolled-back` and then `All migrations have been successfully applied`.
+
+If you ever need to do it by hand (a host with shell access, or a database that
+is not this one), point `DATABASE_URL` at that database and run:
+
+```bash
+cd server
+npx prisma migrate resolve --rolled-back <migration_name>   # clear the failure
+npx prisma migrate deploy                                   # retry
+```
+
+`--rolled-back` only edits Prisma's bookkeeping table; it never touches your
+data. Use `--applied` instead when the migration's changes genuinely are already
+in the database and you want it skipped rather than retried.
+
+Rules that keep this from recurring:
+
+- Every migration must be safe to re-run (`IF NOT EXISTS`, guarded `UPDATE`s).
+- Never edit what a released migration *does* — only harden it or fix comments.
+  The checksum repair above re-records on trust, so a substantive edit would pass
+  silently on databases that already applied the old version and never reach them.
+- `prisma db push` must never run against production.
+
 
 ### 3. Seeding (automatic)
 
@@ -112,6 +167,97 @@ Signing material lives outside the repo — see *Release signing* in
 The new APK is in `android/app/build/outputs/apk/release/app-release.apk`.
 
 Sideload it on your Android phone — done.
+
+## Calls: TURN credentials (set once, then redeploy)
+
+Calls use WebRTC peer-to-peer. STUN alone works when at least one peer has a
+public address, but two phones on mobile data are usually both behind
+carrier-grade NAT — the norm on MTN/Airtel/Glo — and then there is no direct
+route. TURN relays the media in that case. Without it a call rings, both sides
+show "connecting", and then it fails.
+
+The client reads three build-time variables (`client/src/contexts/CallsContext.tsx`):
+
+| Variable | Example |
+| --- | --- |
+| `VITE_TURN_URLS` | `turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls` |
+| `VITE_TURN_USERNAME` | `skillswap` |
+| `VITE_TURN_CREDENTIAL` | `a-long-random-secret` |
+
+`VITE_*` values are **inlined into the bundle at build time**, and the Render
+service `skillswap-api` is what builds the client. So:
+
+1. Render dashboard → `skillswap-api` → **Environment**.
+2. Add or edit the three variables (they already exist as blanks in `render.yaml`).
+3. **Save changes** → Render redeploys, and the new bundle carries them.
+4. For the Android app the same values must be present when the APK/AAB is built —
+   put them in `client/.env.production` before `npm run cap:sync` (see *5. Update
+   the APK* above), otherwise the installed app keeps falling back to the open
+   relay.
+
+Until they are set, the client falls back to `stun:stun.l.google.com:19302` plus
+the Open Relay Project (`openrelay.xyz`). That is fine for development on one
+Wi-Fi network and useless as a production plan: it is a shared free service with
+no credentials, no SLA and aggressive rate limits.
+
+### Getting a TURN server
+
+Ordered by effort, cheapest first:
+
+- **Self-host coturn** (free, BSD-licensed, what most production WebRTC runs).
+  Any small VPS works — an Oracle Cloud *Always Free* ARM instance costs nothing,
+  Hetzner CX22 is ~€4/mo. This is the right answer for a real product because you
+  pay nothing per GB and you control the credentials. Minimal
+  `/etc/turnserver.conf`:
+
+  ```conf
+  listening-port=3478
+  tls-listening-port=5349
+  cert=/etc/letsencrypt/live/turn.example.com/fullchain.pem
+  pkey=/etc/letsencrypt/live/turn.example.com/privkey.pem
+  # static username/password, which is what VITE_TURN_USERNAME/CREDENTIAL expect
+  lt-cred-mech
+  user=skillswap:a-long-random-secret
+  realm=turn.example.com
+  # also listen on 443 — campus and corporate networks block 3478 and UDP
+  alt-tls-listening-port=443
+  no-multicast-peers
+  denied-peer-ip=10.0.0.0-10.255.255.255
+  denied-peer-ip=192.168.0.0-192.168.255.255
+  ```
+
+  Open UDP+TCP 3478, 5349 and 443, plus a UDP relay range
+  (`min-port=49152`, `max-port=49200`). Use a real domain with Let's Encrypt so
+  `turns:` works.
+- **Managed with a free tier and static credentials** — ExpressTURN or Xirsys.
+  Sign up, copy the URL/username/credential from the dashboard, paste them in.
+  Five minutes, no server to maintain, and the free allowance is enough for
+  testing with a handful of real users.
+- **Metered** — was the previous hardcoded provider. Its free plan caps relayed
+  media at 500 MB/month, which a single video call can exhaust, and paid plans
+  start around $99/month.
+- **Cloudflare TURN** — $0.05/GB and very good anycast coverage, but it expects
+  short-lived credentials minted by your backend per session, which the current
+  static-env client does not do. Only choose this together with the server-minted
+  credentials change below.
+
+### One honest caveat
+
+Static TURN credentials are compiled into the client bundle, so anyone who
+inspects the site or unpacks the APK can read them and relay their own traffic
+through your TURN server — which is a bandwidth bill or an exhausted quota, not a
+data leak. For a handful of testers this is acceptable. Before real traffic, move
+to short-lived credentials: coturn's `use-auth-secret` plus an authenticated
+endpoint (for example `GET /api/calls/ice-servers`) that returns an
+HMAC credential valid for a few minutes, and have `buildIceServers()` fetch it
+instead of reading `import.meta.env`. That also removes the need to rebuild the
+app to rotate credentials.
+
+### Verifying it works
+
+Test from two phones on **mobile data** (not the same Wi-Fi — that hides the
+problem). In Chrome on desktop you can also open `chrome://webrtc-internals` and
+confirm a `relay` candidate appears and that the selected candidate pair uses it.
 
 ## What about Play Billing?
 

@@ -71,6 +71,28 @@ services:
         value: 'https://skillswap-api-dcg8.onrender.com/reset-password'
       - key: VITE_API_URL
         value: https://skillswap-api-dcg8.onrender.com
+      # WebRTC relay for calls. Every VITE_* value is inlined into the client at
+      # BUILD time, and this service is what builds the client — so they belong
+      # here, not on a separate frontend, and a redeploy is required after
+      # changing them. Without TURN, two peers behind carrier-grade NAT (the
+      # normal case on mobile data in Nigeria) ring and then fail to connect.
+      # Comma-separated URLs; both a plain and a TLS entry is best, because
+      # restrictive networks block UDP and 3478. See docs/DEPLOY.md → TURN.
+      - key: VITE_TURN_URLS
+        value: ''
+      - key: VITE_TURN_USERNAME
+        value: ''
+      - key: VITE_TURN_CREDENTIAL
+        value: ''
+      # Server-side Firebase service account: Firebase console → Project settings
+      # → Service accounts → Generate new private key. Paste the whole JSON on
+      # ONE line (no trailing newline). This is the secret that lets the API SEND
+      # pushes; it is NOT the Android google-services.json, which is the public
+      # per-app config the mobile build needs to RECEIVE them. Both are required
+      # for push to work end to end. Without this, fcm.service.ts returns null
+      # and notifications are silently skipped.
+      - key: FCM_SERVICE_ACCOUNT_JSON
+        value: ''
       - key: SMTP_HOST
         value: ''
       - key: SMTP_PORT
