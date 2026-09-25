@@ -1,39 +1,6 @@
 import { ReactNode } from 'react';
 import clsx from 'clsx';
-
-export const AVATAR_FRAMES: Record<string, { src: string; label: string }> = {
-  default: { src: '', label: 'Default' },
-  frame_0: { src: '/frames/frame_0.png', label: 'Copper' },
-  frame_1: { src: '/frames/frame_1.png', label: 'Slate' },
-  frame_2: { src: '/frames/frame_2.png', label: 'Orchid' },
-  frame_3: { src: '/frames/frame_3.png', label: 'Gold' },
-  frame_4: { src: '/frames/frame_4.png', label: 'Teal' },
-  frame_5: { src: '/frames/frame_5.png', label: 'Ember' },
-  frame_6: { src: '/frames/frame_6.png', label: 'Sage' },
-  frame_7: { src: '/frames/frame_7.png', label: 'Rose' },
-  frame_8: { src: '/frames/frame_8.png', label: 'Sand' },
-  frame_9: { src: '/frames/frame_9.png', label: 'Ocean' },
-  frame_10: { src: '/frames/frame_10.png', label: 'Wine' },
-  frame_11: { src: '/frames/frame_11.png', label: 'Pearl' },
-};
-
-// Each frame PNG (512x512) has a central transparent hole the photo fills.
-// The PNG must be rendered larger than the avatar so the photo exactly fills
-// the hole: scale = 512 / hole diameter (measured in the source assets).
-const FRAME_SCALE: Record<string, number> = {
-  frame_0: 512 / 330,
-  frame_1: 512 / 326,
-  frame_2: 512 / 314,
-  frame_3: 512 / 333,
-  frame_4: 512 / 346,
-  frame_5: 512 / 303,
-  frame_6: 512 / 341,
-  frame_7: 512 / 348,
-  frame_8: 512 / 330,
-  frame_9: 512 / 315,
-  frame_10: 512 / 298,
-  frame_11: 512 / 318,
-};
+import { CardArt, useCardUid, resolveCard, CARD_OUTER_RATIO } from '../profileCards';
 
 export function Avatar({
   src,
@@ -63,31 +30,32 @@ export function Avatar({
   );
 }
 
+/**
+ * Avatar with its profile card (ring artwork) drawn around it.
+ *
+ * The card art is inline SVG/CSS, so the outer box is a fixed ratio of the
+ * avatar size and stays crisp at any scale — no PNG assets, no per-frame scale
+ * table. Unknown or retired frame ids fall back to the free card.
+ */
 export function FrameAvatar({
-  frame = 'default',
+  frame = 'linen',
   size = 40,
   ...avatarProps
 }: {
   frame?: string;
   size?: number;
 } & Omit<Parameters<typeof Avatar>[0], 'size'>) {
-  const def = AVATAR_FRAMES[frame] || AVATAR_FRAMES.default;
-  if (!def.src) return <Avatar {...avatarProps} size={size} />;
-  const scale = FRAME_SCALE[frame] ?? 512 / 330;
-  const outer = size * scale;
+  const card = resolveCard(frame);
+  const uid = useCardUid();
+  const outer = size * CARD_OUTER_RATIO;
   const inset = (outer - size) / 2;
+
   return (
     <div className="relative shrink-0" style={{ width: outer, height: outer }}>
       <div className="absolute" style={{ left: inset, top: inset }}>
         <Avatar {...avatarProps} size={size} />
       </div>
-      <img
-        src={def.src}
-        alt=""
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        draggable={false}
-        style={frame !== 'default' ? { filter: 'drop-shadow(0 0 6px rgba(255, 185, 80, 0.5))' } : undefined}
-      />
+      <CardArt card={card.id} uid={uid} />
     </div>
   );
 }

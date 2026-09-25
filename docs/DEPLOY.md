@@ -92,11 +92,22 @@ The APK you have now points to the ephemeral sandbox URL. Rebuild it with your l
 
 ```bash
 cd client
-echo 'VITE_API_URL=https://skillswap-api.onrender.com' > .env.production
+cat > .env.production <<'ENV'
+VITE_API_URL=https://skillswap-api.onrender.com
+# Required for calls to connect on mobile networks (both peers behind CGNAT).
+VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
+VITE_TURN_USERNAME=<username>
+VITE_TURN_CREDENTIAL=<password>
+ENV
+npm run build
 npm run cap:sync
 cd android
 ./gradlew assembleRelease bundleRelease
 ```
+
+Signing material lives outside the repo — see *Release signing* in
+`docs/ANDROID.md`. Without `client/android/keystore.properties` (or the
+`SKILLSWAP_*` environment variables) the artifacts come out unsigned.
 
 The new APK is in `android/app/build/outputs/apk/release/app-release.apk`.
 

@@ -96,7 +96,21 @@ In `client/.env.production` (create it):
 
 ```bash
 VITE_API_URL=https://api.skillswap.app
+
+# TURN relay for calls. STUN alone cannot connect two peers that are both
+# behind carrier-grade NAT, which is the normal case on mobile networks, so a
+# TURN server is what makes calls actually work in the field.
+# Providers: metered.ca (free tier + API for short-lived credentials), Twilio
+# Network Traversal, or your own coturn. Separate multiple URLs with commas.
+VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
+VITE_TURN_USERNAME=<username>
+VITE_TURN_CREDENTIAL=<password>
 ```
+
+Without `VITE_TURN_URLS` the app falls back to public STUN plus the legacy
+Metered Open Relay hosts. Those relays now need an account, so treat the
+fallback as "works on Wi‑Fi/LAN, unreliable on mobile data" — set TURN before
+you ship.
 
 Then build:
 
@@ -106,6 +120,33 @@ npm run cap:sync
 ```
 
 `cap:sync` copies `dist/` into `android/app/src/main/assets/public` and updates native deps.
+
+### Release signing
+
+The keystore and its passwords are **not** in the repo (they used to be
+hardcoded in `app/build.gradle`, which meant anyone with read access could sign
+an update Play would accept). Put them in `client/android/keystore.properties`
+(gitignored):
+
+```properties
+storeFile=skillswap-release.jks
+storePassword=...
+keyAlias=skillswap
+keyPassword=...
+```
+
+or export `SKILLSWAP_STORE_FILE`, `SKILLSWAP_STORE_PASSWORD`,
+`SKILLSWAP_KEY_ALIAS`, `SKILLSWAP_KEY_PASSWORD`. With neither present the build
+still succeeds but produces **unsigned** artifacts.
+
+Generate a keystore once and back it up somewhere durable — Play signs every
+future update with it, and losing it means never being able to update the app:
+
+```bash
+keytool -genkeypair -v -keystore client/android/app/skillswap-release.jks \
+  -alias skillswap -keyalg RSA -keysize 2048 -validity 10950 \
+  -dname "CN=SkillSwap, OU=Mobile, O=SkillSwap, L=Lagos, ST=Lagos, C=NG"
+```
 
 ## 6. Build & install
 

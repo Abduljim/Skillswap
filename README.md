@@ -15,12 +15,16 @@ The matching engine is **deterministic** — no LLM, no AI APIs, no generative A
 - 🎯 Reciprocal skill matching (deterministic, explainable scores)
 - 💌 Exchange requests (send / accept / reject / cancel)
 - 🤝 Exchange workspaces with real-time chat (Socket.IO)
+- 📞 **Voice + video calls** (WebRTC) between exchange partners, and **group calls** with a live mesh
+- 🖼️ **Profile cards** — an animated SVG/CSS ring + header gradient around your avatar (1 free, 5 Pro)
+- 🌈 **App wallpapers** — themed backgrounds for the whole app including chats (1 free, 5 Pro)
+- 🌙 **Dark mode** — one Pro switch that dims every screen, message section included
 - 📅 Session scheduling
 - ⭐ Reviews and reputation
 - 🔔 Notifications
 - 🛡️ Blocking and reporting
 - 🛠️ Admin dashboard
-- 💎 **Pro membership** with visibility boost, "who viewed me" insights, and unlimited exchanges
+- 💎 **Pro membership** with visibility boost, "who viewed me" insights, unlimited exchanges, all profile cards and all wallpapers
 - 📱 **Android app** via Capacitor with native Google Play Billing integration
 - 🌐 Mobile-first responsive design
 
@@ -49,12 +53,30 @@ The matching engine is **deterministic** — no LLM, no AI APIs, no generative A
 - Up to 3 pending requests
 - Up to 5 active exchanges
 - Browse + match
+- 1 profile card (*Linen*) and 1 app wallpaper (*Linen*)
 
 **Pro ($4.99/mo or $49/yr)**
 - Unlimited requests + exchanges
 - Boost your visibility for 1 hour
 - See who viewed your profile
 - Pro badge on your profile and match cards
+- 5 premium profile cards (*Aurum, Diamond, Nova, Inferno, Sovereign*)
+- 5 premium wallpapers (*Graphite, Midnight, Ocean, Ember, Amethyst*)
+- Dark mode for any wallpaper, and for the message section
+
+Dark mode is a separate switch from the wallpaper: `mode` in `ThemeContext`
+renders whichever wallpaper is active with a dark palette (`html[data-mode='dark']`
+in `index.css`), and the chat screen's old White/Dark pill now drives that same
+switch, so messages and the rest of the app can never disagree. Graphite and
+Midnight are dark-only wallpapers.
+
+Cosmetics are gated on both sides: the pickers lock Pro options in the UI, and
+`updateProfile` refuses a premium card with **403** on a free account
+(`server/tests/integration/profile-cards.test.ts`). Wallpaper choice lives in
+`localStorage`, so `AppLayout` resets a free user back to Linen — and out of
+dark mode — when their entitlement lapses. Retired values from older APK builds — the twelve PNG frames
+`frame_0`..`frame_11` and the themes `forest/gold/sky/rose` — are normalised to
+the free option instead of failing the save.
 
 Subscriptions are stored per-user with platform (`WEB` or `ANDROID`), product ID, purchase token (Android), and an expiry date. Admins always get Pro.
 
@@ -97,12 +119,37 @@ The boot log prints the effective billing configuration on every start.
 
 ---
 
+## Calls
+
+Signalling runs over Socket.IO (`server/src/sockets/io.ts`); media is
+peer-to-peer WebRTC (`client/src/contexts/CallsContext.tsx`).
+
+- Call events are delivered to each participant's `user:{id}` room as well as
+  the `exchange:{id}` room. The exchange room is only joined by the chat screen,
+  so relying on it alone left callers deaf to accept/reject/hang-up and calls
+  hung on "ringing" forever.
+- A dropped socket ends that user's calls and removes them from group calls, so
+  nobody is left in a frozen call.
+- Group calls are a mesh: every participant holds a peer connection to every
+  other participant, and `group:signal` relays SDP/ICE between them.
+- **TURN is required in production.** STUN cannot connect two peers that are
+  both behind carrier-grade NAT, which is the normal case on mobile data. Set
+  `VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` at build
+  time (see `docs/ANDROID.md`).
+
+`server/tests/integration/calls-signaling.test.ts` drives both flows end to end
+over real sockets against a real database.
+
+---
+
 ## Security notes
 
 - **CORS** — explicit allowlist (`allowedOrigins` in `server/src/config/env.ts`), never a reflected wildcard, because the auth cookie is sent with `credentials: true`. The Capacitor WebView origins (`https://localhost`, `capacitor://localhost`) are always allowed. `CLIENT_URL='*'` means "not configured", not "allow everything"; list real domains comma-separated, or use `EXTRA_ALLOWED_ORIGINS`.
 - **Session revocation** — `User.tokenVersion` is embedded in every JWT and checked by `requireAuth`, `optionalAuth` and the Socket.IO handshake. It is bumped on logout, password change, password reset and admin deactivation, so a token that leaks (it is also returned in the response body for the native socket handshake) cannot be replayed for the full 365-day lifetime.
 - **Passwords** — bcrypt cost 10. Login returns one message for "no such user" and "wrong password".
 - **Rate limiting** — global limiter plus a stricter 20-per-15-min limiter on the auth endpoints. Skipped under `NODE_ENV=test` so suites stay deterministic.
+- **Release signing** — the Android keystore and its passwords are not in the repo. `app/build.gradle` reads them from `client/android/keystore.properties` (gitignored) or `SKILLSWAP_*` environment variables and builds unsigned artifacts when neither is present. They used to be hardcoded, which meant anyone with read access could sign an update Play would accept.
+- **Cosmetic entitlements** — profile cards are checked server-side (403 on a free account); wallpapers live in `localStorage` and are reset client-side when Pro lapses.
 - **Admin** — `requireAuth` + `requireAdmin`, which re-reads `isAdmin` from the database on every request, so a demotion takes effect immediately.
 
 ---

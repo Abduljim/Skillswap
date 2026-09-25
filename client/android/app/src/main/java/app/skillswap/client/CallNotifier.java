@@ -326,11 +326,14 @@ public class CallNotifier extends Plugin {
             try {
                 View decor = window.getDecorView();
                 if (active) {
+                    // Protect the call from being frozen/killed in background.
+                    CallForegroundService.start(getContext(), "Tap to return to your call");
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     WindowInsetsControllerCompat ctrl = new WindowInsetsControllerCompat(window, decor);
                     ctrl.hide(WindowInsetsCompat.Type.systemBars());
                     ctrl.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                 } else {
+                    CallForegroundService.stop(getContext());
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     new WindowInsetsControllerCompat(window, decor).show(WindowInsetsCompat.Type.systemBars());
                 }

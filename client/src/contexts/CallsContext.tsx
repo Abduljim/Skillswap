@@ -23,13 +23,62 @@ interface RTCSignal {
   candidate?: RTCIceCandidateInit;
 }
 
+/**
+ * ICE servers for every peer connection (1:1 and group mesh).
+ *
+ * STUN on its own is not enough in the real world: carrier-grade NAT is close
+ * to universal on mobile networks, and two peers behind CGNAT can only meet
+ * through a TURN relay. The previous config listed Metered's Open Relay TURN
+ * hosts *without* credentials, so TURN auth always failed and those calls
+ * silently fell back to host candidates that can never connect.
+ *
+ * Supply a real relay at build time and calls work everywhere:
+ *
+ *   VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
+ *   VITE_TURN_USERNAME=<user>
+ *   VITE_TURN_CREDENTIAL=<password>
+ *
+ * Providers: metered.ca (free tier + REST API for short-lived credentials),
+ * Twilio Network Traversal, or a self-hosted coturn. Without them the app still
+ * connects on LAN and permissive NATs via public STUN, and the legacy Open Relay
+ * hosts are kept as a best-effort fallback — if they reject us, ICE simply moves
+ * on to the next candidate.
+ */
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  ];
+
+  const env = import.meta.env as Record<string, string | undefined>;
+  const urls = (env.VITE_TURN_URLS || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+
+  if (urls.length > 0) {
+    const username = env.VITE_TURN_USERNAME || '';
+    const credential = env.VITE_TURN_CREDENTIAL || '';
+    servers.push(username ? { urls, username, credential } : { urls });
+  } else {
+    servers.push({
+      urls: [
+        'stun:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    });
+  }
+  return servers;
+}
+
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:openrelay.metered.ca:80' },
-    { urls: 'turn:openrelay.metered.ca:80' },
-    { urls: 'turn:openrelay.metered.ca:443' },
-  ],
+  iceServers: buildIceServers(),
+  // Start gathering before setLocalDescription so the first offer/answer already
+  // carries candidates — noticeably faster call setup on mobile.
+  iceCandidatePoolSize: 4,
 };
 
 export interface CallState {
@@ -264,6 +313,11 @@ export function CallsProvider({ children }: { children: ReactNode }) {
             (pc.connectionState === 'failed' || pc.connectionState === 'closed') &&
             statusRef.current === 'active'
           ) {
+            // Our media path died (network change, relay gave up). Tell the
+            // other person instead of leaving them in a frozen call.
+            if (pc.connectionState === 'failed' && exchangeIdRef.current) {
+              sock.emit('call:hangup', { exchangeId: exchangeIdRef.current });
+            }
             cleanup(true);
             update({ status: 'none', incoming: false });
           }

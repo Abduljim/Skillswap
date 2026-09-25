@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Compass, Repeat, MessageSquare, PhoneCall, User, Bell, LogOut, Shield, Crown, Settings, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, FREE_THEME, FREE_MODE } from '../contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { ensureMediaPermissions } from '../lib/media-permissions';
@@ -16,7 +16,7 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, activeTheme, mode, setMode } = useTheme();
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   // Chat conversations fill the whole screen (like WhatsApp), so the app chrome is hidden there.
@@ -59,6 +59,21 @@ export default function AppLayout() {
     window.addEventListener('pointerdown', unlock, { once: true });
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
+
+  // Premium wallpapers and dark mode are Pro perks. If the entitlement goes
+  // away (cancelled, refunded, or a stale save from an older build) fall back to
+  // the free look so nobody keeps a paid appearance for free.
+  const { data: subData } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
+    enabled: !!user,
+  });
+  useEffect(() => {
+    if (!subData || !user) return;
+    if (subData.tier === 'PRO') return;
+    if (activeTheme.pro) setTheme(FREE_THEME);
+    if (mode === 'dark') setMode(FREE_MODE);
+  }, [subData, user, activeTheme, mode, setTheme, setMode]);
 
   const { data: notifData } = useQuery({
     queryKey: ['notifications'],

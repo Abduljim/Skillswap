@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
-import { NotFoundError } from '../utils/errors';
+import { ForbiddenError, NotFoundError } from '../utils/errors';
+import { isProCardId } from './profileCards';
 import { recordProfileView, getUserTier } from './entitlements.service';
 import { computeBadges } from './badges.service';
 import { readStreak } from './streak.service';
@@ -72,6 +73,15 @@ export async function updateProfile(
 
   const profile = await prisma.profile.findUnique({ where: { userId } });
   if (!profile) throw new NotFoundError('Profile not found');
+
+  // Premium profile cards are a Pro perk. Enforced here, not just hidden in the
+  // UI, so a modified client cannot save one on a free account.
+  if (profileFields.avatarFrame && isProCardId(profileFields.avatarFrame)) {
+    const { tier } = await getUserTier(userId);
+    if (tier !== 'PRO') {
+      throw new ForbiddenError('That profile card is a Pro perk — upgrade to unlock it.');
+    }
+  }
 
   if (Object.keys(profileFields).length > 0) {
     await prisma.profile.update({

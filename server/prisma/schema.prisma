@@ -157,7 +157,7 @@ model Profile {
   bio             String?
   avatarUrl       String?
   learningFormat  LearningFormat  @default(EITHER)
-  avatarFrame     String          @default("default")
+  avatarFrame     String          @default("linen")
   bannerStyle     String          @default("cream")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

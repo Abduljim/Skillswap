@@ -74,6 +74,52 @@ async function persistCallLog(exchangeId: string, endedByUserId: string, outcome
   }
 }
 
+/**
+ * The other member of a 1:1 call — live call map first, exchange row second.
+ *
+ * Call events used to be relayed only to the `exchange:{id}` room, which a
+ * client joins solely by opening the chat. Calling from the Calls tab, a profile
+ * or the dashboard therefore left the caller deaf to accept/reject/hang-up, and
+ * the call hung on "ringing" forever.
+ */
+async function counterpartOfCall(exchangeId: string, userId: string): Promise<string | null> {
+  const active = activeCalls.get(exchangeId);
+  if (active) return active.callerId === userId ? active.calleeId : active.callerId;
+  const exchange = await prisma.exchange.findUnique({
+    where: { id: exchangeId },
+    select: { userAId: true, userBId: true },
+  });
+  if (!exchange) return null;
+  return exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+}
+
+/**
+ * Ends every call a user was in when their socket dropped and tells the other
+ * participants, so nobody is left staring at a frozen call screen.
+ */
+async function cleanupCallsForUser(userId: string) {
+  for (const [exchangeId, call] of Array.from(activeCalls.entries())) {
+    if (call.callerId !== userId && call.calleeId !== userId) continue;
+    const other = call.callerId === userId ? call.calleeId : call.callerId;
+    const payload = { exchangeId, endedBy: userId, reason: 'disconnect' };
+    io?.to(`exchange:${exchangeId}`).emit('call:ended', payload);
+    io?.to(`user:${other}`).emit('call:ended', payload);
+    await persistCallLog(exchangeId, userId, 'COMPLETED');
+  }
+
+  // Mirrors `group:call:leave` for a member who vanished instead of hanging up.
+  for (const [id, call] of Array.from(groupCalls.entries())) {
+    if (!call.members.has(userId)) continue;
+    call.members.delete(userId);
+    call.accepted.delete(userId);
+    io?.to(`group:${id}`).emit('group:call:member:left', { id, userId });
+    if (userId === call.hostId || call.accepted.size <= 1) {
+      io?.to(`group:${id}`).emit('group:call:ended', { id });
+      groupCalls.delete(id);
+    }
+  }
+}
+
 export function initSocket(httpServer: HTTPServer) {
   io = new IOServer(httpServer, {
     cors: {
@@ -117,6 +163,7 @@ export function initSocket(httpServer: HTTPServer) {
 
     socket.on('disconnect', () => {
       connectedUsers.delete(userId);
+      void cleanupCallsForUser(userId);
     });
 
     socket.on('exchange:join', async (exchangeId: string) => {
@@ -227,26 +274,27 @@ export function initSocket(httpServer: HTTPServer) {
       }
     });
 
-    socket.on('call:accept', (data: { exchangeId: string }) => {
-      socket.to(`exchange:${data.exchangeId}`).emit('call:accepted', {
-        exchangeId: data.exchangeId,
-        acceptorId: userId,
-      });
+    socket.on('call:accept', async (data: { exchangeId: string }) => {
+      const payload = { exchangeId: data.exchangeId, acceptorId: userId };
+      socket.to(`exchange:${data.exchangeId}`).emit('call:accepted', payload);
+      const caller = await counterpartOfCall(data.exchangeId, userId);
+      if (caller && caller !== userId) io!.to(`user:${caller}`).emit('call:accepted', payload);
     });
 
     socket.on('call:reject', async (data: { exchangeId: string }) => {
-      socket.to(`exchange:${data.exchangeId}`).emit('call:rejected', {
-        exchangeId: data.exchangeId,
-        rejectorId: userId,
-      });
+      const payload = { exchangeId: data.exchangeId, rejectorId: userId };
+      socket.to(`exchange:${data.exchangeId}`).emit('call:rejected', payload);
+      // Resolve the counterpart before persistCallLog() clears the call map.
+      const other = await counterpartOfCall(data.exchangeId, userId);
+      if (other && other !== userId) io!.to(`user:${other}`).emit('call:rejected', payload);
       await persistCallLog(data.exchangeId, userId, 'DECLINED');
     });
 
     socket.on('call:hangup', async (data: { exchangeId: string }) => {
-      socket.to(`exchange:${data.exchangeId}`).emit('call:ended', {
-        exchangeId: data.exchangeId,
-        endedBy: userId,
-      });
+      const payload = { exchangeId: data.exchangeId, endedBy: userId };
+      socket.to(`exchange:${data.exchangeId}`).emit('call:ended', payload);
+      const other = await counterpartOfCall(data.exchangeId, userId);
+      if (other && other !== userId) io!.to(`user:${other}`).emit('call:ended', payload);
       await persistCallLog(data.exchangeId, userId, 'COMPLETED');
     });
 

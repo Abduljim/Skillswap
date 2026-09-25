@@ -38,25 +38,43 @@ cd "$TMP/extracted"
 zip -q -r "$TMP/new.apk" . -x "META-INF/*"
 cd - > /dev/null
 
-# Re-sign with the same keystore the project uses
+# Re-sign with the same keystore the project uses.
+#
+# Credentials are read from android/keystore.properties (gitignored) or the
+# SKILLSWAP_* environment variables — the same source app/build.gradle uses.
+# They must never be written into this script: it lives in the repo.
 KEYSTORE="$(dirname "$0")/android/app/skillswap-release.jks"
-if [ -f "$KEYSTORE" ]; then
+KS_PROPS="$(dirname "$0")/android/keystore.properties"
+
+ks_prop() {  # ks_prop <properties-key> <env-var>
+  local value="${!2:-}"
+  if [ -z "$value" ] && [ -f "$KS_PROPS" ]; then
+    value="$(sed -n "s/^$1=//p" "$KS_PROPS" | head -1)"
+  fi
+  printf '%s' "$value"
+}
+
+KS_ALIAS="$(ks_prop keyAlias SKILLSWAP_KEY_ALIAS)"
+KS_STORE_PASS="$(ks_prop storePassword SKILLSWAP_STORE_PASSWORD)"
+KS_KEY_PASS="$(ks_prop keyPassword SKILLSWAP_KEY_PASSWORD)"
+[ -n "$KS_ALIAS" ] || KS_ALIAS="skillswap"
+[ -n "$KS_KEY_PASS" ] || KS_KEY_PASS="$KS_STORE_PASS"
+
+if [ -f "$KEYSTORE" ] && [ -n "$KS_STORE_PASS" ]; then
   ZIPALIGN=$(ls /home/user/android-sdk/build-tools/*/zipalign 2>/dev/null | sort -V | tail -1)
   APKSIGNER=$(ls /home/user/android-sdk/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
   if [ -n "$ZIPALIGN" ] && [ -n "$APKSIGNER" ]; then
     "$ZIPALIGN" -p 4 "$TMP/new.apk" "$TMP/aligned.apk"
     "$APKSIGNER" sign \
       --ks "$KEYSTORE" \
-      --ks-pass pass:skillswap123 \
-      --key-pass pass:skillswap123 \
-      --ks-key-alias skillswap \
+      --ks-pass "pass:$KS_STORE_PASS" \
+      --key-pass "pass:$KS_KEY_PASS" \
+      --ks-key-alias "$KS_ALIAS" \
       --out "$APK.tmp" \
       "$TMP/aligned.apk"
     mv "$APK.tmp" "$APK"
-    echo "  ✓ re-signed with skillswap-release.jks"
-  else
-    mv "$TMP/new.apk" "$APK"
-    echo "  ⚠️ zipalign/apksigner not found — APK is unsigned"
+    echo "  ✓ re-signed with skillswap-release.jks (alias $KS_ALIAS)"
+  echo "  ⚠️ zipalign/apksigner not found — APK is unsigned"
   fi
 else
   mv "$TMP/new.apk" "$APK"

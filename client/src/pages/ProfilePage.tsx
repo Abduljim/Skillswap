@@ -4,8 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { EmptyState, Skeleton, FrameAvatar, AVATAR_FRAMES } from '../components/ui';
+import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
+import { PROFILE_CARDS, resolveCard } from '../profileCards';
+import { Lock, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { BadgesRow, ProBadge } from '../components/Badges';
 import { BadgesLegend } from '../components/BadgesLegend';
 import { Plus, Trash2, Save, Camera, X, Crown, Star, Repeat, CalendarDays, Sparkles, Flame } from 'lucide-react';
@@ -53,7 +55,7 @@ export default function ProfilePage() {
   const toast = useToast();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
-  const { activeTheme } = useTheme();
+  const navigate = useNavigate();
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['my-profile'],
@@ -68,6 +70,8 @@ export default function ProfilePage() {
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
   const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
+  // The profile card drives the header gradient + avatar ring (free: Linen).
+  const card = resolveCard(profile?.avatarFrame);
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
@@ -182,11 +186,11 @@ export default function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
       <div className="card overflow-hidden relative">
-        <div className={`p-6 md:p-8 relative ${activeTheme.cardCls} ${activeTheme.cardDark ? 'card-dark' : ''}`}>
+        <div className={`p-6 md:p-8 relative ${card.cardCls} ${card.cardDark ? 'card-dark' : ''}`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
-            <FrameAvatar frame={editing ? 'default' : profile?.avatarFrame || 'default'} src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
+            <FrameAvatar frame={editing ? 'linen' : profile?.avatarFrame} src={editing ? form?.avatarUrl : profile?.avatarUrl} alt={user?.displayName || ''} size={88} className="shadow-soft" />
             {editing && (
               <>
                 <button
@@ -502,32 +506,51 @@ export default function ProfilePage() {
           <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
         </h2>
         <p className="text-xs text-ink-500 mb-5">
-          Your card colour now follows your appearance colour in Settings. Light & Dark are free; the eight
-          gradient colours are a Pro perk. Pro also unlocks every avatar frame.
+          Your profile card is the ring and gradient behind your avatar. Linen is free; the five
+          premium cards are a Pro perk. Your app wallpaper and dark mode live in Settings.
         </p>
 
-        {isPro && (
-          <>
-            <div className="text-sm font-semibold text-ink-700 mb-3">Avatar frame</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(AVATAR_FRAMES).map(([key, def]) => {
-                const active = (profile?.avatarFrame || 'default') === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => looksMutation.mutate({ avatarFrame: key })}
-                    className={`rounded-full p-1 transition-all ${
-                      active ? 'ring-2 ring-coral-500 scale-105' : 'hover:ring-2 hover:ring-ink-200'
-                    }`}
-                    title={def.label}
-                  >
-                    <FrameAvatar frame={key} src={profile?.avatarUrl} alt="" size={44} />
-                  </button>
-                );
-              })}
-            </div>
-          </>
+        <div className="text-sm font-semibold text-ink-700 mb-3">Profile card</div>
+        <div className="flex flex-wrap gap-2">
+          {PROFILE_CARDS.map((c) => {
+            const active = card.id === c.id;
+            const locked = c.tier === 'PRO' && !isPro;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => (locked ? navigate('/pro') : looksMutation.mutate({ avatarFrame: c.id }))}
+                className={`relative rounded-2xl border p-2 pt-2.5 transition-all ${
+                  active
+                    ? 'border-coral-500 ring-2 ring-coral-500/40 bg-cream-50'
+                    : 'border-ink-200 bg-white hover:border-ink-300'
+                }`}
+                title={`${c.label} — ${c.tagline}${locked ? ' (Pro)' : ''}`}
+              >
+                <span className="flex justify-center">
+                  <FrameAvatar frame={c.id} src={profile?.avatarUrl} alt="" size={44} />
+                </span>
+                <span className="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-ink-700">
+                  {locked && <Lock className="w-3 h-3 text-ink-500" />}
+                  {c.label}
+                </span>
+                {active && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-coral-500 text-white">
+                    <Check className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {!isPro && (
+          <button
+            type="button"
+            onClick={() => navigate('/pro')}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-200 to-amber-100 px-4 py-2 text-sm font-semibold text-ink-900 hover:from-amber-300"
+          >
+            <Crown className="h-4 w-4" /> Unlock all five premium cards
+          </button>
         )}
         {looksMutation.isPending && (
           <div className="text-xs text-ink-500 mt-3">Saving your look…</div>

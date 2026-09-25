@@ -35,6 +35,13 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
+        <!-- Holds a live call in the foreground tier so it survives backgrounding.
+             Started/stopped by CallNotifier.setCallUiActive from the web layer. -->
+        <service
+            android:name=".CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
+
         <!-- Firebase Cloud Messaging: rings for incoming calls even when the app is closed -->
         <service
             android:name="app.skillswap.client.CallFirebaseMessagingService"
@@ -56,4 +63,22 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="com.android.vending.BILLING" />
+
+    <!-- Calls: keep a call alive in background, and route audio to headsets.
+         FOREGROUND_SERVICE_* are required from targetSdk 34 and are only claimed
+         for media the user actually granted (see CallForegroundService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Camera/mic are optional: audio-only calls must still install on devices
+         without a camera, so these are declared as not required. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 </manifest>

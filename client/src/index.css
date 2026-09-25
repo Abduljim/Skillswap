@@ -156,22 +156,6 @@ html[data-theme='ocean'] {
   --c-input-bg: #ffffff; --c-input-border: #bfe8df; --c-input-text: #0f3d38; --c-input-placeholder: #6b9a93; --c-input-focus: #0f3d38;
 }
 
-html[data-theme='forest'] {
-  --c-bg: #f3f9f4; --c-text: #173325; --c-text-1: #2d5538; --c-text-2: #4f735a; --c-text-3: #7a9a82;
-  --c-surf: #ffffff; --c-surf-1: #dcf0e2; --c-surf-2: #c2e4cd; --c-surf-3: #a1d5b1;
-  --c-border: #a1d5b1; --c-border-2: #8bc9a0;
-  --c-primary: #173325; --c-primary-text: #ffffff; --c-hover: #1d4030;
-  --c-accent: #059669; --c-accent-hover: #047857; --c-accent-soft: rgba(5, 150, 105, 0.12); --c-accent-soft-text: #065f46;
-  --c-chip-ink-bg: #173325; --c-chip-ink-text: #ffffff;
-  --c-chip-cream-bg: #dcf0e2; --c-chip-cream-text: #2d5538;
-  --c-chip-mint-bg: rgba(34, 197, 94, 0.12); --c-chip-mint-text: #166534;
-  --c-chip-coral-bg: rgba(5, 150, 105, 0.12); --c-chip-coral-text: #065f46;
-  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
-  --c-skeleton: #c2e4cd; --c-shadow: 0 2px 6px rgba(23, 51, 37, 0.08);
-  --c-nav: rgba(243, 249, 244, 0.85);
-  --c-input-bg: #ffffff; --c-input-border: #c2e4cd; --c-input-text: #173325; --c-input-placeholder: #7a9a82; --c-input-focus: #173325;
-}
-
 html[data-theme='sunset'] {
   --c-bg: #fdf6ee; --c-text: #4a2c13; --c-text-1: #6b4222; --c-text-2: #8f6338; --c-text-3: #b08555;
   --c-surf: #ffffff; --c-surf-1: #f8e8d2; --c-surf-2: #f3d9b6; --c-surf-3: #eac99a;
@@ -205,22 +189,6 @@ html[data-theme='midnight'] {
   --c-input-bg: #121c2e; --c-input-border: #345078; --c-input-text: #e6f0ff; --c-input-placeholder: #6482a0; --c-input-focus: #e6f0ff;
 }
 
-html[data-theme='gold'] {
-  --c-bg: #fdf4dc; --c-text: #4a3206; --c-text-1: #6b4a12; --c-text-2: #8f6828; --c-text-3: #b08a45;
-  --c-surf: #ffffff; --c-surf-1: #f8e9c4; --c-surf-2: #f3dda3; --c-surf-3: #eacf85;
-  --c-border: #eacf85; --c-border-2: #e0c270;
-  --c-primary: #4a3206; --c-primary-text: #ffffff; --c-hover: #553a0c;
-  --c-accent: #d97706; --c-accent-hover: #b45309; --c-accent-soft: rgba(217, 119, 6, 0.12); --c-accent-soft-text: #92400e;
-  --c-chip-ink-bg: #4a3206; --c-chip-ink-text: #ffffff;
-  --c-chip-cream-bg: #f8e9c4; --c-chip-cream-text: #6b4a12;
-  --c-chip-mint-bg: rgba(34, 197, 94, 0.1); --c-chip-mint-text: #166534;
-  --c-chip-coral-bg: rgba(217, 119, 6, 0.12); --c-chip-coral-text: #92400e;
-  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
-  --c-skeleton: #f3dda3; --c-shadow: 0 2px 6px rgba(74, 50, 6, 0.08);
-  --c-nav: rgba(253, 244, 220, 0.85);
-  --c-input-bg: #ffffff; --c-input-border: #f3dda3; --c-input-text: #4a3206; --c-input-placeholder: #b08a45; --c-input-focus: #4a3206;
-}
-
 html[data-theme='purple'] {
   --c-bg: #f6f1fd; --c-text: #2e1240; --c-text-1: #4b2566; --c-text-2: #70448f; --c-text-3: #966fd3;
   --c-surf: #ffffff; --c-surf-1: #eadffa; --c-surf-2: #dccaf6; --c-surf-3: #c9b0f0;
@@ -237,49 +205,13 @@ html[data-theme='purple'] {
   --c-input-bg: #ffffff; --c-input-border: #dccaf6; --c-input-text: #2e1240; --c-input-placeholder: #966fd3; --c-input-focus: #2e1240;
 }
 
-html[data-theme='sky'] {
-  --c-bg: #f0f7fd; --c-text: #0c2c4d; --c-text-1: #1d4a75; --c-text-2: #3f6b96; --c-text-3: #6b93bb;
-  --c-surf: #ffffff; --c-surf-1: #d6e9fa; --c-surf-2: #b6d7f5; --c-surf-3: #93c2ef;
-  --c-border: #93c2ef; --c-border-2: #7bb3ea;
-  --c-primary: #0c2c4d; --c-primary-text: #ffffff; --c-hover: #113a63;
-  --c-accent: #0ea5e9; --c-accent-hover: #0284c7; --c-accent-soft: rgba(14, 165, 233, 0.12); --c-accent-soft-text: #0369a1;
-  --c-chip-ink-bg: #0c2c4d; --c-chip-ink-text: #ffffff;
-  --c-chip-cream-bg: #d6e9fa; --c-chip-cream-text: #1d4a75;
-  --c-chip-mint-bg: rgba(16, 185, 129, 0.12); --c-chip-mint-text: #047857;
-  --c-chip-coral-bg: rgba(14, 165, 233, 0.12); --c-chip-coral-text: #0369a1;
-  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
-  --c-skeleton: #b6d7f5; --c-shadow: 0 2px 6px rgba(12, 44, 77, 0.08);
-  --c-nav: rgba(240, 247, 253, 0.85);
-  --c-input-bg: #ffffff; --c-input-border: #b6d7f5; --c-input-text: #0c2c4d; --c-input-placeholder: #6b93bb; --c-input-focus: #0c2c4d;
-}
-
-html[data-theme='rose'] {
-  --c-bg: #fdf0f4; --c-text: #4a0f26; --c-text-1: #6b1e3e; --c-text-2: #8f3f5d; --c-text-3: #b46e88;
-  --c-surf: #ffffff; --c-surf-1: #f9dce6; --c-surf-2: #f4c4d4; --c-surf-3: #eca6bf;
-  --c-border: #eca6bf; --c-border-2: #e68fb0;
-  --c-primary: #4a0f26; --c-primary-text: #ffffff; --c-hover: #571430;
-  --c-accent: #db2777; --c-accent-hover: #be185d; --c-accent-soft: rgba(219, 39, 119, 0.12); --c-accent-soft-text: #be185d;
-  --c-chip-ink-bg: #4a0f26; --c-chip-ink-text: #ffffff;
-  --c-chip-cream-bg: #f9dce6; --c-chip-cream-text: #6b1e3e;
-  --c-chip-mint-bg: rgba(16, 185, 129, 0.12); --c-chip-mint-text: #047857;
-  --c-chip-coral-bg: rgba(219, 39, 119, 0.12); --c-chip-coral-text: #be185d;
-  --c-chip-lavender-bg: rgba(59, 130, 246, 0.1); --c-chip-lavender-text: #2563eb;
-  --c-skeleton: #f4c4d4; --c-shadow: 0 2px 6px rgba(74, 15, 38, 0.08);
-  --c-nav: rgba(253, 240, 244, 0.85);
-  --c-input-bg: #ffffff; --c-input-border: #f4c4d4; --c-input-text: #4a0f26; --c-input-placeholder: #b46e88; --c-input-focus: #4a0f26;
-}
-
 /* Rich gradients for the profile card, one per appearance theme */
 .card-color-light    { background: linear-gradient(135deg, #fbf4e3, #f3ead4); }
 .card-color-dark     { background: linear-gradient(135deg, #1c2129, #0b0d12); }
 .card-color-ocean    { background: linear-gradient(135deg, #0ed0bc, #06302b); }
-.card-color-forest   { background: linear-gradient(135deg, #10b56c, #062a1c); }
 .card-color-sunset   { background: linear-gradient(135deg, #ff8a2b, #5a2a17); }
 .card-color-midnight { background: linear-gradient(135deg, #24357a, #0b1c3d); }
-.card-color-gold     { background: linear-gradient(135deg, #f6b733, #7a4e10); }
 .card-color-purple   { background: linear-gradient(135deg, #7b2cff, #2c0b4e); }
-.card-color-sky      { background: linear-gradient(135deg, #19b6ff, #0a1b4d); }
-.card-color-rose     { background: linear-gradient(135deg, #ff2d7e, #3c0a28); }
 
 /* Light-text overrides when a dark card color is active */
 .card-dark { color: #fdfaf4; }
@@ -381,6 +313,249 @@ html[data-theme] .fill-coral-400 { fill: var(--c-accent); }
    Free users get a white chat, Pro users a dark WhatsApp-style chat.
    These override the appearance theme, so they are unlayered, placed
    after the theme remaps, and pinned with hard colors. */
-.chat-white { background-color: #ffffff !important; }
-.chat-dark { background-color: #0b0d12 !important; }
+/* Chat surfaces inherit the active wallpaper so the message section matches
+   the rest of the app (see the wallpaper section at the bottom of this file). */
+.chat-white {
+  background-color: #ffffff !important;
+  background-image: var(--wp-image);
+  background-size: var(--wp-size);
+  background-repeat: var(--wp-repeat);
+}
+.chat-dark {
+  background-color: #0b0d12 !important;
+  background-image: var(--wp-image);
+  background-size: var(--wp-size);
+  background-repeat: var(--wp-repeat);
+}
 .chat-dark .text-ink-900 { color: #eef0f4; }
+/* ==========================================================================
+   Profile cards (client/src/profileCards.tsx)
+   Ring artwork is inline SVG/CSS — no image assets. Animations are decorative
+   and disabled for users who prefer reduced motion.
+   ========================================================================== */
+
+.pc-spin      { animation: pc-spin 9s linear infinite; }
+.pc-spin-slow { animation: pc-spin 26s linear infinite; }
+.pc-twinkle   { animation: pc-twinkle 2.6s ease-in-out infinite; }
+.pc-flicker   { animation: pc-flicker 1.5s ease-in-out infinite; }
+.pc-rise      { animation: pc-rise 2.8s ease-out infinite; }
+
+@keyframes pc-spin    { to { transform: rotate(360deg); } }
+@keyframes pc-twinkle { 0%, 100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes pc-flicker { 0%, 100% { opacity: .65; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.06); } }
+@keyframes pc-rise    { 0% { opacity: 0; transform: translateY(2px) scale(.7); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-9px) scale(1.1); } }
+
+/* Nova: a conic-gradient ring. SVG has no conic gradient, so this card is CSS.
+   The mask keeps the centre transparent and scales the band with the avatar. */
+.pc-nova-ring {
+  background: conic-gradient(from 0deg, #22d3ee, #818cf8, #a855f7, #ec4899, #f59e0b, #22d3ee);
+  -webkit-mask: radial-gradient(farthest-side, transparent 85%, #000 86.5%);
+  mask: radial-gradient(farthest-side, transparent 85%, #000 86.5%);
+}
+.pc-nova-glow {
+  box-shadow: 0 0 14px rgba(168, 85, 247, .55), 0 0 28px rgba(34, 211, 238, .28);
+  animation: pc-glow 3.2s ease-in-out infinite;
+}
+@keyframes pc-glow { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* Profile-card header gradients (one per card) */
+.profile-card-linen     { background: linear-gradient(135deg, #fbf4e3 0%, #f1e6cf 55%, #e6d7b8 100%); }
+.profile-card-aurum     { background: linear-gradient(135deg, #f7d774 0%, #d99a1c 45%, #7a4c07 100%); }
+.profile-card-diamond   { background: linear-gradient(135deg, #eaf7ff 0%, #9fd4f0 45%, #3d7fa6 100%); }
+.profile-card-nova      { background: linear-gradient(135deg, #22d3ee 0%, #7c3aed 50%, #db2777 100%); }
+.profile-card-inferno   { background: linear-gradient(135deg, #ffc46b 0%, #f4511e 45%, #7f1305 100%); }
+.profile-card-sovereign { background: linear-gradient(135deg, #6b7280 0%, #1f2937 50%, #080a0f 100%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-spin, .pc-spin-slow, .pc-twinkle, .pc-flicker, .pc-rise, .pc-nova-glow { animation: none !important; }
+}
+
+/* ==========================================================================
+   App wallpapers + dark mode (client/src/contexts/ThemeContext.tsx)
+   One free wallpaper + five Pro wallpapers, all pure CSS: layered gradients and
+   inline SVG data-URIs — no image assets, so they ship inside the APK and work
+   offline.
+
+   Each wallpaper is declared once as `--wp-<name>-*`, then pointed at by both
+   the active theme (html[data-theme]) and the picker preview
+   (.wp-preview-<name>), so there is one source of truth for the art.
+
+   Dark mode (`html[data-mode='dark']`) swaps the palette underneath whichever
+   wallpaper is active — including the message section, which reads the same
+   `.chat-*` surfaces. Graphite and Midnight are dark-only wallpapers.
+   ========================================================================== */
+
+:root {
+  /* Linen (free): a faint dot grid — deliberately understated */
+  --wp-linen-image: radial-gradient(rgba(31, 41, 55, 0.05) 1px, transparent 1.4px);
+  --wp-linen-size: 24px 24px;
+  --wp-linen-repeat: repeat;
+
+  /* Graphite: engineering grid with a cool twin glow */
+  --wp-graphite-image:
+    radial-gradient(900px 520px at 12% -8%, rgba(99, 102, 241, 0.18), transparent 62%),
+    radial-gradient(760px 460px at 92% 6%, rgba(20, 184, 166, 0.13), transparent 64%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  --wp-graphite-size: auto, auto, 46px 46px, 46px 46px;
+  --wp-graphite-repeat: no-repeat, no-repeat, repeat, repeat;
+
+  /* Midnight: repeating starfield under an aurora sweep */
+  --wp-midnight-image:
+    radial-gradient(1100px 420px at 50% -12%, rgba(56, 189, 248, 0.24), transparent 70%),
+    radial-gradient(800px 400px at 88% 104%, rgba(129, 140, 248, 0.16), transparent 70%),
+    radial-gradient(1.7px 1.7px at 22% 28%, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(1.3px 1.3px at 68% 16%, rgba(255, 255, 255, 0.72), transparent 60%),
+    radial-gradient(1.5px 1.5px at 41% 72%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.9px 1.9px at 86% 58%, rgba(255, 255, 255, 0.8), transparent 60%),
+    radial-gradient(1.2px 1.2px at 12% 84%, rgba(255, 255, 255, 0.55), transparent 60%);
+  --wp-midnight-size: auto, auto, 340px 340px, 260px 260px, 420px 420px, 380px 380px, 300px 300px;
+  --wp-midnight-repeat: no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat;
+
+  /* Ocean: teal depth with caustic wave lines */
+  --wp-ocean-image:
+    radial-gradient(1000px 480px at 82% -10%, rgba(45, 212, 191, 0.3), transparent 66%),
+    radial-gradient(760px 420px at 6% 104%, rgba(14, 165, 233, 0.18), transparent 66%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='70' viewBox='0 0 140 70'%3E%3Cpath d='M0 24 Q35 6 70 24 T140 24' fill='none' stroke='%230ed0bc' stroke-opacity='.18' stroke-width='2'/%3E%3Cpath d='M0 46 Q35 28 70 46 T140 46' fill='none' stroke='%2367e8f9' stroke-opacity='.12' stroke-width='2'/%3E%3C/svg%3E");
+  --wp-ocean-size: auto, auto, 140px 70px;
+  --wp-ocean-repeat: no-repeat, no-repeat, repeat;
+
+  /* Ember: golden-hour dusk with raked light */
+  --wp-ember-image:
+    radial-gradient(720px 400px at 76% 2%, rgba(255, 196, 107, 0.55), transparent 64%),
+    radial-gradient(900px 520px at 8% 98%, rgba(244, 81, 30, 0.22), transparent 66%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 26px);
+  --wp-ember-size: auto, auto, auto;
+  --wp-ember-repeat: no-repeat, no-repeat, repeat;
+
+  /* Amethyst: royal violet facets */
+  --wp-amethyst-image:
+    radial-gradient(820px 460px at 14% -6%, rgba(168, 85, 247, 0.26), transparent 64%),
+    radial-gradient(700px 420px at 94% 96%, rgba(236, 72, 153, 0.18), transparent 66%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='88' height='88' viewBox='0 0 88 88'%3E%3Cpath d='M44 2 L86 44 L44 86 L2 44 Z' fill='none' stroke='%23a855f7' stroke-opacity='.16' stroke-width='1.5'/%3E%3Cpath d='M44 2 V86 M2 44 H86' stroke='%23e879f9' stroke-opacity='.08' stroke-width='1'/%3E%3C/svg%3E");
+  --wp-amethyst-size: auto, auto, 88px 88px;
+  --wp-amethyst-repeat: no-repeat, no-repeat, repeat;
+
+  /* The active wallpaper — the free one unless a theme overrides it below. */
+  --wp-image: var(--wp-linen-image);
+  --wp-size: var(--wp-linen-size);
+  --wp-repeat: var(--wp-linen-repeat);
+}
+
+html[data-theme='dark'] {
+  --wp-image: var(--wp-graphite-image); --wp-size: var(--wp-graphite-size); --wp-repeat: var(--wp-graphite-repeat);
+}
+html[data-theme='midnight'] {
+  --wp-image: var(--wp-midnight-image); --wp-size: var(--wp-midnight-size); --wp-repeat: var(--wp-midnight-repeat);
+}
+html[data-theme='ocean'] {
+  --wp-image: var(--wp-ocean-image); --wp-size: var(--wp-ocean-size); --wp-repeat: var(--wp-ocean-repeat);
+}
+html[data-theme='sunset'] {
+  --wp-image: var(--wp-ember-image); --wp-size: var(--wp-ember-size); --wp-repeat: var(--wp-ember-repeat);
+}
+html[data-theme='purple'] {
+  --wp-image: var(--wp-amethyst-image); --wp-size: var(--wp-amethyst-size); --wp-repeat: var(--wp-amethyst-repeat);
+}
+
+/* Paint the wallpaper app-wide. These selectors match the specificity of the
+   `html[data-theme] body` palette rule earlier in this file and come later, so
+   the image survives that rule's `background:` shorthand. */
+html:not([data-theme]) body,
+html[data-theme] body {
+  background-image: var(--wp-image);
+  background-size: var(--wp-size);
+  background-repeat: var(--wp-repeat);
+}
+
+/* Theme-picker previews: the real wallpaper art, in a small tile. */
+.wp-preview { background-image: var(--wp-image); background-size: var(--wp-size); background-repeat: var(--wp-repeat); background-color: #fdfaf4; }
+.wp-preview-linen    { --wp-image: var(--wp-linen-image);    --wp-size: var(--wp-linen-size);    --wp-repeat: var(--wp-linen-repeat); }
+.wp-preview-dark     { --wp-image: var(--wp-graphite-image); --wp-size: var(--wp-graphite-size); --wp-repeat: var(--wp-graphite-repeat); background-color: #101218; }
+.wp-preview-midnight { --wp-image: var(--wp-midnight-image); --wp-size: var(--wp-midnight-size); --wp-repeat: var(--wp-midnight-repeat); background-color: #0b1220; }
+.wp-preview-ocean    { --wp-image: var(--wp-ocean-image);    --wp-size: var(--wp-ocean-size);    --wp-repeat: var(--wp-ocean-repeat); background-color: #f0f9f7; }
+.wp-preview-sunset   { --wp-image: var(--wp-ember-image);    --wp-size: var(--wp-ember-size);    --wp-repeat: var(--wp-ember-repeat); background-color: #fdf6ee; }
+.wp-preview-purple   { --wp-image: var(--wp-amethyst-image); --wp-size: var(--wp-amethyst-size); --wp-repeat: var(--wp-amethyst-repeat); background-color: #f6f1fd; }
+.wp-preview-ocean.wp-preview-darkmode    { background-color: #05171a; }
+.wp-preview-sunset.wp-preview-darkmode   { background-color: #1a0f0a; }
+.wp-preview-purple.wp-preview-darkmode   { background-color: #120a1c; }
+.wp-preview-linen.wp-preview-darkmode    { background-color: #101218; }
+
+/* ── Dark mode palettes ──────────────────────────────────────────────────────
+   Same wallpaper art, dark surfaces. Two attribute selectors beat the single
+   `html[data-theme='x']` light palette above, so dark mode always wins. */
+
+/* Linen has no theme attribute; a Pro user can still render it dark. */
+html:not([data-theme])[data-mode='dark'] {
+  color-scheme: dark;
+  --c-bg: #101218; --c-text: #e9ebef; --c-text-1: #cdd1da; --c-text-2: #a5abba; --c-text-3: #76819a;
+  --c-surf: #1a1e29; --c-surf-1: #1f2430; --c-surf-2: #252a35; --c-surf-3: #2a2f3d;
+  --c-border: #2a2f3d; --c-border-2: #2f3544;
+  --c-primary: #e9ebef; --c-primary-text: #101218; --c-hover: #f5f6f8;
+  --c-accent: #fb4f1d; --c-accent-hover: #dc3e10; --c-accent-soft: rgba(251, 79, 29, 0.16); --c-accent-soft-text: #ffa07e;
+  --c-chip-ink-bg: #e9ebef; --c-chip-ink-text: #101218;
+  --c-chip-cream-bg: #1f2430; --c-chip-cream-text: #cdd1da;
+  --c-chip-mint-bg: rgba(53, 151, 107, 0.18); --c-chip-mint-text: #82cba6;
+  --c-chip-coral-bg: rgba(251, 79, 29, 0.16); --c-chip-coral-text: #ffa07e;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.12); --c-chip-lavender-text: #3b82f6;
+  --c-skeleton: #252a35; --c-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --c-nav: rgba(16, 18, 24, 0.85);
+  --c-input-bg: #1a1e29; --c-input-border: #2f3544; --c-input-text: #e9ebef; --c-input-placeholder: #76819a; --c-input-focus: #e9ebef;
+}
+
+/* Ocean, dark: abyssal teal */
+html[data-theme='ocean'][data-mode='dark'] {
+  color-scheme: dark;
+  --c-bg: #05171a; --c-text: #e2f5f2; --c-text-1: #c2e4df; --c-text-2: #93bfba; --c-text-3: #6b9590;
+  --c-surf: #0a2226; --c-surf-1: #0f2c31; --c-surf-2: #14383e; --c-surf-3: #1a454c;
+  --c-border: #1a454c; --c-border-2: #215a62;
+  --c-primary: #e2f5f2; --c-primary-text: #05171a; --c-hover: #f2fbf9;
+  --c-accent: #22d3ee; --c-accent-hover: #06b6d4; --c-accent-soft: rgba(34, 211, 238, 0.16); --c-accent-soft-text: #7ee7f7;
+  --c-chip-ink-bg: #e2f5f2; --c-chip-ink-text: #05171a;
+  --c-chip-cream-bg: #0f2c31; --c-chip-cream-text: #c2e4df;
+  --c-chip-mint-bg: rgba(53, 211, 153, 0.18); --c-chip-mint-text: #82cba6;
+  --c-chip-coral-bg: rgba(251, 79, 29, 0.16); --c-chip-coral-text: #ffa07e;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.14); --c-chip-lavender-text: #93c5fd;
+  --c-skeleton: #14383e; --c-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --c-nav: rgba(5, 23, 26, 0.85);
+  --c-input-bg: #0a2226; --c-input-border: #215a62; --c-input-text: #e2f5f2; --c-input-placeholder: #6b9590; --c-input-focus: #e2f5f2;
+}
+
+/* Ember, dark: charred dusk */
+html[data-theme='sunset'][data-mode='dark'] {
+  color-scheme: dark;
+  --c-bg: #1a0f0a; --c-text: #fbe9dc; --c-text-1: #e8cdb8; --c-text-2: #c19b80; --c-text-3: #96735c;
+  --c-surf: #241610; --c-surf-1: #2e1c14; --c-surf-2: #3a241a; --c-surf-3: #472c20;
+  --c-border: #472c20; --c-border-2: #5a3a2a;
+  --c-primary: #fbe9dc; --c-primary-text: #1a0f0a; --c-hover: #fff5ec;
+  --c-accent: #fb923c; --c-accent-hover: #f97316; --c-accent-soft: rgba(251, 146, 60, 0.16); --c-accent-soft-text: #fdba74;
+  --c-chip-ink-bg: #fbe9dc; --c-chip-ink-text: #1a0f0a;
+  --c-chip-cream-bg: #2e1c14; --c-chip-cream-text: #e8cdb8;
+  --c-chip-mint-bg: rgba(53, 211, 153, 0.16); --c-chip-mint-text: #82cba6;
+  --c-chip-coral-bg: rgba(251, 79, 29, 0.18); --c-chip-coral-text: #ffa07e;
+  --c-chip-lavender-bg: rgba(59, 130, 246, 0.14); --c-chip-lavender-text: #93c5fd;
+  --c-skeleton: #3a241a; --c-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --c-nav: rgba(26, 15, 10, 0.85);
+  --c-input-bg: #241610; --c-input-border: #5a3a2a; --c-input-text: #fbe9dc; --c-input-placeholder: #96735c; --c-input-focus: #fbe9dc;
+}
+
+/* Amethyst, dark: deep violet */
+html[data-theme='purple'][data-mode='dark'] {
+  color-scheme: dark;
+  --c-bg: #120a1c; --c-text: #ece0fb; --c-text-1: #d3c2f0; --c-text-2: #a892cc; --c-text-3: #7f6ba3;
+  --c-surf: #1b1029; --c-surf-1: #241636; --c-surf-2: #2e1d44; --c-surf-3: #3a2654;
+  --c-border: #3a2654; --c-border-2: #4a3168;
+  --c-primary: #ece0fb; --c-primary-text: #120a1c; --c-hover: #f7f0ff;
+  --c-accent: #c084fc; --c-accent-hover: #a855f7; --c-accent-soft: rgba(192, 132, 252, 0.16); --c-accent-soft-text: #d8b4fe;
+  --c-chip-ink-bg: #ece0fb; --c-chip-ink-text: #120a1c;
+  --c-chip-cream-bg: #241636; --c-chip-cream-text: #d3c2f0;
+  --c-chip-mint-bg: rgba(53, 211, 153, 0.16); --c-chip-mint-text: #82cba6;
+  --c-chip-coral-bg: rgba(251, 79, 29, 0.16); --c-chip-coral-text: #ffa07e;
+  --c-chip-lavender-bg: rgba(168, 85, 247, 0.18); --c-chip-lavender-text: #d8b4fe;
+  --c-skeleton: #2e1d44; --c-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --c-nav: rgba(18, 10, 28, 0.85);
+  --c-input-bg: #1b1029; --c-input-border: #4a3168; --c-input-text: #ece0fb; --c-input-placeholder: #7f6ba3; --c-input-focus: #ece0fb;
+}
+
+/* Dark wallpapers get a little more glow so the art reads on a black base. */
+html[data-mode='dark'] .chat-dark { background-color: #080a0f !important; }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PROFILE_CARD_IDS, normalizeCardId, type ProfileCardId } from '../services/profileCards';
 
 // ============ Auth ============
 export const signupSchema = z.object({
@@ -47,7 +48,11 @@ export const updateProfileSchema = z.object({
   bio: z.string().max(1000).nullable().optional(),
   avatarUrl: avatarUrlSchema,
   learningFormat: z.enum(['ONLINE', 'IN_PERSON', 'EITHER']).optional(),
-  avatarFrame: z.enum(['default', 'frame_0', 'frame_1', 'frame_2', 'frame_3', 'frame_4', 'frame_5', 'frame_6', 'frame_7', 'frame_8', 'frame_9', 'frame_10', 'frame_11']).optional(),
+  // Profile cards: 1 free + 5 Pro (see services/profileCards.ts). Values from
+  // older builds (the retired PNG frames) are normalised to the free card.
+  avatarFrame: z
+    .preprocess(normalizeCardId, z.enum([...PROFILE_CARD_IDS] as [ProfileCardId, ...ProfileCardId[]]))
+    .optional(),
   bannerStyle: z.enum(['cream', 'purple', 'blue', 'teal', 'orange', 'pink', 'gold', 'indigo', 'green']).optional(),
   // Empty selects come in as "" from the web/APK forms; treat them as "not set"
   // instead of failing the entire profile save (which made saved fields vanish).

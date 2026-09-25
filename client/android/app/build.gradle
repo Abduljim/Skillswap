@@ -1,5 +1,29 @@
 apply plugin: 'com.android.application'
 
+// ── Release signing ────────────────────────────────────────────────────────
+// The keystore and its passwords are deliberately NOT in this repo (they used
+// to be hardcoded here, which meant anyone with read access could sign an
+// update that Play would accept). Provide them either as
+// client/android/keystore.properties (gitignored) or as environment variables:
+//
+//   SKILLSWAP_STORE_FILE, SKILLSWAP_STORE_PASSWORD,
+//   SKILLSWAP_KEY_ALIAS,  SKILLSWAP_KEY_PASSWORD
+//
+// Without them the release build still runs but produces UNSIGNED artifacts.
+def skillswapKsProps = new Properties()
+def skillswapKsFile = rootProject.file('keystore.properties')
+if (skillswapKsFile.exists()) {
+    skillswapKsFile.withInputStream { skillswapKsProps.load(it) }
+}
+def skillswapStoreFile = skillswapKsProps.getProperty('storeFile') ?: System.getenv('SKILLSWAP_STORE_FILE')
+def skillswapStorePassword = skillswapKsProps.getProperty('storePassword') ?: System.getenv('SKILLSWAP_STORE_PASSWORD')
+def skillswapKeyAlias = skillswapKsProps.getProperty('keyAlias') ?: System.getenv('SKILLSWAP_KEY_ALIAS')
+def skillswapKeyPassword = skillswapKsProps.getProperty('keyPassword') ?: System.getenv('SKILLSWAP_KEY_PASSWORD')
+if (skillswapStoreFile != null && !file(skillswapStoreFile).exists()) {
+    logger.warn("SkillSwap: keystore '${skillswapStoreFile}' not found — release artifacts will be UNSIGNED.")
+    skillswapStoreFile = null
+}
+
 // FCM needs app/google-services.json (from your Firebase project). Until that
 // file exists we drop the FCM-only sources + dependency so the APK still builds;
 // once you paste the file in, drop the stack in comment below to re-enable push.
@@ -12,8 +36,8 @@ android {
         applicationId "app.skillswap.client"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -31,17 +55,22 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file('skillswap-release.jks')
-            storePassword 'skillswap123'
-            keyAlias 'skillswap'
-            keyPassword 'skillswap123'
+            if (skillswapStoreFile != null) {
+                storeFile file(skillswapStoreFile)
+                storePassword skillswapStorePassword
+                keyAlias skillswapKeyAlias
+                keyPassword skillswapKeyPassword
+            }
         }
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // Unsigned when no keystore is available (e.g. CI without secrets).
+            if (skillswapStoreFile != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

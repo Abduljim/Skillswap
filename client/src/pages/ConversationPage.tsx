@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useGlobalSocket } from '../contexts/SocketContext';
 import { useCalls } from '../contexts/CallsContext';
 import { EmptyState, Skeleton } from '../components/ui';
@@ -111,12 +112,11 @@ function ConversationContent({
   const { user } = useAuth();
   const toast = useToast();
 
-  // Chat mode: White for everyone, Dark for Pro. Free users pick White only.
-  const [dark, setDark] = useState<boolean>(() => {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('skillswap_chat_mode') : null;
-    if (saved === 'dark' || saved === 'light') return saved === 'dark';
-    return pro;
-  });
+  // Chat mode is the app-wide dark mode (Pro): one switch, shared with
+  // Settings, so the message section and the rest of the app can never
+  // disagree. Graphite and Midnight are dark-only wallpapers.
+  const { isDark, setMode, activeTheme } = useTheme();
+  const dark = isDark;
 
   const chooseMode = (d: boolean) => {
     if (d && !pro) {
@@ -127,10 +127,15 @@ function ConversationContent({
       });
       return;
     }
-    setDark(d);
-    try {
-      localStorage.setItem('skillswap_chat_mode', d ? 'dark' : 'light');
-    } catch {}
+    if (!d && activeTheme.dark) {
+      toast.push({
+        type: 'info',
+        title: `${activeTheme.label} is a dark wallpaper`,
+        body: 'Pick another wallpaper in Settings to use the white chat.',
+      });
+      return;
+    }
+    setMode(d ? 'dark' : 'light');
   };
 
   const startCall = (video: boolean) => {

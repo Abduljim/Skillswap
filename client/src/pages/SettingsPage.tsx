@@ -21,7 +21,7 @@ const CALL_SOUND_OPTIONS: { value: CallSoundSource; label: string; hint: string 
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, mode, setMode, activeTheme } = useTheme();
   const toast = useToast();
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -107,11 +107,12 @@ export default function SettingsPage() {
 
       <div className="card p-6">
         <h2 className="font-display font-bold text-lg text-ink-900 mb-1 flex items-center gap-2">
-          <Moon className="w-4 h-4" /> Appearance
+          <Moon className="w-4 h-4" /> Wallpaper &amp; dark mode
         </h2>
         <p className="text-xs text-ink-500 mb-4">
-          Pick an appearance colour. It also styles your profile card. Light (cream) is free for
-          everyone; Dark mode and the colour gradients are a Pro perk.
+          Your wallpaper paints the whole app, messages included. Linen is free for everyone; the
+          five premium wallpapers and dark mode are Pro perks. Your profile card is chosen on your
+          profile page.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {THEMES.map((t) => {
@@ -125,7 +126,7 @@ export default function SettingsPage() {
                     toast.push({
                       type: 'info',
                       title: `${t.label} is a Pro perk`,
-                      body: 'Upgrade to Pro to unlock this appearance.',
+                      body: 'Upgrade to Pro to unlock this wallpaper.',
                     });
                     return;
                   }
@@ -137,7 +138,12 @@ export default function SettingsPage() {
                     : 'border-ink-100 hover:border-ink-200'
                 } ${locked ? 'opacity-60' : ''}`}
               >
-                <div className={`h-9 rounded-lg ${t.swatch} ${t.dark ? 'border border-white/10' : 'border border-ink-900/5'}`} />
+                <div
+                  aria-hidden="true"
+                  className={`wp-preview ${t.swatchCls} ${mode === 'dark' && !t.dark ? 'wp-preview-darkmode' : ''} h-14 rounded-lg ${
+                    t.dark || mode === 'dark' ? 'border border-white/10' : 'border border-ink-900/5'
+                  }`}
+                />
                 <div className="mt-2 flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-ink-900">{t.label}</span>
                   {active && <Check className="w-4 h-4 text-coral-500" />}
@@ -152,11 +158,55 @@ export default function SettingsPage() {
             );
           })}
         </div>
+        {/* Dark mode: one switch for the whole app, message section included. */}
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-ink-100 p-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-ink-900">
+              <Moon className="h-3.5 w-3.5" /> Dark mode
+              {!isPro && (
+                <span className="flex items-center gap-1 rounded-full bg-cream-100 px-1.5 py-0.5 text-[9px] font-bold text-ink-700">
+                  <Lock className="h-2.5 w-2.5" /> PRO
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-ink-500">
+              Dims every screen — including your messages.
+              {activeTheme.dark ? ' This wallpaper is dark already.' : ''}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mode === 'dark'}
+            aria-label="Dark mode"
+            onClick={() => {
+              if (!isPro) {
+                toast.push({
+                  type: 'info',
+                  title: 'Dark mode is a Pro perk',
+                  body: 'Upgrade to Pro to dim the app and your messages.',
+                });
+                return;
+              }
+              setMode(mode === 'dark' ? 'light' : 'dark');
+            }}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+              mode === 'dark' ? 'bg-ink-900' : 'bg-ink-200'
+            } ${!isPro ? 'opacity-60' : ''}`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                mode === 'dark' ? 'left-[22px]' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
         {!isPro && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-cream-100 p-3">
             <div>
-              <div className="text-sm font-semibold">Unlock all themes with Pro</div>
-              <div className="text-xs text-ink-500">Plus badges, profile customization & more.</div>
+              <div className="text-sm font-semibold">Unlock all wallpapers with Pro</div>
+              <div className="text-xs text-ink-500">Plus dark mode, badges, profile cards &amp; more.</div>
             </div>
             <Link to="/membership" className="btn-coral text-xs px-3 py-2 shrink-0">
               <Crown className="w-3 h-3" /> Upgrade
