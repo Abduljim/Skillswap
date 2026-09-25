@@ -97,7 +97,14 @@ export async function updateUser(
   id: string,
   input: { isActive?: boolean; isAdmin?: boolean }
 ) {
-  return prisma.user.update({ where: { id }, data: input });
+  // Deactivating an account must also kill its live sessions and sockets;
+  // otherwise a banned user keeps a valid token for up to a year.
+  const data: { isActive?: boolean; isAdmin?: boolean; tokenVersion?: { increment: number } } = {
+    ...input,
+  };
+  if (input.isActive === false) data.tokenVersion = { increment: 1 };
+
+  return prisma.user.update({ where: { id }, data });
 }
 
 export async function listReports(opts: { status?: 'OPEN' | 'REVIEWING' | 'RESOLVED' | 'DISMISSED' }) {

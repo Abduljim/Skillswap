@@ -37,12 +37,16 @@ export async function signup(input: {
       displayName: input.displayName,
       profile: { create: {} },
     },
-    select: { id: true, email: true, displayName: true, isAdmin: true },
+    select: { id: true, email: true, displayName: true, isAdmin: true, tokenVersion: true },
   });
 
   await ensureAdminRole(user.email);
 
-  return { user, token: signToken({ userId: user.id, email: user.email }) };
+  const { tokenVersion, ...publicUser } = user;
+  return {
+    user: publicUser,
+    token: signToken({ userId: user.id, email: user.email, tokenVersion }),
+  };
 }
 
 export async function login(input: { email: string; password: string }) {
@@ -69,7 +73,7 @@ export async function login(input: { email: string; password: string }) {
       streak: streak.streak,
       maxStreak: streak.maxStreak,
     },
-    token: signToken({ userId: user.id, email: user.email }),
+    token: signToken({ userId: user.id, email: user.email, tokenVersion: user.tokenVersion }),
   };
 }
 
@@ -159,7 +163,12 @@ export async function changePassword(input: {
   if (!ok) throw new UnauthorizedError('Current password is incorrect');
 
   const passwordHash = await bcrypt.hash(input.newPassword, 10);
-  await prisma.user.update({ where: { id: input.userId }, data: { passwordHash } });
+  // Changing a password invalidates every existing session, including any token
+  // an attacker may already hold.
+  await prisma.user.update({
+    where: { id: input.userId },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
 }
 
 export async function resetPassword(token: string, newPassword: string) {
@@ -170,10 +179,24 @@ export async function resetPassword(token: string, newPassword: string) {
   }
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+    prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    }),
     prisma.passwordResetToken.update({
       where: { id: record.id },
       data: { usedAt: new Date() },
     }),
   ]);
+}
+
+/**
+ * Invalidates every JWT issued for this user (logout, admin deactivation,
+ * "sign out everywhere"). The caller's own cookie is cleared separately.
+ */
+export async function revokeSessions(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
 }

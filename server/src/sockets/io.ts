@@ -93,12 +93,15 @@ export function initSocket(httpServer: HTTPServer) {
       }
       if (!token) return next(new Error('Unauthorized'));
 
-      const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string };
+      const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string; tokenVersion?: number };
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, isActive: true },
+        select: { id: true, isActive: true, tokenVersion: true },
       });
       if (!user || !user.isActive) return next(new Error('Unauthorized'));
+      // Same revocation rule as requireAuth, so a logged-out or deactivated user
+      // cannot keep a socket open with an old token.
+      if ((payload.tokenVersion ?? 0) !== user.tokenVersion) return next(new Error('Unauthorized'));
 
       (socket as any).userId = user.id;
       next();

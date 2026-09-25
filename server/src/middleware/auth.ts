@@ -7,12 +7,25 @@ import { prisma } from '../lib/prisma';
 export interface AuthPayload {
   userId: string;
   email: string;
+  /**
+   * The user's `tokenVersion` at mint time. `requireAuth` rejects a token whose
+   * version is behind the database, which is how logout, password change/reset
+   * and admin deactivation invalidate sessions that would otherwise live for a
+   * year (JWT_EXPIRES_IN=365d).
+   */
+  tokenVersion: number;
+}
+
+/** What handlers see on `req.user` — identity only, never JWT claims. */
+export interface RequestUser {
+  userId: string;
+  email: string;
 }
 
 declare global {
   namespace Express {
     interface Request {
-      user?: AuthPayload;
+      user?: RequestUser;
     }
   }
 }
@@ -52,13 +65,19 @@ export const requireAuth = async (req: Request, _res: Response, next: NextFuncti
 
     const payload = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
 
-    // Confirm user is still active
+    // Confirm the user is still active and the session has not been revoked.
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, isActive: true },
+      select: { id: true, email: true, isActive: true, tokenVersion: true },
     });
 
     if (!user || !user.isActive) throw new UnauthorizedError('Account inactive');
+
+    // Tokens minted before `tokenVersion` existed have no claim — treat as 0 so
+    // upgrading does not log everybody out at once; the first bump revokes them.
+    if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedError('Session expired — please sign in again');
+    }
 
     req.user = { userId: user.id, email: user.email };
     next();
@@ -86,9 +105,11 @@ export const optionalAuth = async (req: Request, _res: Response, next: NextFunct
       const payload = jwt.verify(cookieToken, env.JWT_SECRET) as AuthPayload;
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, email: true, isActive: true },
+        select: { id: true, email: true, isActive: true, tokenVersion: true },
       });
-      if (user?.isActive) req.user = { userId: user.id, email: user.email };
+      if (user?.isActive && (payload.tokenVersion ?? 0) === user.tokenVersion) {
+        req.user = { userId: user.id, email: user.email };
+      }
     }
   } catch {
     // ignore

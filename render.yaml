@@ -15,7 +15,11 @@ services:
     region: oregon
     runtime: node
     rootDir: server
-    buildCommand: cd .. && npm ci --include=dev && npm run --prefix client build && cd server && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build:prod && node scripts/seed-prod.js
+    # Schema changes go through versioned migrations (`prisma migrate deploy`).
+    # `ensure-migrations.js` baselines a database that was originally created with
+    # `db push`, so the first deploy after this change is a no-op instead of a
+    # destructive re-sync. `db push --accept-data-loss` must never run in prod.
+    buildCommand: cd .. && npm ci --include=dev && npm run --prefix client build && cd server && npx prisma generate && node scripts/ensure-migrations.js && npx prisma migrate deploy && npm run build:prod && node scripts/seed-prod.js
     startCommand: node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
@@ -36,6 +40,10 @@ services:
         value: jimoh0004@gmail.com
       - key: COOKIE_SECRET
         generateValue: true
+      # '*' means "not configured": the API then allows only its own origin plus
+      # the Capacitor WebView origins (https://localhost, capacitor://localhost).
+      # It never reflects an arbitrary Origin, because credentials are enabled.
+      # List real domains comma-separated if the client is ever hosted separately.
       - key: CLIENT_URL
         value: '*'
       - key: RATE_LIMIT_WINDOW_MS
@@ -44,7 +52,18 @@ services:
         value: 500
       - key: LOG_LEVEL
         value: info
+      # Must be 'true' to accept real Google Play purchases. While it is 'false'
+      # the server REJECTS every Android purchase rather than trusting the token —
+      # otherwise any client could mint PRO by posting a fake purchaseToken.
+      # To go live: set this to 'true' and paste the Firebase/Play service-account
+      # JSON into GOOGLE_PLAY_SERVICE_ACCOUNT_JSON below.
       - key: PLAY_BILLING_VERIFY
+        value: 'false'
+      - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+        value: ''
+      # Grants PRO from POST /api/subscription/web with NO payment provider.
+      # Keep 'false' in production: 'true' makes Pro free for anyone with a cookie.
+      - key: ENABLE_WEB_BILLING
         value: 'false'
       - key: ANDROID_PACKAGE_NAME
         value: app.skillswap.client

@@ -56,7 +56,54 @@ The matching engine is **deterministic** — no LLM, no AI APIs, no generative A
 - See who viewed your profile
 - Pro badge on your profile and match cards
 
-Subscriptions are stored per-user with platform (`WEB` or `ANDROID`), product ID, purchase token (Android), and an expiry date.
+Subscriptions are stored per-user with platform (`WEB` or `ANDROID`), product ID, purchase token (Android), and an expiry date. Admins always get Pro.
+
+Both caps are enforced server-side: the 3-request limit in `createExchangeRequest`,
+and the 5-exchange limit in `acceptRequest` (an active exchange counts against
+**both** members, so accepting is refused if either side is at their cap).
+
+---
+
+## Billing & entitlements
+
+There is **no web payment provider** (no Stripe/Paystack). Two purchase paths exist:
+
+| Path | Endpoint | Verification |
+| --- | --- | --- |
+| Android | `POST /api/subscription/android` | Google Play Developer API, via `playBillingVerifier` |
+| Web (development only) | `POST /api/subscription/web` | none — grants PRO immediately |
+
+Because the web path charges nothing, it is **refused in production** unless an
+operator opts in explicitly:
+
+```bash
+ENABLE_WEB_BILLING=false   # production default: POST /api/subscription/web → 403
+ENABLE_WEB_BILLING=true    # opt in (Pro becomes free for anyone with a cookie)
+```
+
+Android purchases fail closed as well. With `PLAY_BILLING_VERIFY` unset or `false`,
+a production server **rejects** every purchase rather than trusting the
+`purchaseToken` — otherwise any client could mint PRO with
+`{"productId":"…","purchaseToken":"anything"}`. To accept real purchases:
+
+```bash
+PLAY_BILLING_VERIFY=true
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON='{…service account key…}'
+ANDROID_PACKAGE_NAME=app.skillswap.client
+```
+
+Outside production both paths stay permissive so the paywall UI can be exercised.
+The boot log prints the effective billing configuration on every start.
+
+---
+
+## Security notes
+
+- **CORS** — explicit allowlist (`allowedOrigins` in `server/src/config/env.ts`), never a reflected wildcard, because the auth cookie is sent with `credentials: true`. The Capacitor WebView origins (`https://localhost`, `capacitor://localhost`) are always allowed. `CLIENT_URL='*'` means "not configured", not "allow everything"; list real domains comma-separated, or use `EXTRA_ALLOWED_ORIGINS`.
+- **Session revocation** — `User.tokenVersion` is embedded in every JWT and checked by `requireAuth`, `optionalAuth` and the Socket.IO handshake. It is bumped on logout, password change, password reset and admin deactivation, so a token that leaks (it is also returned in the response body for the native socket handshake) cannot be replayed for the full 365-day lifetime.
+- **Passwords** — bcrypt cost 10. Login returns one message for "no such user" and "wrong password".
+- **Rate limiting** — global limiter plus a stricter 20-per-15-min limiter on the auth endpoints. Skipped under `NODE_ENV=test` so suites stay deterministic.
+- **Admin** — `requireAuth` + `requireAdmin`, which re-reads `isAdmin` from the database on every request, so a demotion takes effect immediately.
 
 ---
 
@@ -101,9 +148,22 @@ npm install
 ### 4. Run migrations & seed
 
 ```bash
-npm run migrate
-npm run seed
+npm run migrate          # create + apply migrations while developing
+npm run migrate:deploy   # apply pending migrations (baselines a db-push database first)
+npm run seed             # upsert the skill catalogue (287 skills / 14 categories)
 ```
+
+The schema is version-controlled in `server/prisma/migrations/`. `migrate:deploy`
+first runs `scripts/ensure-migrations.js`, which records the baseline migration on
+any database that was originally created with `prisma db push` — so deploying to an
+existing production database is a no-op instead of a destructive re-sync.
+
+`prisma db push --accept-data-loss` must never be run against a database that holds
+real user data.
+
+> The Prisma CLI and the standalone scripts read the **repository root** `.env`.
+> `scripts/load-env.js` handles that for you, so `npm run seed` and
+> `npm run migrate` work on a fresh clone without exporting anything.
 
 ### 5. Start development servers
 
@@ -116,32 +176,65 @@ npm run dev
 
 ---
 
-## Test Users (after seeding)
+## First account & admin access
 
-| Email                | Password    |
-| -------------------- | ----------- |
-| alice@example.com    | password123 |
-| bob@example.com      | password123 |
-| sarah@example.com    | password123 |
-| david@example.com    | password123 |
-| fatima@example.com   | password123 |
-| emma@example.com     | password123 |
-| james@example.com    | password123 |
-| zainab@example.com   | password123 |
+There are **no demo accounts** — the seed ships the skill catalogue only, and it
+permanently removes the placeholder accounts (`alice@example.com`, …) from older
+releases. The app starts empty; only real sign-ups create users.
 
-Alice is an admin. Log in, then go to **Membership** → upgrade to Pro to test the paid flow.
+Admin is bootstrapped from the environment: set `ADMIN_EMAIL` and the matching
+account is promoted on sign-up, on login, and on every deploy.
+
+```bash
+ADMIN_EMAIL=you@example.com   # in .env (local) or the Render dashboard
+```
+
+To exercise Pro locally, sign in and open **Membership** → upgrade. That uses the
+no-payment development path described in [Billing](#billing--entitlements).
 
 ---
 
 ## Development Scripts
 
 ```bash
-npm run dev          # run client + server
-npm run build        # build both
-npm run test         # run server tests
-npm run migrate      # run Prisma migrations
-npm run seed         # seed demo data
+npm run dev               # run client + server
+npm run build             # build both
+npm run test              # run the server test suite (unit + integration)
+npm run migrate           # create + apply a migration while developing
+npm run seed              # upsert the skill catalogue
 ```
+
+Server-only scripts (`cd server`):
+
+```bash
+npm run test:db:prepare   # push the schema to TEST_DATABASE_URL before integration tests
+npm run test:integration  # prepare the test DB, then run the suite
+npm run migrate:deploy    # baseline (if needed) + apply pending migrations
+npm run db:baseline       # record the baseline migration on a db-push database
+npm run lint              # tsc --noEmit
+npm run build:prod        # esbuild bundle for Render (dist/index.js + dist/catalogue.js)
+```
+
+### Tests
+
+Jest + Supertest. The suite runs against a **real PostgreSQL test database**
+(`TEST_DATABASE_URL`) for the integration tests — no mocking of the data layer:
+
+```
+tests/matching.test.ts                  match scoring rules
+tests/matching-edge-cases.test.ts       exclusions, blocks, inactive users
+tests/entitlements.test.ts              FREE vs PRO limits
+tests/subscription-products.test.ts     product catalogue
+tests/password-reset.test.ts            reset tokens + email (mocked transport)
+tests/integration/session-revocation.test.ts   logout / password change / deactivation
+tests/integration/billing-gates.test.ts        production refusals for free Pro
+tests/integration/cors.test.ts                 origin allowlist
+tests/integration/entitlements-limits.test.ts  3-request and 5-exchange caps, end to end
+```
+
+ts-jest runs transpile-only (`tsconfig.test.json`); type-checking the generated
+Prisma client plus `googleapis` pushed the runner past 900 MB and OOM-killed it.
+Types are still checked by `npm run lint`.
 
 ### Android scripts
 

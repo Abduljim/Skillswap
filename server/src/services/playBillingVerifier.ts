@@ -7,7 +7,7 @@
  * Docs: https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.products/get
  */
 import { google } from 'googleapis';
-import { env } from '../config/env';
+import { env, isProduction } from '../config/env';
 import fs from 'fs';
 
 let authClient: any = null;
@@ -41,8 +41,19 @@ export async function verifyPlayPurchase(p: PlayPurchase): Promise<{
   reason?: string;
 }> {
   if (env.PLAY_BILLING_VERIFY !== 'true') {
-    // Dev mode: trust the token. In production, set PLAY_BILLING_VERIFY=true
-    // and provide GOOGLE_PLAY_SERVICE_ACCOUNT_JSON to enforce verification.
+    // Development: trust the token so the billing UI can be exercised without a
+    // Play Console service account.
+    //
+    // Production: refusing is the only safe default. Accepting an unverified
+    // purchaseToken means any client can mint PRO for free by posting
+    // { productId, purchaseToken: 'anything' }.
+    if (isProduction) {
+      return {
+        valid: false,
+        reason:
+          'Purchase verification is not configured on this server (PLAY_BILLING_VERIFY must be "true" with GOOGLE_PLAY_SERVICE_ACCOUNT_JSON set).',
+      };
+    }
     return { valid: true };
   }
 

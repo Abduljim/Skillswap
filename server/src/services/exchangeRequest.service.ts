@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../utils/errors';
 import { createNotification } from './notification.service';
-import { checkCanSendRequest } from './entitlements.service';
+import { checkCanSendRequest, checkCanStartExchange } from './entitlements.service';
 
 export async function createExchangeRequest(input: {
   senderId: string;
@@ -126,6 +126,21 @@ export async function acceptRequest(userId: string, requestId: string) {
   if (!request) throw new NotFoundError('Request not found');
   if (request.receiverId !== userId) throw new ForbiddenError('You cannot accept this request');
   if (request.status !== 'PENDING') throw new BadRequestError('Request is no longer pending');
+
+  // Freemium enforcement. An ACTIVE exchange counts against BOTH members'
+  // allowance, so check the person accepting and the person who asked.
+  // (`checkCanStartExchange` existed but had no callers, which is why the
+  // documented "Free: up to 5 active exchanges" cap never took effect.)
+  const acceptorCheck = await checkCanStartExchange(userId);
+  if (!acceptorCheck.allowed) {
+    throw new ForbiddenError(acceptorCheck.reason || 'Active exchange limit reached');
+  }
+  const senderCheck = await checkCanStartExchange(request.senderId);
+  if (!senderCheck.allowed) {
+    throw new ForbiddenError(
+      'The member who sent this request is at their active-exchange limit, so it cannot be accepted yet.'
+    );
+  }
 
   // Create exchange + accept request in one transaction
   const result = await prisma.$transaction(async (tx) => {

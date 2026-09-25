@@ -32,20 +32,46 @@ git push -u origin main
 5. Render will:
    - Create `skillswap-db` (Postgres)
    - Create `skillswap-api` (Node web service)
-   - Run `npm ci && prisma generate && prisma db push && esbuild`
+   - Run `npm ci && prisma generate && ensure-migrations && prisma migrate deploy && esbuild && seed-prod`
    - Start the server
+
+#### Schema migrations
+
+The build applies versioned migrations from `server/prisma/migrations/` — it no
+longer runs `prisma db push --accept-data-loss`, which could silently drop columns
+and tables holding real user data whenever the schema and database diverged.
+
+Databases that were created with `db push` before this change are handled
+automatically: `scripts/ensure-migrations.js` detects an existing schema with no
+migration history and records the baseline (`0_init`) as applied — bookkeeping only,
+no data is touched. The first deploy after this change therefore reports
+`No pending migrations to apply`.
+
+After that, ship schema changes by committing a migration:
+
+```bash
+cd server && npm run migrate -- --name describe_the_change
+git add prisma/migrations && git commit -m "…" && git push   # Render redeploys
+```
 
 Watch the build log. It will print `🚀 SkillSwap API running on http://localhost:4000` when ready (~2–3 min).
 
-### 3. Seed the database (one-time)
+### 3. Seeding (automatic)
 
-In the Render dashboard, open your `skillswap-api` service → **Shell** tab → run:
+`node scripts/seed-prod.js` already runs at the end of the build command, so there
+is nothing to do. It upserts the skill catalogue (287 skills / 14 categories,
+loaded from the compiled `dist/catalogue.js` so dev and prod can never drift) and
+promotes `ADMIN_EMAIL`.
+
+It creates **no demo accounts** — it deletes the old placeholders
+(`alice@example.com`, …) if they are still present. The app starts empty and only
+real sign-ups create users.
+
+To re-run it by hand (paid plans only — Render's free tier has no Shell tab):
 
 ```bash
 cd server && node scripts/seed-prod.js
 ```
-
-You'll see `✅ Seed complete!` and 8 demo users printed.
 
 ### 4. Get your live URL
 
@@ -88,7 +114,21 @@ Not enabled in this deploy. To turn it on:
 4. Upload the AAB (`app-release.aab`) to Play Console internal testing
 5. The APK will then be able to charge real money
 
-Until then, Pro upgrades use the **web dev fallback** — instant upgrade with no payment. Users with Pro see the Pro badge and unlock unlimited exchanges.
+**Until those variables are set, Android purchases are rejected.** The verifier
+fails closed in production: with `PLAY_BILLING_VERIFY` unset or `false` it returns
+`valid: false` instead of trusting whatever `purchaseToken` the client sent. That is
+deliberate — trusting the token meant any client could mint a year of Pro with
+`{"productId":"…","purchaseToken":"anything"}`.
+
+The web "instant upgrade" fallback (`POST /api/subscription/web`, no payment
+provider) is likewise **disabled in production** and returns `403`. It stays
+available in development so the paywall UI can be exercised. To open it in
+production you must set `ENABLE_WEB_BILLING=true` — which makes Pro free for anyone
+with a session cookie, so only do that if you have wired up a real web payment
+provider first.
+
+Every start-up prints the effective billing configuration to the deploy log, so a
+misconfigured environment is visible immediately.
 
 ## Free tier caveats
 

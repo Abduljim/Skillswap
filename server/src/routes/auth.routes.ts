@@ -34,10 +34,18 @@ router.post(
   })
 );
 
-router.post('/logout', (_req, res) => {
-  clearAuthCookie(res);
-  ok(res, { loggedOut: true });
-});
+router.post(
+  '/logout',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    // Clearing the cookie only affects this browser: the JWT itself stays valid
+    // until it expires (365d). Bumping tokenVersion revokes it everywhere —
+    // including a token that was copied out of a response body or a log.
+    await authService.revokeSessions(req.user!.userId);
+    clearAuthCookie(res);
+    ok(res, { loggedOut: true });
+  })
+);
 
 router.get(
   '/me',

@@ -1,9 +1,15 @@
 {
+  // Jest/ts-jest configuration.
+  //
+  // `isolatedModules` makes ts-jest transpile each file instead of type-checking
+  // the whole program. Type-checking here pulls in the generated Prisma client
+  // (31 models) and googleapis, which pushed the runner to ~930 MB and OOM-killed
+  // it — even for a 35-line unit test. Transpile-only runs the same suite in <2 s.
+  // Types are still checked by `npm run lint` (tsc --noEmit).
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "noEmit": true,
-    "types": ["jest", "node"]
+    "isolatedModules": true,
+    "types": ["node", "jest"]
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*", "prisma/**/*"]
 }

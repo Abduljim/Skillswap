@@ -6,8 +6,23 @@
  *
  * Run: cd server && npm run seed           (uses tsx)
  */
+import path from 'path';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { SKILLS } from '../src/catalogue';
+
+// This script runs under plain `tsx`, so nothing loads the repository's .env.
+// Without this, `npm run seed` fails on a fresh clone with
+// "Environment variable not found: DATABASE_URL".
+// Precedence (dotenv never overwrites what is already set):
+//   real environment variables > server/.env > repo root .env
+for (const candidate of [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '../.env'),
+  path.resolve(__dirname, '../../.env'),
+]) {
+  dotenv.config({ path: candidate });
+}
 
 const prisma = new PrismaClient();
 
@@ -35,13 +50,25 @@ async function main() {
   // ── Skills (always additive, idempotent) ──────────────────────────────────
   const skillCount = await prisma.skill.count();
   console.log(`Upserting ${SKILLS.length} skills…`);
-  for (const s of SKILLS) {
-    await prisma.skill.upsert({
-      where: { name: s.name },
-      update: { category: s.category, description: s.description ?? null, isActive: true },
-      create: { name: s.name, category: s.category, description: s.description ?? null, isActive: true },
-    });
-  }
+
+  // One idempotent statement instead of 280+ sequential round-trips:
+  // missing skills are inserted, existing ones get category/description
+  // refreshed and are re-activated.
+  const params: unknown[] = [];
+  const tuples = SKILLS.map((skill) => {
+    params.push(skill.name, skill.category, skill.description ?? null);
+    const n = params.length; // 1-indexed placeholders
+    return `(gen_random_uuid(), $${n - 2}, $${n - 1}, $${n})`;
+  });
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "Skill" ("id", "name", "category", "description") VALUES ${tuples.join(', ')}
+     ON CONFLICT ("name") DO UPDATE SET
+       "category" = EXCLUDED."category",
+       "description" = EXCLUDED."description",
+       "isActive" = true`,
+    ...params
+  );
+
   console.log(`Skills: ${skillCount} → ${await prisma.skill.count()} (missing ones added).`);
 
   // ── Remove built-in demo accounts ─────────────────────────────────────────

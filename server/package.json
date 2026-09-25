@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "build:prod": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --packages=external",
+    "build:prod": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --packages=external && esbuild src/catalogue.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/catalogue.js",
     "start": "node dist/index.js",
     "test": "jest --runInBand",
-    "prisma:generate": "prisma generate",
-    "migrate": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy",
+    "prisma:generate": "node scripts/prisma-env.js generate",
+    "migrate": "node scripts/prisma-env.js migrate dev",
+    "migrate:deploy": "node scripts/ensure-migrations.js && node scripts/prisma-env.js migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "lint": "tsc --noEmit",
-    "studio": "prisma studio"
+    "studio": "node scripts/prisma-env.js studio",
+    "db:baseline": "node scripts/ensure-migrations.js",
+    "test:db:prepare": "node scripts/prisma-env.js --test db push --skip-generate",
+    "test:integration": "npm run test:db:prepare && jest --runInBand"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

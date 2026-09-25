@@ -1,8 +1,9 @@
 // Subscription service — manages tier upgrades, downgrades, and tier features.
 
 import { prisma } from '../lib/prisma';
-import { BadRequestError, NotFoundError } from '../utils/errors';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors';
 import { getUserTier } from './entitlements.service';
+import { isProduction, webBillingEnabled } from '../config/env';
 
 export const PRO_PRODUCTS = {
   WEB_MONTHLY: { productId: 'skillswap_pro_web_monthly', priceCents: 499, currency: 'USD', durationDays: 30, platform: 'WEB' as const },
@@ -21,11 +22,23 @@ export async function getMySubscription(userId: string) {
 }
 
 /**
- * Web (server-side) upgrades a user to PRO without payment processing.
- * In a production system, you'd gate this behind Stripe/PayPal. For this MVP,
- * we treat "purchase" as a server action — the client never touches billing.
+ * Web (server-side) upgrade to PRO **without a payment provider**.
+ *
+ * This is a development convenience: there is no Stripe/Paystack integration, so
+ * calling it simply grants PRO. It is therefore refused in production unless
+ * ENABLE_WEB_BILLING=true is set explicitly — otherwise anyone with a session
+ * cookie (including Android users, bypassing Google Play Billing) could take PRO
+ * for free with a single POST.
  */
 export async function upgradeWeb(userId: string, productKey: keyof typeof PRO_PRODUCTS) {
+  if (!webBillingEnabled) {
+    throw new ForbiddenError(
+      isProduction
+        ? 'Web upgrades are not available. Purchase Pro from the Android app instead.'
+        : 'Web billing is disabled. Set ENABLE_WEB_BILLING=true to use the no-payment dev upgrade.'
+    );
+  }
+
   const product = PRO_PRODUCTS[productKey];
   if (!product || product.platform !== 'WEB') throw new BadRequestError('Invalid web product');
 

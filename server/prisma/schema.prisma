@@ -94,6 +94,10 @@ model User {
   displayName   String
   isActive      Boolean  @default(true)
   isAdmin       Boolean  @default(false)
+  // Bumped to invalidate every JWT issued before the bump (logout, password
+  // change/reset, admin deactivation). Tokens carry the value they were minted
+  // with; a mismatch means the session was revoked.
+  tokenVersion  Int      @default(0)
   lastLoginAt   DateTime?
   loginStreak   Int      @default(0)
   maxStreak     Int      @default(0)
