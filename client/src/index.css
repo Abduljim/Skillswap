@@ -233,81 +233,183 @@ html[data-theme='purple'] {
 
 /* Shared remaps consumed by every theme */
 html[data-theme] body { background: var(--c-bg); color: var(--c-text); }
+
+/* Dark mode without a Pro wallpaper (Linen): the same palette rule, but
+   `background-color` only so the wallpaper image painted further down
+   survives. This twin is what makes dark mode work on the free theme. */
+html[data-mode='dark'] body { background-color: var(--c-bg); color: var(--c-text); }
 html[data-theme] .bg-white,
 html[data-theme] .card,
 html[data-theme] .surface,
-html[data-theme] .surface-elevated { background-color: var(--c-surf); border-color: var(--c-border); }
-html[data-theme] .bg-cream-50 { background-color: var(--c-bg); }
+html[data-theme] .surface-elevated,
+html[data-mode='dark'] .bg-white,
+html[data-mode='dark'] .card,
+html[data-mode='dark'] .surface,
+html[data-mode='dark'] .surface-elevated { background-color: var(--c-surf); border-color: var(--c-border); }
+html[data-theme] .bg-cream-50,
+html[data-mode='dark'] .bg-cream-50 { background-color: var(--c-bg); }
 html[data-theme] .bg-cream-100,
-html[data-theme] .bg-ink-50 { background-color: var(--c-surf-1); }
+html[data-theme] .bg-ink-50,
+html[data-mode='dark'] .bg-cream-100,
+html[data-mode='dark'] .bg-ink-50 { background-color: var(--c-surf-1); }
 html[data-theme] .bg-cream-200,
-html[data-theme] .bg-ink-100 { background-color: var(--c-surf-2); }
+html[data-theme] .bg-ink-100,
+html[data-mode='dark'] .bg-cream-200,
+html[data-mode='dark'] .bg-ink-100 { background-color: var(--c-surf-2); }
 html[data-theme] .bg-ink-200,
-html[data-theme] .bg-ink-300 { background-color: var(--c-surf-3); }
-
-html[data-theme] .text-ink-900 { color: var(--c-text); }
+html[data-theme] .bg-ink-300,
+html[data-mode='dark'] .bg-ink-200,
+html[data-mode='dark'] .bg-ink-300 { background-color: var(--c-surf-3); }
+html[data-theme] .text-ink-900,
+html[data-mode='dark'] .text-ink-900 { color: var(--c-text); }
 html[data-theme] .text-ink-700,
-html[data-theme] .text-ink-600 { color: var(--c-text-1); }
+html[data-theme] .text-ink-600,
+html[data-mode='dark'] .text-ink-700,
+html[data-mode='dark'] .text-ink-600 { color: var(--c-text-1); }
 html[data-theme] .text-ink-500,
-html[data-theme] .text-ink-300 { color: var(--c-text-2); }
-html[data-theme] .text-ink-400 { color: var(--c-text-3); }
-html[data-theme] .text-white { color: var(--c-primary); }
-
-html[data-theme] .border-ink-100 { border-color: var(--c-border); }
-html[data-theme] .border-ink-200 { border-color: var(--c-border-2); }
+html[data-theme] .text-ink-300,
+html[data-mode='dark'] .text-ink-500,
+html[data-mode='dark'] .text-ink-300 { color: var(--c-text-2); }
+html[data-theme] .text-ink-400,
+html[data-mode='dark'] .text-ink-400 { color: var(--c-text-3); }
+html[data-theme] .text-white,
+html[data-mode='dark'] .text-white { color: var(--c-primary); }
+html[data-theme] .border-ink-100,
+html[data-mode='dark'] .border-ink-100 { border-color: var(--c-border); }
+html[data-theme] .border-ink-200,
+html[data-mode='dark'] .border-ink-200 { border-color: var(--c-border-2); }
 html[data-theme] .border-black\/5,
 html[data-theme] .border-ink-900\/5,
 html[data-theme] .border-ink-900\/10,
-html[data-theme] .border-white\/5 { border-color: var(--c-border-2) !important; }
+html[data-theme] .border-white\/5,
+html[data-mode='dark'] .border-black\/5,
+html[data-mode='dark'] .border-ink-900\/5,
+html[data-mode='dark'] .border-ink-900\/10,
+html[data-mode='dark'] .border-white\/5 { border-color: var(--c-border-2) !important; }
 html[data-theme] .bg-black\/5,
 html[data-theme] .bg-white\/5,
 html[data-theme] .bg-ink-950\/5,
-html[data-theme] .bg-ink-900\/5 { background-color: var(--c-surf-1) !important; }
+html[data-theme] .bg-ink-900\/5,
+html[data-mode='dark'] .bg-black\/5,
+html[data-mode='dark'] .bg-white\/5,
+html[data-mode='dark'] .bg-ink-950\/5,
+html[data-mode='dark'] .bg-ink-900\/5 { background-color: var(--c-surf-1) !important; }
 
-/* Primary buttons take the theme's accent-neutral tone */
-html[data-theme] .bg-ink-900 { background-color: var(--c-primary); }
-html[data-theme] .hover\:bg-ink-800:hover { background-color: var(--c-hover); }
-html[data-theme] .text-cream-50 { color: var(--c-primary-text); }
+/* Primary buttons take the theme's accent-neutral tone */html[data-theme] .bg-ink-900,
+html[data-mode='dark'] .bg-ink-900 { background-color: var(--c-primary); }
+html[data-theme] .hover\:bg-ink-800:hover,
+html[data-mode='dark'] .hover\:bg-ink-800:hover { background-color: var(--c-hover); }
+html[data-theme] .text-cream-50,
+html[data-mode='dark'] .text-cream-50 { color: var(--c-primary-text); }
 
-/* Component-level remaps */
-html[data-theme] .surface-flat { background-color: var(--c-bg); }
-html[data-theme] .glass-nav { background: var(--c-nav); }
-html[data-theme] .input {
+/* Component-level remaps */html[data-theme] .surface-flat,
+html[data-mode='dark'] .surface-flat { background-color: var(--c-bg); }
+html[data-theme] .glass-nav,
+html[data-mode='dark'] .glass-nav { background: var(--c-nav); }
+html[data-theme] .input,
+html[data-mode='dark'] .input {
   background-color: var(--c-input-bg);
   border-color: var(--c-input-border);
   color: var(--c-input-text);
 }
-html[data-theme] .input::placeholder { color: var(--c-input-placeholder); }
-html[data-theme] .input:focus { border-color: var(--c-input-focus); }
-html[data-theme] .label { color: var(--c-text-1); }
-html[data-theme] .btn-secondary { background-color: var(--c-surf-1); color: var(--c-text); }
-html[data-theme] .btn-secondary:hover { background-color: var(--c-surf-2); }
-html[data-theme] .btn-ghost { color: var(--c-text-1); }
-html[data-theme] .btn-ghost:hover { background-color: var(--c-surf-1); }
-html[data-theme] .btn-outline { border-color: var(--c-border-2); color: var(--c-text-1); }
-html[data-theme] .btn-outline:hover { background-color: var(--c-surf-1); }
-html[data-theme] .chip-ink { background-color: var(--c-chip-ink-bg); color: var(--c-chip-ink-text); }
-html[data-theme] .chip-cream { background-color: var(--c-chip-cream-bg); color: var(--c-chip-cream-text); }
-html[data-theme] .chip-mint { background-color: var(--c-chip-mint-bg); color: var(--c-chip-mint-text); }
-html[data-theme] .chip-coral { background-color: var(--c-chip-coral-bg); color: var(--c-chip-coral-text); }
-html[data-theme] .chip-lavender { background-color: var(--c-chip-lavender-bg); color: var(--c-chip-lavender-text); }
-html[data-theme] .skeleton { background-color: var(--c-skeleton); }
+html[data-theme] .input::placeholder,
+html[data-mode='dark'] .input::placeholder { color: var(--c-input-placeholder); }
+html[data-theme] .input:focus,
+html[data-mode='dark'] .input:focus { border-color: var(--c-input-focus); }
+html[data-theme] .label,
+html[data-mode='dark'] .label { color: var(--c-text-1); }
+html[data-theme] .btn-secondary,
+html[data-mode='dark'] .btn-secondary { background-color: var(--c-surf-1); color: var(--c-text); }
+html[data-theme] .btn-secondary:hover,
+html[data-mode='dark'] .btn-secondary:hover { background-color: var(--c-surf-2); }
+html[data-theme] .btn-ghost,
+html[data-mode='dark'] .btn-ghost { color: var(--c-text-1); }
+html[data-theme] .btn-ghost:hover,
+html[data-mode='dark'] .btn-ghost:hover { background-color: var(--c-surf-1); }
+html[data-theme] .btn-outline,
+html[data-mode='dark'] .btn-outline { border-color: var(--c-border-2); color: var(--c-text-1); }
+html[data-theme] .btn-outline:hover,
+html[data-mode='dark'] .btn-outline:hover { background-color: var(--c-surf-1); }
+html[data-theme] .chip-ink,
+html[data-mode='dark'] .chip-ink { background-color: var(--c-chip-ink-bg); color: var(--c-chip-ink-text); }
+html[data-theme] .chip-cream,
+html[data-mode='dark'] .chip-cream { background-color: var(--c-chip-cream-bg); color: var(--c-chip-cream-text); }
+html[data-theme] .chip-mint,
+html[data-mode='dark'] .chip-mint { background-color: var(--c-chip-mint-bg); color: var(--c-chip-mint-text); }
+html[data-theme] .chip-coral,
+html[data-mode='dark'] .chip-coral { background-color: var(--c-chip-coral-bg); color: var(--c-chip-coral-text); }
+html[data-theme] .chip-lavender,
+html[data-mode='dark'] .chip-lavender { background-color: var(--c-chip-lavender-bg); color: var(--c-chip-lavender-text); }
+html[data-theme] .skeleton,
+html[data-mode='dark'] .skeleton { background-color: var(--c-skeleton); }
 html[data-theme] .shadow-soft,
 html[data-theme] .shadow-soft-lg,
-html[data-theme] .shadow-soft-sm { box-shadow: var(--c-shadow); }
+html[data-theme] .shadow-soft-sm,
+html[data-mode='dark'] .shadow-soft,
+html[data-mode='dark'] .shadow-soft-lg,
+html[data-mode='dark'] .shadow-soft-sm { box-shadow: var(--c-shadow); }
 
-/* Accent remaps (coral utilities → theme accent) */
-html[data-theme] .bg-coral-500 { background-color: var(--c-accent); }
+/* Accent remaps (coral utilities → theme accent) */html[data-theme] .bg-coral-500,
+html[data-mode='dark'] .bg-coral-500 { background-color: var(--c-accent); }
 html[data-theme] .bg-coral-500\/20,
-html[data-theme] .bg-coral-100 { background-color: var(--c-accent-soft); }
-html[data-theme] .hover\:bg-coral-600:hover { background-color: var(--c-accent-hover); }
-html[data-theme] .text-coral-600 { color: var(--c-accent-hover); }
+html[data-theme] .bg-coral-100,
+html[data-mode='dark'] .bg-coral-500\/20,
+html[data-mode='dark'] .bg-coral-100 { background-color: var(--c-accent-soft); }
+html[data-theme] .hover\:bg-coral-600:hover,
+html[data-mode='dark'] .hover\:bg-coral-600:hover { background-color: var(--c-accent-hover); }
+html[data-theme] .text-coral-600,
+html[data-mode='dark'] .text-coral-600 { color: var(--c-accent-hover); }
 html[data-theme] .text-coral-500,
 html[data-theme] .text-coral-400,
-html[data-theme] .text-coral-300 { color: var(--c-accent); }
-html[data-theme] .text-coral-700 { color: var(--c-accent-soft-text); }
-html[data-theme] .border-coral-500 { border-color: var(--c-accent); }
-html[data-theme] .fill-coral-400 { fill: var(--c-accent); }
+html[data-theme] .text-coral-300,
+html[data-mode='dark'] .text-coral-500,
+html[data-mode='dark'] .text-coral-400,
+html[data-mode='dark'] .text-coral-300 { color: var(--c-accent); }
+html[data-theme] .text-coral-700,
+html[data-mode='dark'] .text-coral-700 { color: var(--c-accent-soft-text); }
+html[data-theme] .border-coral-500,
+html[data-mode='dark'] .border-coral-500 { border-color: var(--c-accent); }
+html[data-theme] .fill-coral-400,
+html[data-mode='dark'] .fill-coral-400 { fill: var(--c-accent); }
+
+
+/* Utilities the first pass missed. `text-ink-800` carries body copy on the
+   Calls tab and the conversation list, so leaving it unmapped meant near-black
+   text on dark surfaces. `border-cream-50` is deliberately excluded: it is a
+   spinner ring on a dark button and must stay light. */
+html[data-theme] .text-ink-800,
+html[data-mode='dark'] .text-ink-800 { color: var(--c-text); }
+html[data-theme] .border-cream-100,
+html[data-mode='dark'] .border-cream-100 { border-color: var(--c-border); }
+html[data-theme] .border-cream-200,
+html[data-theme] .border-cream-300,
+html[data-mode='dark'] .border-cream-200,
+html[data-mode='dark'] .border-cream-300 { border-color: var(--c-border-2); }
+
+/* Second pass, found by scripts/check-theme-coverage.mjs.
+   `bg-ink-700` pairs with `text-cream-50` (MatchScoreBadge), and cream-50 is
+   already remapped to --c-primary-text — leaving the background dark would put
+   dark text on a dark badge. Same reasoning for the hover state on buttons whose
+   base `bg-ink-900` inverts, and for `border-ink-900` on selected chips. */
+html[data-theme] .bg-cream-300,
+html[data-mode='dark'] .bg-cream-300 { background-color: var(--c-border-2); }
+html[data-theme] .bg-ink-700,
+html[data-mode='dark'] .bg-ink-700 { background-color: var(--c-primary); }
+html[data-theme] .hover\:bg-ink-700:hover,
+html[data-mode='dark'] .hover\:bg-ink-700:hover { background-color: var(--c-hover); }
+html[data-theme] .border-ink-300,
+html[data-theme] .hover\:border-ink-300:hover,
+html[data-mode='dark'] .border-ink-300,
+html[data-mode='dark'] .hover\:border-ink-300:hover { border-color: var(--c-border-2); }
+html[data-theme] .border-ink-900,
+html[data-mode='dark'] .border-ink-900 { border-color: var(--c-primary); }
+
+/* WhatsApp-style cream shell used by the Calls tab. A named class rather than a
+   Tailwind arbitrary value, so it can follow the palette in dark mode instead of
+   staying cream. Light appearance is unchanged (#f5f2ec). */
+.calls-shell { background-color: #f5f2ec; }
+html[data-theme] .calls-shell,
+html[data-mode='dark'] .calls-shell { background-color: var(--c-bg); }
 
 /* ── Chat surface modes ────────────────────────────────────────────
    Free users get a white chat, Pro users a dark WhatsApp-style chat.
@@ -328,6 +430,7 @@ html[data-theme] .fill-coral-400 { fill: var(--c-accent); }
   background-repeat: var(--wp-repeat);
 }
 .chat-dark .text-ink-900 { color: #eef0f4; }
+
 /* ==========================================================================
    Profile cards (client/src/profileCards.tsx)
    Ring artwork is inline SVG/CSS — no image assets. Animations are decorative

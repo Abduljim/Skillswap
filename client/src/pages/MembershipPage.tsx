@@ -363,7 +363,7 @@ export default function MembershipPage() {
             </button>
             <button
               onClick={() => cancelMutation.mutate()}
-              className="h-9 px-3 rounded-lg bg-ink-800 hover:bg-ink-700 text-cream-100 text-sm transition-colors"
+              className="h-9 px-3 rounded-lg bg-ink-900 hover:bg-ink-800 text-cream-50 text-sm transition-colors"
             >
               Cancel
             </button>

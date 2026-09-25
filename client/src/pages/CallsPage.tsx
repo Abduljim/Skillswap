@@ -86,7 +86,7 @@ function NewCallSheet({
   if (!open) return null;
   const list = contacts.filter((c) => c.partner.displayName.toLowerCase().includes(q.toLowerCase()));
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f2ec] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex flex-col calls-shell animate-fade-in">
       <div className="flex items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-cream-200">
         <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-ink-700" aria-label="Back">
           <ChevronLeft className="w-5 h-5" />
@@ -175,7 +175,7 @@ function GroupSheet({
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const selectedContacts = contacts.filter((c) => selected.includes(c.partner.id));
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f2ec] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex flex-col calls-shell animate-fade-in">
       <div className="flex items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-cream-200">
         <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-ink-700" aria-label="Back">
           <ChevronLeft className="w-5 h-5" />
@@ -252,7 +252,7 @@ function GroupSheet({
         })}
       </div>
 
-      <div className="absolute bottom-0 inset-x-0 p-4 bg-[#f5f2ec] border-t border-cream-200 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="absolute bottom-0 inset-x-0 p-4 calls-shell border-t border-cream-200 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <button
           disabled={selected.length < 2}
           onClick={() => onStart(selectedContacts)}
@@ -440,7 +440,7 @@ export default function CallsPage() {
       {sheet && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 animate-fade-in" onClick={() => setSheet(null)}>
           <div
-            className="w-full max-w-md bg-[#f5f2ec] rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            className="w-full max-w-md calls-shell rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 rounded-full bg-cream-300 mx-auto mb-4" />
