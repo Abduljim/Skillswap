@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X, Pencil } from 'lucide-react';
+import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X, Pencil, Keyboard } from 'lucide-react';
+import EmojiPicker from './EmojiPicker';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import type { Message } from '../types';
@@ -31,6 +32,9 @@ export default function ChatTab({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingCaption, setPendingCaption] = useState('');
   const [reviewOpen, setReviewOpen] = useState(false);
+  // The emoji panel REPLACES the keyboard rather than stacking over it, so the
+  // composer never changes height twice in a row.
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(socket ?? null);
@@ -138,9 +142,57 @@ export default function ChatTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingImage]);
 
+  // The panel is a fixed height, but the list still has to stay glued to the
+  // newest message when the composer area grows or shrinks by 272px.
+  useEffect(() => {
+    stickToBottom(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emojiOpen]);
+
   // Images have no intrinsic height until they decode, so the list grows after
   // paint and the pinned position would be stale. Re-pin as each one lands.
   const onMediaLoad = () => stickToBottom();
+
+  // Insert at the caret, not at the end: someone mid-sentence who taps an emoji
+  // expects it where the cursor is.
+  const insertAtCursor = (emoji: string) => {
+    const input = textInputRef.current;
+    const start = input?.selectionStart ?? text.length;
+    const end = input?.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    // Restore the caret on the next frame so it applies to the new value rather
+    // than being reset by the re-render that follows setText.
+    requestAnimationFrame(() => {
+      const el = textInputRef.current;
+      if (!el) return;
+      try {
+        el.setSelectionRange(start + emoji.length, start + emoji.length);
+      } catch {
+        // A detached input can throw here; losing the caret is not worth a crash.
+      }
+    });
+    socketRef.current?.emit('typing', { exchangeId });
+  };
+
+  // "Big emoji" mode in the picker: one tap sends it as a STICKER message, which
+  // the list already renders full size.
+  const sendBigEmoji = (emoji: string) => {
+    void sendMessage(emoji, 'STICKER');
+    setEmojiOpen(false);
+  };
+
+  // Hand back to the system keyboard: focus first, then ask the native bridge to
+  // raise Gboard, then focus again so the keyboard stays attached to the field.
+  const openKeyboard = () => {
+    setEmojiOpen(false);
+    const input = textInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    setTimeout(() => {
+      void showAndroidKeyboard().catch(() => {});
+      input.focus({ preventScroll: true });
+    }, 0);
+  };
 
   const sendMessage = async (body: string, type: string = 'TEXT', caption?: string | null) => {
     if (!body.trim() || sending) return;
@@ -225,19 +277,36 @@ export default function ChatTab({
           const mine = message.senderId === user?.id;
           return (
             <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+              {/* A photo gets its own frame. `w-[min(78%,320px)]` is a hard
+                  width, so the bubble can never be wider than the row, and the
+                  image fills it and is cropped to it (object-cover) instead of
+                  spilling outside. The old `max-w-[300px] max-h-96 w-auto` was
+                  wider than 78% of a narrow screen and taller than the viewport
+                  allowed, which is why sent AND received photos broke out of the
+                  bubble. Text keeps its padding; photos get a 4px mat instead. */}
               <div
-                className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-sm ${mine ? m.bubbleMine : m.bubbleTheirs}`}
+                className={
+                  message.type === 'IMAGE'
+                    ? `w-[min(78%,320px)] min-w-0 rounded-2xl p-1 shadow-sm overflow-hidden ${
+                        mine ? m.bubbleMine : m.bubbleTheirs
+                      }`
+                    : `max-w-[78%] min-w-0 rounded-2xl px-4 py-2 shadow-sm ${
+                        mine ? m.bubbleMine : m.bubbleTheirs
+                      }`
+                }
               >
                 {message.type === 'IMAGE' ? (
                   <div>
                     <img
                       src={message.body}
                       alt={message.caption || 'Shared image'}
-                      className="rounded-xl max-w-[300px] max-h-96 w-auto h-auto object-contain"
+                      loading="lazy"
+                      decoding="async"
+                      className="block w-full h-auto max-h-[340px] object-cover rounded-xl"
                       onLoad={onMediaLoad}
                     />
                     {message.caption && (
-                      <div className="text-sm whitespace-pre-wrap break-words mt-1.5">{message.caption}</div>
+                      <div className="text-sm whitespace-pre-wrap break-words px-2.5 pt-2">{message.caption}</div>
                     )}
                   </div>
                 ) : message.type === 'STICKER' ? (
@@ -245,7 +314,11 @@ export default function ChatTab({
                 ) : (
                   <div className="text-sm whitespace-pre-wrap break-words">{message.body}</div>
                 )}
-                <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 ${mine ? m.infoMine : m.infoTheirs}`}>
+                <div
+                  className={`text-[10px] flex items-center justify-end gap-1 ${
+                    message.type === 'IMAGE' ? 'mt-1 px-2 pb-1' : 'mt-1'
+                  } ${mine ? m.infoMine : m.infoTheirs}`}
+                >
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {mine && (
                     message.status === 'READ' ? (
@@ -307,22 +380,13 @@ export default function ChatTab({
                 onPointerDown={(e) => {
                   e.preventDefault();
                 }}
-                onClick={() => {
-                  const input = textInputRef.current;
-                  if (!input) return;
-                  // Focus the input, pop the system keyboard (Gboard), then re-focus so
-                  // the keyboard stays attached. Users reach emoji via Gboard's smiley key.
-                  input.focus({ preventScroll: true });
-                  setTimeout(() => {
-                    void showAndroidKeyboard().catch(() => {});
-                    input.focus({ preventScroll: true });
-                  }, 0);
-                }}
+                onClick={() => (emojiOpen ? openKeyboard() : setEmojiOpen(true))}
                 className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-                aria-label="Open keyboard; use your system keyboard's emoji key for emoji"
-                title="Open keyboard; use your system keyboard's emoji key for emoji"
+                aria-label={emojiOpen ? 'Back to the keyboard' : 'Open the emoji picker'}
+                title={emojiOpen ? 'Back to the keyboard' : 'Open the emoji picker'}
+                aria-expanded={emojiOpen}
               >
-                <Smile className="w-5 h-5" />
+                {emojiOpen ? <Keyboard className="w-5 h-5" /> : <Smile className="w-5 h-5" />}
               </button>
               <button
                 type="button"
@@ -364,6 +428,7 @@ export default function ChatTab({
               className={`input flex-1 min-w-0 ${m.input} ${m.inputPlaceholder}`}
               placeholder="Type a message…"
               value={text}
+              onFocus={() => setEmojiOpen(false)}
               onChange={(e) => {
                 setText(e.target.value);
                 socketRef.current?.emit('typing', { exchangeId });
@@ -381,6 +446,10 @@ export default function ChatTab({
           </div>
         )}
       </div>
+
+      {emojiOpen && (
+        <EmojiPicker dark={dark} onInsert={insertAtCursor} onSendBig={sendBigEmoji} onClose={openKeyboard} />
+      )}
 
       {reviewOpen && pendingImage && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
