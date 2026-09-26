@@ -96,21 +96,26 @@ In `client/.env.production` (create it):
 
 ```bash
 VITE_API_URL=https://api.skillswap.app
-
-# TURN relay for calls. STUN alone cannot connect two peers that are both
-# behind carrier-grade NAT, which is the normal case on mobile networks, so a
-# TURN server is what makes calls actually work in the field.
-# Providers and trade-offs: see "Calls: TURN credentials" in docs/DEPLOY.md.
-# Separate multiple URLs with commas.
-VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
-VITE_TURN_USERNAME=<username>
-VITE_TURN_CREDENTIAL=<password>
 ```
 
-Without `VITE_TURN_URLS` the app falls back to public STUN plus the legacy
-Metered Open Relay hosts. Those relays now need an account, so treat the
-fallback as "works on Wi‑Fi/LAN, unreliable on mobile data" — set TURN before
-you ship.
+That is the only variable the mobile build needs. **TURN credentials are not
+compiled into the APK**: the app fetches a short-lived credential from
+`GET /api/calls/ice-servers` just before each call, so setting up or rotating the
+relay is a server-side change with no rebuild and no new upload to Play Console.
+Configure it on the API — see **[`docs/TURN.md`](TURN.md)** for standing up coturn
+for free.
+
+Calls still need a relay to work on mobile data. Two phones behind carrier-grade
+NAT (the norm on MTN/Airtel/Glo) have no route to each other, and without TURN the
+call rings, connects, and is silent. Until a relay is configured the app falls back
+to public STUN plus the legacy Metered Open Relay hosts — fine on one Wi-Fi
+network, unreliable in the field — and the call overlay now says so out loud
+instead of leaving you guessing.
+
+`VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` remain available
+as an escape hatch for providers that only issue static credentials. They *are*
+baked into the bundle at build time, so they need a rebuild to change and anyone
+who unpacks the APK can read them; leave them empty unless you have a reason.
 
 Then build:
 

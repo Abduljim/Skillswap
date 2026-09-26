@@ -131,14 +131,26 @@ peer-to-peer WebRTC (`client/src/contexts/CallsContext.tsx`).
 - A dropped socket ends that user's calls and removes them from group calls, so
   nobody is left in a frozen call.
 - Group calls are a mesh: every participant holds a peer connection to every
-  other participant, and `group:signal` relays SDP/ICE between them.
-- **TURN is required in production.** STUN cannot connect two peers that are
-  both behind carrier-grade NAT, which is the normal case on mobile data. Set
-  `VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` at build
-  time (see `docs/ANDROID.md`).
+  other participant, and `group:signal` relays SDP/ICE between them. Because a
+  mesh means `n*(n-1)` streams and `n-1` uploads per phone, groups are capped
+  (`MAX_GROUP_CALL_PARTICIPANTS`, default 4) and start **audio-only** — the camera
+  button acquires a video track, adds it to every leg and renegotiates, and
+  switching it off stops the track so the device's camera indicator goes out.
+  Signalling glare from two people doing that at once is resolved by rolling back
+  the local offer.
+- **A TURN relay is required in production.** STUN cannot connect two peers that
+  are both behind carrier-grade NAT, which is the normal case on mobile data. The
+  API mints a short-lived credential per request
+  (`GET /api/calls/ice-servers`, coturn's `use-auth-secret` scheme) so the secret
+  never ships inside the bundle or the APK — see **[`docs/TURN.md`](docs/TURN.md)**
+  for running coturn for free. When no relay is configured the call overlay says so
+  instead of leaving "Ringing…" on screen.
 
 `server/tests/integration/calls-signaling.test.ts` drives both flows end to end
-over real sockets against a real database.
+over real sockets against a real database, including the group-call cap;
+`server/tests/turn-service.test.ts` and
+`server/tests/integration/ice-servers.test.ts` cover credential minting (recomputing
+the HMAC exactly as coturn does) and the two endpoints.
 
 ---
 

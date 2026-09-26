@@ -71,19 +71,46 @@ services:
         value: 'https://skillswap-api-dcg8.onrender.com/reset-password'
       - key: VITE_API_URL
         value: https://skillswap-api-dcg8.onrender.com
-      # WebRTC relay for calls. Every VITE_* value is inlined into the client at
-      # BUILD time, and this service is what builds the client — so they belong
-      # here, not on a separate frontend, and a redeploy is required after
-      # changing them. Without TURN, two peers behind carrier-grade NAT (the
-      # normal case on mobile data in Nigeria) ring and then fail to connect.
-      # Comma-separated URLs; both a plain and a TLS entry is best, because
-      # restrictive networks block UDP and 3478. See docs/DEPLOY.md → TURN.
+      # ── WebRTC relay (TURN) ──────────────────────────────────────────────
+      # Without a relay, two peers behind carrier-grade NAT (the normal case on
+      # mobile data in Nigeria) ring, connect, and hear nothing. These are
+      # server-side on purpose: GET /api/calls/ice-servers mints a short-lived
+      # coturn REST credential per request, so the secret never ships in the web
+      # bundle or the APK and can be rotated without rebuilding either.
+      # Free coturn on an Oracle Always Free VPS: docs/TURN.md.
+      # Comma-separated turn:/turns: URLs — include one of each, because
+      # restrictive networks block UDP and 3478.
+      - key: TURN_URLS
+        value: ''
+      # = coturn's static-auth-secret. Generate with `openssl rand -hex 32`.
+      - key: TURN_SECRET
+        value: ''
+      # = coturn's realm. Must match: the realm is half of the minted username.
+      - key: TURN_REALM
+        value: 'turn.skillswap.app'
+      # Credential lifetime; must outlive a whole call, since coturn re-checks it
+      # on every allocation refresh.
+      - key: TURN_TTL_SECONDS
+        value: '3600'
+      # Escape hatch for providers that only issue static credentials (Xirsys,
+      # Metered). Used only when TURN_SECRET is empty, and unlike the minted ones
+      # these reach the client — so prefer TURN_SECRET. Every VITE_* value is
+      # inlined into the bundle at BUILD time by this service, which is why they
+      # live here rather than on a separate frontend.
       - key: VITE_TURN_URLS
         value: ''
       - key: VITE_TURN_USERNAME
         value: ''
       - key: VITE_TURN_CREDENTIAL
         value: ''
+      # ── Group calls ─────────────────────────────────────────────────────
+      # Mesh cap: n participants means n*(n-1) streams, and each phone uploads
+      # n-1 copies of itself, so the uplink fails before the relay does.
+      # Enforced by the socket layer and published to the picker by
+      # GET /api/calls/limits. Groups also start audio-only, with video opt-in
+      # per participant. Raise this only alongside a move to an SFU.
+      - key: MAX_GROUP_CALL_PARTICIPANTS
+        value: '4'
       # Server-side Firebase service account: Firebase console → Project settings
       # → Service accounts → Generate new private key. Paste the whole JSON on
       # ONE line (no trailing newline). This is the secret that lets the API SEND

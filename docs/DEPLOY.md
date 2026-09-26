@@ -149,10 +149,6 @@ The APK you have now points to the ephemeral sandbox URL. Rebuild it with your l
 cd client
 cat > .env.production <<'ENV'
 VITE_API_URL=https://skillswap-api.onrender.com
-# Required for calls to connect on mobile networks (both peers behind CGNAT).
-VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
-VITE_TURN_USERNAME=<username>
-VITE_TURN_CREDENTIAL=<password>
 ENV
 npm run build
 npm run cap:sync
@@ -164,100 +160,85 @@ Signing material lives outside the repo — see *Release signing* in
 `docs/ANDROID.md`. Without `client/android/keystore.properties` (or the
 `SKILLSWAP_*` environment variables) the artifacts come out unsigned.
 
+`VITE_API_URL` is the only variable the mobile build needs: TURN credentials for
+calls are fetched from the API at runtime, so rotating them or standing up a relay
+later does not require a new APK.
+
 The new APK is in `android/app/build/outputs/apk/release/app-release.apk`.
 
 Sideload it on your Android phone — done.
 
-## Calls: TURN credentials (set once, then redeploy)
+## Calls: the TURN relay
 
-Calls use WebRTC peer-to-peer. STUN alone works when at least one peer has a
-public address, but two phones on mobile data are usually both behind
-carrier-grade NAT — the norm on MTN/Airtel/Glo — and then there is no direct
-route. TURN relays the media in that case. Without it a call rings, both sides
-show "connecting", and then it fails.
+Calls are WebRTC: signalling goes through the API, media goes peer to peer — except
+when it cannot. Two phones on mobile data are usually both behind carrier-grade NAT
+(the norm on MTN/Airtel/Glo), where no direct route exists and a relay is the only
+way through. Without one, a call rings, both sides answer, and nobody hears
+anything.
 
-The client reads three build-time variables (`client/src/contexts/CallsContext.tsx`):
+**Full setup guide: [`docs/TURN.md`](TURN.md)** — free coturn on an Oracle Always
+Free VPS, the two firewalls you have to open, TLS, testing, capacity maths and
+troubleshooting. The short version:
 
-| Variable | Example |
-| --- | --- |
-| `VITE_TURN_URLS` | `turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls` |
-| `VITE_TURN_USERNAME` | `skillswap` |
-| `VITE_TURN_CREDENTIAL` | `a-long-random-secret` |
+1. Run coturn somewhere with a public IP and free egress (Oracle Always Free gives
+   10 TB/month outbound).
+2. Set these on Render → `skillswap-api` → **Environment**, then redeploy:
 
-`VITE_*` values are **inlined into the bundle at build time**, and the Render
-service `skillswap-api` is what builds the client. So:
+   | Key | Example | Notes |
+   | --- | --- | --- |
+   | `TURN_URLS` | `turn:turn.skillswap.app:3478,turns:turn.skillswap.app:5349?transport=tcp,turns:turn.skillswap.app:443?transport=tcp` | Comma-separated, `turn:`/`turns:` only |
+   | `TURN_SECRET` | `openssl rand -hex 32` | = coturn's `static-auth-secret`. **Server-side only** |
+   | `TURN_REALM` | `turn.skillswap.app` | = coturn's `realm` |
+   | `TURN_TTL_SECONDS` | `3600` | Must outlive a whole call |
+   | `MAX_GROUP_CALL_PARTICIPANTS` | `4` | Group-call mesh cap |
 
-1. Render dashboard → `skillswap-api` → **Environment**.
-2. Add or edit the three variables (they already exist as blanks in `render.yaml`).
-3. **Save changes** → Render redeploys, and the new bundle carries them.
-4. For the Android app the same values must be present when the APK/AAB is built —
-   put them in `client/.env.production` before `npm run cap:sync` (see *5. Update
-   the APK* above), otherwise the installed app keeps falling back to the open
-   relay.
+3. Check the startup log for `[turn] TURN ephemeral (3 urls, ttl 3600s)`, and
+   `GET /api/calls/ice-servers` (authenticated) for a minted credential.
 
-Until they are set, the client falls back to `stun:stun.l.google.com:19302` plus
-the Open Relay Project (`openrelay.xyz`). That is fine for development on one
-Wi-Fi network and useless as a production plan: it is a shared free service with
-no credentials, no SLA and aggressive rate limits.
+Credentials are minted per request by the API
+(`server/src/services/turn.service.ts`) using coturn's REST scheme
+(`use-auth-secret`), and the client fetches them just before each call
+(`client/src/lib/ice.ts`). Nothing secret is compiled into the bundle, so:
 
-### Getting a TURN server
+- rotating the relay secret does **not** require rebuilding the web app or the APK;
+- a leaked credential expires within `TURN_TTL_SECONDS` instead of working forever;
+- the fallback order is minted → `VITE_TURN_*` → Metered's legacy Open Relay →
+  STUN only, and the last one is reported to the UI so the call overlay can explain
+  why a call may not connect.
 
-Ordered by effort, cheapest first:
+`VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` remain as an
+optional escape hatch for providers that only issue static credentials (Xirsys,
+Metered). They *are* inlined at build time — a redeploy is needed to change them,
+and anyone can read them out of the bundle, which is why they are not the default
+path any more.
 
-- **Self-host coturn** (free, BSD-licensed, what most production WebRTC runs).
-  Any small VPS works — an Oracle Cloud *Always Free* ARM instance costs nothing,
-  Hetzner CX22 is ~€4/mo. This is the right answer for a real product because you
-  pay nothing per GB and you control the credentials. Minimal
-  `/etc/turnserver.conf`:
+### Group calls
 
-  ```conf
-  listening-port=3478
-  tls-listening-port=5349
-  cert=/etc/letsencrypt/live/turn.example.com/fullchain.pem
-  pkey=/etc/letsencrypt/live/turn.example.com/privkey.pem
-  # static username/password, which is what VITE_TURN_USERNAME/CREDENTIAL expect
-  lt-cred-mech
-  user=skillswap:a-long-random-secret
-  realm=turn.example.com
-  # also listen on 443 — campus and corporate networks block 3478 and UDP
-  alt-tls-listening-port=443
-  no-multicast-peers
-  denied-peer-ip=10.0.0.0-10.255.255.255
-  denied-peer-ip=192.168.0.0-192.168.255.255
-  ```
+Group calls run as a mesh (every participant opens a connection to every other),
+which is why they are **capped** and **audio-first**:
 
-  Open UDP+TCP 3478, 5349 and 443, plus a UDP relay range
-  (`min-port=49152`, `max-port=49200`). Use a real domain with Let's Encrypt so
-  `turns:` works.
-- **Managed with a free tier and static credentials** — ExpressTURN or Xirsys.
-  Sign up, copy the URL/username/credential from the dashboard, paste them in.
-  Five minutes, no server to maintain, and the free allowance is enough for
-  testing with a handful of real users.
-- **Metered** — was the previous hardcoded provider. Its free plan caps relayed
-  media at 500 MB/month, which a single video call can exhaust, and paid plans
-  start around $99/month.
-- **Cloudflare TURN** — $0.05/GB and very good anycast coverage, but it expects
-  short-lived credentials minted by your backend per session, which the current
-  static-env client does not do. Only choose this together with the server-minted
-  credentials change below.
+- `MAX_GROUP_CALL_PARTICIPANTS` (default 4) is enforced in the socket layer.
+  Invitees past the cap are dropped before being rung, the host is told with
+  `capped: true` and `maxParticipants` in `group:call:started`, and a joiner racing
+  past the cap gets `group:call:full`. The client mirrors the cap from
+  `GET /api/calls/limits`, so the picker cannot select people who will never ring.
+- A group call starts with microphones only. In a mesh, video costs `n-1` uploads
+  per phone, which is the first thing to fail on mobile data. The camera button
+  acquires a video track, adds it to every leg and renegotiates; switching it off
+  stops the track (so Android's camera indicator goes out) and renegotiates again.
+- Two people enabling cameras at once creates signalling glare; the local offer is
+  rolled back and the remote one applied, per the polite-peer rule.
 
-### One honest caveat
-
-Static TURN credentials are compiled into the client bundle, so anyone who
-inspects the site or unpacks the APK can read them and relay their own traffic
-through your TURN server — which is a bandwidth bill or an exhausted quota, not a
-data leak. For a handful of testers this is acceptable. Before real traffic, move
-to short-lived credentials: coturn's `use-auth-secret` plus an authenticated
-endpoint (for example `GET /api/calls/ice-servers`) that returns an
-HMAC credential valid for a few minutes, and have `buildIceServers()` fetch it
-instead of reading `import.meta.env`. That also removes the need to rebuild the
-app to rotate credentials.
+1:1 calls still offer voice and video explicitly, unchanged.
 
 ### Verifying it works
 
-Test from two phones on **mobile data** (not the same Wi-Fi — that hides the
-problem). In Chrome on desktop you can also open `chrome://webrtc-internals` and
-confirm a `relay` candidate appears and that the selected candidate pair uses it.
+Test from two phones on **mobile data** — the same Wi-Fi hides the problem, because
+a LAN needs no relay. On desktop Chrome, `chrome://webrtc-internals` should show a
+`relay` candidate and a selected candidate pair that uses it. The
+[Trickle ICE demo](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
+with a hand-minted credential (recipe in `docs/TURN.md` §6) isolates the relay from
+the app.
 
 ## What about Play Billing?
 
