@@ -134,6 +134,14 @@ services:
       # and notifications are silently skipped.
       - key: FCM_SERVICE_ACCOUNT_JSON
         value: ''
+      # ── Email (password reset only) — docs/EMAIL.md ───────────────────────
+      # Empty means password reset silently fails: auth.service.ts swallows the
+      # send error so the endpoint cannot reveal which addresses exist. Fastest
+      # fix with no domain and no card is Gmail SMTP with an App Password
+      # (587 => STARTTLS, 500 recipients/day); Brevo's relay is 300/day.
+      # RESEND_API_KEY below is useless until a domain is verified: unverified
+      # Resend delivers only to the account owner's own address, so it passes a
+      # self-test and rejects every real user.
       - key: SMTP_HOST
         value: ''
       - key: SMTP_PORT
@@ -147,4 +155,6 @@ services:
       - key: RESEND_API_KEY
         value: ''
       - key: EMAIL_FROM
+        # Resend's sandbox sender. Only usable with a verified domain — until
+        # then it delivers solely to your own signup address. See docs/EMAIL.md.
         value: 'SkillSwap <onboarding@resend.dev>'
