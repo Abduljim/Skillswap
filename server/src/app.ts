@@ -28,6 +28,7 @@ import notificationsRoutes from './routes/notifications.routes';
 import safetyRoutes from './routes/safety.routes';
 import adminRoutes from './routes/admin.routes';
 import billingRoutes from './routes/billing.routes';
+import callsRoutes from './routes/calls.routes';
 
 const isTest = env.NODE_ENV === 'test';
 
@@ -93,6 +94,8 @@ export function createApp() {
   app.use('/api/messages', messagesRoutes);
   app.use('/api/sessions', sessionsRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  // Minted TURN credentials for calls + the group-call limits the UI enforces.
+  app.use('/api/calls', callsRoutes);
   app.use('/api', safetyRoutes); // /reports, /users/:id/block
   app.use('/api', billingRoutes); // /subscription, /boost, /profile-views
   app.use('/api/admin', adminRoutes);

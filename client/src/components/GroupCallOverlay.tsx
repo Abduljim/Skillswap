@@ -101,6 +101,7 @@ export function GroupCallOverlay({
   onToggleMic,
   onToggleCamera,
   onOpenSettings,
+  relayHint = null,
 }: {
   status: GroupStatus;
   video: boolean;
@@ -120,6 +121,8 @@ export function GroupCallOverlay({
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onOpenSettings?: () => void;
+  /** Explains a missing TURN relay while the call is ringing. */
+  relayHint?: string | null;
 }) {
   if (status === 'none') return null;
 
@@ -160,6 +163,9 @@ export function GroupCallOverlay({
               <span className="mt-3 inline-flex items-center gap-1.5 text-xs text-white/70 bg-white/10 rounded-full px-3 py-1">
                 <Video className="w-3.5 h-3.5" /> Video
               </span>
+            )}
+            {relayHint && (
+              <p className="mt-4 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">{relayHint}</p>
             )}
           </div>
           <div className="pb-[max(1.5rem,env(safe-area-inset-bottom))] px-6">

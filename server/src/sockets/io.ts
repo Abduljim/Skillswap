@@ -7,6 +7,7 @@ import { COOKIE_NAME } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { sendIncomingCallPush } from '../services/push.service';
 import { createMessageSchema } from '../validators/schemas';
+import { MAX_GROUP_CALL_PARTICIPANTS } from '../config/calls';
 
 let io: IOServer | null = null;
 
@@ -319,11 +320,18 @@ export function initSocket(httpServer: HTTPServer) {
         });
         const partners = new Set<string>();
         for (const ex of exchanges) partners.add(ex.userAId === userId ? ex.userBId : ex.userAId);
-        const valid = requested.filter((id) => partners.has(id));
-        if (valid.length < 1) {
+        const eligible = requested.filter((id) => partners.has(id));
+        if (eligible.length < 1) {
           socket.emit('error', { message: 'No valid participants for this group call' });
           return;
         }
+
+        // Mesh cap. Extra invitees are dropped here rather than rung, and the
+        // host is told via `capped` so the UI can say why instead of the invite
+        // silently vanishing for two people.
+        const maxOthers = Math.max(1, MAX_GROUP_CALL_PARTICIPANTS - 1);
+        const valid = eligible.slice(0, maxOthers);
+        const capped = eligible.length > valid.length;
 
         const id = randomUUID();
         groupCalls.set(id, {
@@ -336,7 +344,13 @@ export function initSocket(httpServer: HTTPServer) {
         socket.join(`group:${id}`);
 
         const hostPeer = await loadUserPeer(userId);
-        socket.emit('group:call:started', { id, video: !!data.video, members: [hostPeer] });
+        socket.emit('group:call:started', {
+          id,
+          video: !!data.video,
+          members: [hostPeer],
+          capped,
+          maxParticipants: MAX_GROUP_CALL_PARTICIPANTS,
+        });
         for (const memberId of valid) {
           io!.to(`user:${memberId}`).emit('group:call:ringing', {
             id,
@@ -355,6 +369,15 @@ export function initSocket(httpServer: HTTPServer) {
       try {
         const call = groupCalls.get(data.id);
         if (!call || !call.members.has(userId)) return;
+        // Enforced again on join: the roster is fixed at start, but several
+        // people can accept at once and race past the cap.
+        if (!call.accepted.has(userId) && call.accepted.size >= MAX_GROUP_CALL_PARTICIPANTS) {
+          socket.emit('group:call:full', {
+            id: data.id,
+            maxParticipants: MAX_GROUP_CALL_PARTICIPANTS,
+          });
+          return;
+        }
         call.accepted.add(userId);
         socket.join(`group:${data.id}`);
         const peer = await loadUserPeer(userId);

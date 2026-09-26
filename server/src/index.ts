@@ -11,6 +11,7 @@ import { prisma } from './lib/prisma';
 import { createApp } from './app';
 import { initSocket } from './sockets/io';
 import { SKILLS } from './catalogue';
+import { describeTurnConfig } from './services/turn.service';
 
 const app = createApp();
 const httpServer = http.createServer(app);
@@ -64,6 +65,9 @@ async function ensureDefaultSkills() {
 /** Prints security-relevant configuration once at boot so misconfigurations show up in deploy logs. */
 function logConfigSummary() {
   console.log(`🔐 CORS allowlist: ${allowedOrigins.join(', ')}`);
+  // A missing relay looks exactly like a firewall problem from the user's seat
+  // ("the call rang and nobody could hear anything"), so say what is configured.
+  console.log(`📞 [turn] ${describeTurnConfig()}`);
   if (env.CLIENT_URL === '*') {
     console.log('ℹ️  CLIENT_URL="*" is treated as "not configured" — only the allowlist above is permitted.');
   }

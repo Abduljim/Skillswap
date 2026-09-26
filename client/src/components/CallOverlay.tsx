@@ -83,6 +83,7 @@ export function CallOverlay({
   onClearSummary,
   onRedial,
   onMessage,
+  relayHint = null,
 }: {
   call: CallState;
   onAccept: () => void;
@@ -101,6 +102,8 @@ export function CallOverlay({
   onClearSummary?: () => void;
   onRedial?: (peer: Peer, exchangeId: string, video: boolean) => void;
   onMessage?: (exchangeId: string) => void;
+  /** Explains a missing TURN relay while the call is not yet connected. */
+  relayHint?: string | null;
 }) {
   if (call.status === 'none' && !summary) return null;
 
@@ -233,6 +236,11 @@ export function CallOverlay({
           >
             {statusText}
           </p>
+          {relayHint && !inCall && !ended && (
+            <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
+              {relayHint}
+            </p>
+          )}
         </div>
 
         {!videoOn && (

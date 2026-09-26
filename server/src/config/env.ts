@@ -36,6 +36,29 @@ export const env = {
   RESET_URL: process.env.RESET_URL || '',
   FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || '',
   FCM_SERVICE_ACCOUNT_JSON: process.env.FCM_SERVICE_ACCOUNT_JSON || '',
+
+  // ── TURN relay for calls ────────────────────────────────────────────────
+  // Server-side on purpose. GET /api/calls/ice-servers mints a short-lived
+  // credential from TURN_SECRET per request, so the secret never ships inside
+  // the web bundle or the APK — a static VITE_TURN_CREDENTIAL would be readable
+  // by anyone who unpacks the app, who could then relay their own traffic on our
+  // bandwidth. See docs/TURN.md for standing up coturn for free.
+  TURN_URLS: process.env.TURN_URLS || '',
+  /** coturn `static-auth-secret`. When set, credentials are minted per request. */
+  TURN_SECRET: process.env.TURN_SECRET || '',
+  TURN_REALM: process.env.TURN_REALM || 'skillswap',
+  /** Lifetime of a minted credential. coturn re-checks it on every refresh, so
+   *  it must outlive the whole call, not just the allocation. */
+  TURN_TTL_SECONDS: parseInt(process.env.TURN_TTL_SECONDS || '3600', 10),
+  /** Static credentials for providers without HMAC support (Xirsys, Metered).
+   *  Used only when TURN_SECRET is empty. */
+  TURN_USERNAME: process.env.TURN_USERNAME || '',
+  TURN_CREDENTIAL: process.env.TURN_CREDENTIAL || '',
+
+  // ── Group calls ─────────────────────────────────────────────────────────
+  // Mesh: every participant uploads one stream per other participant, so cost
+  // and CPU grow with n*(n-1). Capped, and groups start audio-only.
+  MAX_GROUP_CALL_PARTICIPANTS: parseInt(process.env.MAX_GROUP_CALL_PARTICIPANTS || '4', 10),
 };
 
 if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'dev-secret-change-me') {

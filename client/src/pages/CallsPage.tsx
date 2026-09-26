@@ -80,7 +80,7 @@ function NewCallSheet({
   contacts: Conversation[];
   onClose: () => void;
   onStart: (contact: Conversation, video: boolean) => void;
-  onGroup: (video: boolean) => void;
+  onGroup: () => void;
 }) {
   const [q, setQ] = useState('');
   if (!open) return null;
@@ -106,18 +106,13 @@ function NewCallSheet({
         </div>
       </div>
 
-      <div className="px-4 py-3 flex gap-2">
+      <div className="px-4 py-3">
         <button
-          onClick={() => onGroup(false)}
-          className="flex-1 h-11 rounded-xl bg-white border border-cream-200 text-sm font-medium text-ink-800 flex items-center justify-center gap-2 active:scale-[0.99]"
+          onClick={onGroup}
+          className="w-full h-11 rounded-xl bg-white border border-cream-200 text-sm font-medium text-ink-800 flex items-center justify-center gap-2 active:scale-[0.99]"
         >
-          <Users className="w-4 h-4 text-coral-500" /> Group voice
-        </button>
-        <button
-          onClick={() => onGroup(true)}
-          className="flex-1 h-11 rounded-xl bg-white border border-cream-200 text-sm font-medium text-ink-800 flex items-center justify-center gap-2 active:scale-[0.99]"
-        >
-          <Users className="w-4 h-4 text-coral-500" /> Group video
+          <Users className="w-4 h-4 text-coral-500" /> Group call
+          <span className="text-xs text-ink-400">audio first · camera optional</span>
         </button>
       </div>
 
@@ -156,13 +151,14 @@ function NewCallSheet({
 // ── Group participant picker ─────────────────────────────────────────────────
 function GroupSheet({
   open,
-  video,
+  maxParticipants,
   contacts,
   onClose,
   onStart,
 }: {
   open: boolean;
-  video: boolean;
+  /** Server-enforced cap including the caller, mirrored from GET /api/calls/limits. */
+  maxParticipants: number;
   contacts: Conversation[];
   onClose: () => void;
   onStart: (members: Conversation[]) => void;
@@ -174,15 +170,19 @@ function GroupSheet({
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const selectedContacts = contacts.filter((c) => selected.includes(c.partner.id));
+  // Mesh calls fan out one stream per peer, so the server caps the room. The
+  // caller occupies one seat, hence cap - 1 picks.
+  const cap = Math.max(2, maxParticipants);
+  const maxPicks = Math.max(1, cap - 1);
+  const minPicks = Math.min(2, maxPicks);
+  const over = selected.length > maxPicks;
   return (
     <div className="fixed inset-0 z-50 flex flex-col calls-shell animate-fade-in">
       <div className="flex items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-cream-200">
         <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-ink-700" aria-label="Back">
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <h2 className="font-display font-bold text-lg text-ink-900">
-          New {video ? 'video' : 'voice'} group call
-        </h2>
+        <h2 className="font-display font-bold text-lg text-ink-900">New group call</h2>
       </div>
 
       <div className="px-4 pt-3">
@@ -218,8 +218,13 @@ function GroupSheet({
         </div>
       )}
 
-      <p className="px-4 pt-3 text-xs text-ink-500">
-        {selected.length} selected · pick at least 2 people
+      <p className={`px-4 pt-3 text-xs ${over ? 'text-[#ff3b30]' : 'text-ink-500'}`}>
+        {selected.length} of {maxPicks} selected · group calls hold up to {cap} people, you
+        included
+        {over ? ' — remove some to continue' : ''}
+      </p>
+      <p className="px-4 pt-1 text-xs text-ink-400">
+        Starts audio-only. Anyone can switch their camera on during the call.
       </p>
 
       <div className="flex-1 overflow-y-auto px-4 py-2 pb-28">
@@ -254,11 +259,11 @@ function GroupSheet({
 
       <div className="absolute bottom-0 inset-x-0 p-4 calls-shell border-t border-cream-200 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <button
-          disabled={selected.length < 2}
+          disabled={selected.length < minPicks || over}
           onClick={() => onStart(selectedContacts)}
           className="w-full h-12 rounded-xl bg-[#00a884] text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.99]"
         >
-          {video ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+          <Phone className="w-4 h-4" />
           Start group call
         </button>
       </div>
@@ -274,7 +279,7 @@ export default function CallsPage() {
   const [q, setQ] = useState('');
   const [nonce, setNonce] = useState(0);
   const [newCall, setNewCall] = useState(false);
-  const [groupVideo, setGroupVideo] = useState<boolean | null>(null);
+  const [groupPicker, setGroupPicker] = useState(false);
   const [sheet, setSheet] = useState<HistoryRow | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -319,14 +324,15 @@ export default function CallsPage() {
 
   const beginCall = (contact: Conversation, video: boolean) => {
     setNewCall(false);
-    setGroupVideo(null);
+    setGroupPicker(false);
     void calls.startCall(toPeer(contact), contact.exchangeId, video);
   };
 
   const beginGroup = (members: Conversation[]) => {
     setNewCall(false);
-    setGroupVideo(null);
-    void calls.startGroupCall(members.map(toPeer), groupVideo === true);
+    setGroupPicker(false);
+    // Audio-first: the camera is switched on inside the call instead.
+    void calls.startGroupCall(members.map(toPeer));
   };
 
   const openConversation = (exchangeId: string) => {
@@ -423,17 +429,17 @@ export default function CallsPage() {
         contacts={contacts}
         onClose={() => setNewCall(false)}
         onStart={beginCall}
-        onGroup={(v) => {
+        onGroup={() => {
           setNewCall(false);
-          setGroupVideo(v);
+          setGroupPicker(true);
         }}
       />
 
       <GroupSheet
-        open={groupVideo !== null}
-        video={groupVideo === true}
+        open={groupPicker}
+        maxParticipants={calls.maxGroupCallParticipants}
         contacts={contacts}
-        onClose={() => setGroupVideo(null)}
+        onClose={() => setGroupPicker(false)}
         onStart={beginGroup}
       />
 

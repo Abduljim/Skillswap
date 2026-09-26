@@ -15,6 +15,12 @@ import {
 import { startRingtone, stopRingtone } from '../lib/ringtone';
 import { getLaunchedCall, clearLaunchedCall } from '../lib/push';
 import { recordLog } from '../lib/call-logs';
+import {
+  getIceConfig,
+  getCallLimits,
+  invalidateIceConfig,
+  DEFAULT_CALL_LIMITS,
+} from '../lib/ice';
 import type { CallLog } from '../types';
 
 interface RTCSignal {
@@ -26,60 +32,48 @@ interface RTCSignal {
 /**
  * ICE servers for every peer connection (1:1 and group mesh).
  *
- * STUN on its own is not enough in the real world: carrier-grade NAT is close
- * to universal on mobile networks, and two peers behind CGNAT can only meet
- * through a TURN relay. The previous config listed Metered's Open Relay TURN
- * hosts *without* credentials, so TURN auth always failed and those calls
- * silently fell back to host candidates that can never connect.
+ * STUN alone is not enough in the real world: carrier-grade NAT is close to
+ * universal on mobile networks, and two peers behind CGNAT can only meet through
+ * a TURN relay.
  *
- * Supply a real relay at build time and calls work everywhere:
+ * Credentials are minted by the API per session (GET /api/calls/ice-servers)
+ * instead of being compiled into the app. Anything under VITE_ is readable by
+ * anyone who unpacks the APK, and a leaked relay credential is free bandwidth for
+ * whoever finds it; a minted credential expires (an hour by default) and the
+ * secret never leaves the server. See docs/TURN.md for running coturn for free.
  *
- *   VITE_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tls
- *   VITE_TURN_USERNAME=<user>
- *   VITE_TURN_CREDENTIAL=<password>
+ * Order of preference:
+ *   1. credentials minted by the API
+ *   2. VITE_TURN_* static credentials, for providers without HMAC support
+ *   3. Metered's legacy Open Relay — deprecated and rate-limited, kept only so an
+ *      unconfigured deploy can still connect sometimes rather than never
  *
- * Providers: metered.ca (free tier + REST API for short-lived credentials),
- * Twilio Network Traversal, or a self-hosted coturn. Without them the app still
- * connects on LAN and permissive NATs via public STUN, and the legacy Open Relay
- * hosts are kept as a best-effort fallback — if they reject us, ICE simply moves
- * on to the next candidate.
+ * With none of them usable, calls still work on a LAN or a permissive NAT via
+ * public STUN. `turnConfigured` is what lets the UI say that out loud instead of
+ * showing an endless "connecting…".
  */
-function buildIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  ];
-
-  const env = import.meta.env as Record<string, string | undefined>;
-  const urls = (env.VITE_TURN_URLS || '')
-    .split(',')
-    .map((u) => u.trim())
-    .filter(Boolean);
-
-  if (urls.length > 0) {
-    const username = env.VITE_TURN_USERNAME || '';
-    const credential = env.VITE_TURN_CREDENTIAL || '';
-    servers.push(username ? { urls, username, credential } : { urls });
-  } else {
-    servers.push({
-      urls: [
-        'stun:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    });
-  }
-  return servers;
-}
-
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: buildIceServers(),
-  // Start gathering before setLocalDescription so the first offer/answer already
-  // carries candidates — noticeably faster call setup on mobile.
-  iceCandidatePoolSize: 4,
+const OPEN_RELAY: RTCIceServer = {
+  urls: [
+    'stun:openrelay.metered.ca:80',
+    'turn:openrelay.metered.ca:80',
+    'turn:openrelay.metered.ca:443',
+    'turn:openrelay.metered.ca:443?transport=tcp',
+  ],
+  username: 'openrelayproject',
+  credential: 'openrelayproject',
 };
+
+async function rtcConfig(): Promise<RTCConfiguration> {
+  const cfg = await getIceConfig();
+  return {
+    iceServers: cfg.turnConfigured
+      ? (cfg.iceServers as RTCIceServer[])
+      : [...cfg.iceServers, OPEN_RELAY],
+    // Start gathering before setLocalDescription so the first offer/answer already
+    // carries candidates — noticeably faster call setup on mobile.
+    iceCandidatePoolSize: 4,
+  };
+}
 
 export interface CallState {
   status: CallStatus;
@@ -124,7 +118,9 @@ interface CallsContextValue extends CallState {
   groupCamOn: boolean;
   peerStates: Record<string, GroupPeerState>;
   groupVideoElsRef: React.RefObject<Map<string, HTMLVideoElement>>;
-  startGroupCall: (members: Peer[], video: boolean) => Promise<void>;
+  startGroupCall: (members: Peer[]) => Promise<void>;
+  /** Server-enforced mesh cap, so the picker stops at the same number. */
+  maxGroupCallParticipants: number;
   agreeGroup: () => void;
   declineGroup: () => void;
   leaveGroup: () => void;
@@ -174,6 +170,23 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef(socket);
   socketRef.current = socket;
 
+  // The group-call cap, mirrored from GET /api/calls/limits so the picker stops
+  // at the same number the socket layer enforces.
+  const [maxGroup, setMaxGroup] = useState<number>(DEFAULT_CALL_LIMITS.maxGroupCallParticipants);
+  const maxGroupRef = useRef(maxGroup);
+  maxGroupRef.current = maxGroup;
+
+  // Warm the ICE and limits caches on sign-in so pressing "call" does not wait on
+  // a round trip, and drop the minted credential on sign-out.
+  useEffect(() => {
+    if (!(user as any)?.id) return;
+    void getIceConfig().catch(() => {});
+    void getCallLimits()
+      .then((l) => setMaxGroup(l.maxGroupCallParticipants))
+      .catch(() => {});
+  }, [(user as any)?.id]);
+  useEffect(() => () => invalidateIceConfig(), []);
+
   // ── Group call state ──────────────────────────────────────────────────────
   const [groupStatus, setGroupStatus] = useState<GroupStatus>('none');
   const [groupVideo, setGroupVideo] = useState(false);
@@ -185,6 +198,32 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const [peerStates, setPeerStates] = useState<Record<string, GroupPeerState>>({});
   const groupStatusRef = useRef<GroupStatus>('none');
   groupStatusRef.current = groupStatus;
+
+  /**
+   * A missing relay is the single most common reason a call rings and never
+   * connects, and it is invisible to the user: STUN succeeds, both phones think
+   * they are calling, and no media ever arrives. Say so while the call is being
+   * set up instead of leaving "Ringing…" on screen.
+   */
+  const [relayHint, setRelayHint] = useState<string | null>(null);
+  useEffect(() => {
+    if (status === 'none' && groupStatus === 'none') {
+      setRelayHint(null);
+      return;
+    }
+    let live = true;
+    void getIceConfig().then((cfg) => {
+      if (!live) return;
+      setRelayHint(
+        cfg.turnConfigured
+          ? null
+          : 'No relay server is configured, so this call only connects when both phones can reach each other directly (usually the same Wi-Fi).'
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, [status, groupStatus]);
   const groupMembersRef = useRef<Peer[]>([]);
   groupMembersRef.current = groupMembers;
   const groupVideoRef = useRef(false);
@@ -294,7 +333,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         if (!stream) throw new Error('No media available');
         streamRef.current = stream;
 
-        pc = new RTCPeerConnection(RTC_CONFIG);
+        pc = new RTCPeerConnection(await rtcConfig());
         pcRef.current = pc;
         pc.onicecandidate = (ev) => {
           if (ev.candidate) {
@@ -416,16 +455,18 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       if (existing) return existing;
       let stream = streamRef.current;
       if (!stream) {
-        const got = await acquireLocalStream(groupVideoRef.current);
+        // Audio-first: a group call never opens the camera on its own. The camera
+        // button acquires video later and renegotiates.
+        const got = await acquireLocalStream(false);
         if (!got) {
-          setGroupError('Microphone or camera access was denied. Allow access, then try again.');
+          setGroupError('Microphone access was denied. Allow access, then try again.');
           return null;
         }
         stream = streamRef.current;
       }
       if (!stream) return null;
       attachLocal(stream);
-      const pc = new RTCPeerConnection(RTC_CONFIG);
+      const pc = new RTCPeerConnection(await rtcConfig());
       groupPcsRef.current.set(memberId, pc);
       pc.onicecandidate = (ev) => {
         if (ev.candidate) {
@@ -505,6 +546,19 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       if (!pc) return;
       try {
         if (p.signal.type === 'offer' || p.signal.type === 'answer') {
+          // Glare: two people can switch their cameras on at the same moment, so an
+          // offer can arrive while our own renegotiation offer is in flight. Roll
+          // ours back and take theirs (the polite-peer rule) — otherwise
+          // setRemoteDescription throws and that mesh leg stays frozen.
+          if (
+            p.signal.type === 'offer' &&
+            pc.signalingState !== 'stable' &&
+            pc.signalingState !== 'have-remote-offer'
+          ) {
+            await pc
+              .setLocalDescription({ type: 'rollback' } as RTCSessionDescriptionInit)
+              .catch(() => {});
+          }
           await pc.setRemoteDescription({ type: p.signal.type, sdp: p.signal.sdp });
           const queued = groupQueuedCandsRef.current.get(p.from) || [];
           groupQueuedCandsRef.current.delete(p.from);
@@ -549,9 +603,21 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       setGroupStatus('incoming');
     };
 
-    const onGroupStarted = (p: { id: string; video?: boolean; members: Peer[] }) => {
+    const onGroupStarted = (p: {
+      id: string;
+      video?: boolean;
+      members: Peer[];
+      capped?: boolean;
+      maxParticipants?: number;
+    }) => {
       groupIdRef.current = p.id;
-      setGroupVideo(!!p.video);
+      // Audio-first: whoever is speaking is not necessarily whoever is filming.
+      setGroupVideo(false);
+      if (p.capped) {
+        setGroupError(
+          `Group calls hold ${p.maxParticipants ?? maxGroupRef.current} people — the extra invitees were not called.`
+        );
+      }
       void setCallUiActive(true);
       setGroupStatus('active');
       setGroupMembers((prev) => {
@@ -612,7 +678,15 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       endGroupCall();
     };
 
+    const onGroupFull = (p: { id: string; maxParticipants?: number }) => {
+      setGroupError(
+        `That group call is already full (${p.maxParticipants ?? maxGroupRef.current} people max).`
+      );
+      endGroupCall();
+    };
+
     socket.on('group:signal', onSignaled);
+    socket.on('group:call:full', onGroupFull);
     socket.on('group:call:ringing', onGroupRinging);
     socket.on('group:call:started', onGroupStarted);
     socket.on('group:call:joined', onGroupJoined);
@@ -624,6 +698,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       socket.off('group:signal', onSignaled);
+      socket.off('group:call:full', onGroupFull);
       socket.off('group:call:ringing', onGroupRinging);
       socket.off('group:call:started', onGroupStarted);
       socket.off('group:call:joined', onGroupJoined);
@@ -916,38 +991,50 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
   // ── Public actions (group) ─────────────────────────────────────────────────
   const startGroupCall = useCallback(
-    async (members: Peer[], wantVideo: boolean) => {
+    async (members: Peer[]) => {
       const sock = socketRef.current;
       if (!sock || members.length === 0 || status !== 'none' || groupStatusRef.current !== 'none') return;
-      const unique = members.filter((m) => m.id && m.id !== myId);
-      if (unique.length === 0) return;
-      let videoOn = wantVideo;
+      const wanted = members.filter((m) => m.id && m.id !== myId);
+      if (wanted.length === 0) return;
+
+      // Mesh cap, mirrored from the server. The server drops extras as well;
+      // stopping here means the picker cannot invite people who will never ring.
+      const cap = Math.max(2, maxGroupRef.current);
+      const unique = wanted.slice(0, Math.max(1, cap - 1));
+      const dropped = wanted.length - unique.length;
+
+      // Audio-first. In a mesh every participant uploads one stream per other
+      // participant, so video costs n-1 uploads each — on mobile data that is the
+      // first thing to fail. The camera button acquires video and renegotiates
+      // with every peer for whoever actually wants to be seen.
       try {
-        const got = await acquireLocalStream(wantVideo);
+        const got = await acquireLocalStream(false);
         if (!got) {
-          setGroupError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+          setGroupError('Microphone access was denied. Allow access in your device settings, then try again.');
           setGroupStatus('none');
           return;
         }
-        if (!got.hasVideo) videoOn = false;
       } catch {
-        setGroupError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+        setGroupError('Microphone access was denied. Allow access in your device settings, then try again.');
         setGroupStatus('none');
         return;
       }
       const host: Peer = { id: myId, displayName: user?.displayName ?? 'You', avatarUrl: null, avatarFrame: null };
-      setGroupVideo(videoOn);
+      setGroupVideo(false);
       setGroupHost(host);
       setGroupMembers([host, ...unique]);
       groupMembersRef.current = [host, ...unique];
       setPeerStates({});
       setGroupError(undefined);
       setGroupMicOn(true);
-      setGroupCamOn(videoOn);
+      setGroupCamOn(false);
       groupIdRef.current = '';
       setGroupStatus('outgoing');
       void setCallUiActive(true);
-      sock.emit('group:call:start', { memberIds: unique.map((m) => m.id), video: videoOn });
+      sock.emit('group:call:start', { memberIds: unique.map((m) => m.id), video: false });
+      if (dropped > 0) {
+        setGroupError(`Group calls hold ${cap} people — ${dropped} of your picks were not called.`);
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [myId, user?.displayName, status, acquireLocalStream]
@@ -957,16 +1044,18 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     const sock = socketRef.current;
     if (!sock || groupStatusRef.current !== 'incoming') return;
     try {
-      const got = await acquireLocalStream(groupVideoRef.current);
+      // Audio-first, whatever the invite asked for: join without video, switch the
+      // camera on once inside if you want to be seen.
+      const got = await acquireLocalStream(false);
       if (!got) {
-        setGroupError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+        setGroupError('Microphone access was denied. Allow access in your device settings, then try again.');
         sock.emit('group:call:reject', { id: groupIdRef.current });
         endGroupCall();
         return;
       }
-      if (!got.hasVideo) setGroupVideo(false);
+      setGroupVideo(false);
       setGroupMicOn(true);
-      setGroupCamOn(!!got.hasVideo);
+      setGroupCamOn(false);
     } catch {
       sock.emit('group:call:reject', { id: groupIdRef.current });
       setGroupError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
@@ -997,14 +1086,86 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     socketRef.current?.emit('group:call:update', { id: groupIdRef.current, mic: !next });
   }, []);
 
-  const gToggleCamera = useCallback(() => {
-    const stream = streamRef.current;
-    if (!stream || stream.getVideoTracks().length === 0) return;
-    const on = !stream.getVideoTracks()[0].enabled;
-    stream.getVideoTracks().forEach((t) => (t.enabled = on));
-    setGroupCamOn(on);
-    socketRef.current?.emit('group:call:update', { id: groupIdRef.current, camera: on });
+  /**
+   * Re-offer to every mesh peer after the local track set changes. Each leg is its
+   * own peer connection, so each needs its own negotiation; glare from a peer doing
+   * the same thing at the same moment is resolved by the rollback in onSignaled.
+   */
+  const renegotiateGroup = useCallback(async () => {
+    const sock = socketRef.current;
+    if (!sock || !groupIdRef.current) return;
+    for (const [memberId, pc] of Array.from(groupPcsRef.current.entries())) {
+      try {
+        if (pc.signalingState !== 'stable') continue; // already negotiating
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sock.emit('group:signal', {
+          id: groupIdRef.current,
+          to: memberId,
+          signal: { type: 'offer', sdp: pc.localDescription?.sdp },
+        });
+      } catch {
+        // The next roster change retries negotiation.
+      }
+    }
   }, []);
+
+  /**
+   * Camera in a group call. The call starts audio-only, so this really acquires the
+   * camera and adds a track to every peer rather than just flipping `track.enabled`
+   * on a track that does not exist. Turning it off stops the track — the device's
+   * camera indicator goes out, which matters on Android — removes it from every
+   * leg, and renegotiates so peers stop showing a frozen frame.
+   */
+  const gToggleCamera = useCallback(async () => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const existing = stream.getVideoTracks();
+
+    if (existing.length > 0) {
+      for (const pc of groupPcsRef.current.values()) {
+        for (const sender of pc.getSenders()) {
+          if (sender.track && sender.track.kind === 'video') {
+            try {
+              pc.removeTrack(sender);
+            } catch {
+              /* sender already gone */
+            }
+          }
+        }
+      }
+      existing.forEach((t) => {
+        t.stop();
+        stream.removeTrack(t);
+      });
+      attachLocal(stream);
+      setGroupCamOn(false);
+      socketRef.current?.emit('group:call:update', { id: groupIdRef.current, camera: false });
+      await renegotiateGroup();
+      return;
+    }
+
+    let acquired: MediaStream | null = null;
+    try {
+      acquired = await navigator.mediaDevices.getUserMedia({ video: true });
+    } catch {
+      setGroupError('Camera access was denied. Allow the camera in your device settings, then try again.');
+      return;
+    }
+    const track = acquired?.getVideoTracks()[0];
+    if (!track) {
+      setGroupError('No camera was found on this device.');
+      return;
+    }
+    stream.addTrack(track);
+    attachLocal(stream);
+    for (const pc of groupPcsRef.current.values()) pc.addTrack(track, stream);
+    setGroupCamOn(true);
+    setGroupVideo(true);
+    setGroupError(undefined);
+    socketRef.current?.emit('group:call:update', { id: groupIdRef.current, camera: true });
+    await renegotiateGroup();
+  }, [attachLocal, renegotiateGroup]);
 
   const clearSummary = useCallback(() => setSummary(null), []);
 
@@ -1043,6 +1204,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     peerStates,
     groupVideoElsRef,
     startGroupCall,
+    maxGroupCallParticipants: maxGroup,
     agreeGroup,
     declineGroup,
     leaveGroup,
@@ -1071,6 +1233,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         summary={summary}
         onClearSummary={clearSummary}
         onRedial={(p, ex, v) => void startCall(p, ex, v)}
+        relayHint={relayHint}
         onMessage={(ex) => {
           setSummary(null);
           nav(`/messages/${ex}`);
@@ -1095,6 +1258,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onToggleMic={gToggleMic}
         onToggleCamera={gToggleCamera}
         onOpenSettings={openCallSettings}
+        relayHint={relayHint}
       />
     </CallsContext.Provider>
   );

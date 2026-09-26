@@ -17,6 +17,7 @@ import type { AddressInfo } from 'net';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import app from '../../src/app';
 import { initSocket } from '../../src/sockets/io';
+import * as callsConfig from '../../src/config/calls';
 import { api, signup, resetDatabase, createSkill, prisma, type Session } from '../helpers/api';
 
 jest.mock('../../src/services/push.service', () => ({
@@ -134,6 +135,31 @@ async function pairWithExchange() {
   });
   if (!exchange) throw new Error('Exchange was not created');
   return { caller, callee, exchangeId: exchange.id };
+}
+
+/**
+ * Gives the host another ACTIVE exchange partner, which is the only way to make
+ * someone eligible for a group invite. Mirrors what the app does: host offers a
+ * skill they teach, partner teaches the skill being requested.
+ */
+async function addExchangePartner(host: Session, hostTeachesSkillId: string, email: string, name: string) {
+  const theirs = await createSkill(`${name} skill (calls test)`);
+  const partner = await userWithSkills(email, name, [theirs], []);
+  const req = await api()
+    .post('/api/exchange-requests')
+    .set('Cookie', host.cookie)
+    .send({
+      receiverId: partner.userId,
+      offeredSkillId: hostTeachesSkillId,
+      requestedSkillId: theirs,
+      message: MESSAGE,
+    })
+    .expect(expectCreated);
+  await api()
+    .post(`/api/exchange-requests/${req.body.data.id}/accept`)
+    .set('Cookie', partner.cookie)
+    .expect(expectCreated);
+  return partner;
 }
 
 beforeAll(async () => {
@@ -336,6 +362,131 @@ describe('Group call signalling', () => {
   it('refuses to invite people you have no active exchange with', async () => {
     const { caller } = await pairWithExchange();
     const stranger = await signup('stranger@skillswap.test', 'Stranger');
+    const host = await connect(caller.token);
+
+    const errorPromise = once<{ message: string }>(host, 'error');
+    host.emit('group:call:start', { memberIds: [stranger.userId], video: false });
+    expect((await errorPromise).message).toMatch(/no valid participants/i);
+  });
+});
+
+describe('Group call cap (mesh)', () => {
+  // The cap is read from config/calls at call time, so a test can lower it to
+  // exercise the enforcement paths without restarting the server.
+  let originalCap: number;
+
+  beforeEach(() => {
+    originalCap = callsConfig.MAX_GROUP_CALL_PARTICIPANTS;
+  });
+
+  afterEach(() => {
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = originalCap;
+  });
+
+  /** Host plus two ACTIVE exchange partners — three eligible invitees. */
+  async function hostWithPartners() {
+    const { caller, callee } = await pairWithExchange();
+    const python = await prisma.skill.findFirstOrThrow({ where: { name: 'Python (calls test)' } });
+    const third = await addExchangePartner(caller, python.id, 'third-cap@skillswap.test', 'Chidi Third');
+    const fourth = await addExchangePartner(caller, python.id, 'fourth-cap@skillswap.test', 'Dele Fourth');
+    return { caller, callee, third, fourth };
+  }
+
+  it('rings everyone when the invite fits the cap, and says it was not capped', async () => {
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = 4;
+    const { caller, callee, third } = await hostWithPartners();
+
+    const host = await connect(caller.token);
+    const b = await connect(callee.token);
+    const c = await connect(third.token);
+
+    const ringB = once<any>(b, 'group:call:ringing');
+    const ringC = once<any>(c, 'group:call:ringing');
+    // Audio-first: the client no longer asks for video on a group call.
+    host.emit('group:call:start', { memberIds: [callee.userId, third.userId], video: false });
+
+    const started = await once<{ id: string; video: boolean; capped?: boolean; maxParticipants?: number }>(
+      host,
+      'group:call:started'
+    );
+    expect(started.video).toBe(false);
+    expect(started.capped).toBe(false);
+    expect(started.maxParticipants).toBe(4);
+    expect((await ringB).memberCount).toBe(3);
+    await ringC;
+  });
+
+  it('drops invitees beyond the cap instead of ringing them, and tells the host why', async () => {
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = 2; // host + one other
+    const { caller, callee, third } = await hostWithPartners();
+
+    const host = await connect(caller.token);
+    const b = await connect(callee.token);
+    const c = await connect(third.token);
+
+    const ringB = once<any>(b, 'group:call:ringing');
+    host.emit('group:call:start', { memberIds: [callee.userId, third.userId], video: false });
+
+    const started = await once<{ id: string; members: any[]; capped: boolean; maxParticipants: number }>(
+      host,
+      'group:call:started'
+    );
+    expect(started.capped).toBe(true);
+    expect(started.maxParticipants).toBe(2);
+    // The roster is host-only at start; members join as they accept.
+    expect(started.members.map((m) => m.id)).toEqual([caller.userId]);
+
+    // The first invitee rings and can join.
+    const rung = await ringB;
+    expect(rung.memberCount).toBe(2);
+    b.emit('group:call:accept', { id: started.id });
+    await once<{ id: string }>(b, 'group:call:joined');
+
+    // The dropped invitee was never rung at all — that is the whole point of
+    // `capped`: the host learns two people were not called instead of watching
+    // them sit on "ringing" forever.
+    await expect(once(c, 'group:call:ringing', 700)).rejects.toThrow(/Timed out/);
+    await expect(once(c, 'group:call:joined', 700)).rejects.toThrow(/Timed out/);
+  });
+
+  it('refuses a joiner once the room is at the cap', async () => {
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = 4;
+    const { caller, callee, third, fourth } = await hostWithPartners();
+
+    const host = await connect(caller.token);
+    const b = await connect(callee.token);
+    const c = await connect(third.token);
+    const d = await connect(fourth.token);
+
+    host.emit('group:call:start', {
+      memberIds: [callee.userId, third.userId, fourth.userId],
+      video: false,
+    });
+    const started = await once<{ id: string; capped: boolean }>(host, 'group:call:started');
+    expect(started.capped).toBe(false);
+
+    // Fill the mesh to the cap.
+    for (const member of [b, c]) {
+      const joined = once<{ id: string }>(member, 'group:call:joined');
+      member.emit('group:call:accept', { id: started.id });
+      await joined;
+    }
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = 3; // room is now over the cap
+
+    // The last invitee is told the call is full rather than being added to a mesh
+    // that is already at its limit (or left ringing with nothing to show for it).
+    const full = once<{ id: string; maxParticipants: number }>(d, 'group:call:full');
+    d.emit('group:call:accept', { id: started.id });
+    const refused = await full;
+    expect(refused.id).toBe(started.id);
+    expect(refused.maxParticipants).toBe(3);
+    await expect(once(d, 'group:call:joined', 700)).rejects.toThrow(/Timed out/);
+  });
+
+  it('still refuses strangers when the cap is generous', async () => {
+    (callsConfig as any).MAX_GROUP_CALL_PARTICIPANTS = 8;
+    const { caller } = await pairWithExchange();
+    const stranger = await signup('stranger-cap@skillswap.test', 'Stranger');
     const host = await connect(caller.token);
 
     const errorPromise = once<{ message: string }>(host, 'error');
