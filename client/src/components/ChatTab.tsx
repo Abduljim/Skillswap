@@ -96,11 +96,51 @@ export default function ChatTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, exchangeId]);
 
-  // Scroll only the messages container — never the page (avoids shaky/jumpy screens).
-  useEffect(() => {
+  // Pin to the newest message without moving anything else.
+  //
+  // Two rules, both about keeping the screen still:
+  //   1. Only the list scrolls — never the page, never the shell.
+  //   2. Only follow the conversation when the reader is already at the bottom.
+  //      Yanking someone back down while they read older messages is what made
+  //      the chat feel like it was sliding around.
+  // `typing` is deliberately NOT a trigger: the indicator toggles every couple
+  // of seconds and must never reposition the list.
+  const pinnedRef = useRef(false);
+
+  const stickToBottom = (force = false) => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, typing]);
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // "At the bottom" = within about one message bubble.
+    if (force || distanceFromBottom < 140) el.scrollTop = el.scrollHeight;
+  };
+
+  useEffect(() => {
+    pinnedRef.current = false;
+  }, [exchangeId]);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (!pinnedRef.current) {
+      // First paint of a loaded conversation: open at the newest message.
+      pinnedRef.current = true;
+      stickToBottom(true);
+      return;
+    }
+    stickToBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
+
+  // Staging a photo grows the composer, which shrinks the list; re-pin so the
+  // newest message is not pushed out of view behind it.
+  useEffect(() => {
+    if (pendingImage) stickToBottom(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingImage]);
+
+  // Images have no intrinsic height until they decode, so the list grows after
+  // paint and the pinned position would be stale. Re-pin as each one lands.
+  const onMediaLoad = () => stickToBottom();
 
   const sendMessage = async (body: string, type: string = 'TEXT', caption?: string | null) => {
     if (!body.trim() || sending) return;
@@ -176,8 +216,8 @@ export default function ChatTab({
   };
 
   return (
-    <div className={`flex flex-col h-full min-h-0 w-full ${m.surface}`}>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-3 px-4 py-4">
+    <div className={`flex flex-col h-full min-h-0 w-full overflow-hidden ${m.surface}`}>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-3 px-4 py-4">
         {messages.length === 0 && (
           <div className={`text-center text-sm ${m.muted} py-10`}>No messages yet. Say hello.</div>
         )}
@@ -194,6 +234,7 @@ export default function ChatTab({
                       src={message.body}
                       alt={message.caption || 'Shared image'}
                       className="rounded-xl max-w-[300px] max-h-96 w-auto h-auto object-contain"
+                      onLoad={onMediaLoad}
                     />
                     {message.caption && (
                       <div className="text-sm whitespace-pre-wrap break-words mt-1.5">{message.caption}</div>

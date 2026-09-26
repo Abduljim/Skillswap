@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { ForbiddenError, NotFoundError } from '../utils/errors';
 import { isProCardId } from './profileCards';
+import { isProLookId } from './profileThemes';
 import { recordProfileView, getUserTier } from './entitlements.service';
 import { computeBadges } from './badges.service';
 import { readStreak } from './streak.service';
@@ -74,12 +75,20 @@ export async function updateProfile(
   const profile = await prisma.profile.findUnique({ where: { userId } });
   if (!profile) throw new NotFoundError('Profile not found');
 
-  // Premium profile cards are a Pro perk. Enforced here, not just hidden in the
-  // UI, so a modified client cannot save one on a free account.
-  if (profileFields.avatarFrame && isProCardId(profileFields.avatarFrame)) {
+  // Premium profile cards AND profile looks are Pro perks. Enforced here, not
+  // just hidden in the UI, so a modified client cannot save one on a free
+  // account. They are separate purchases-by-tier but share one tier lookup:
+  // a card is the avatar ring, a look is the header field behind it.
+  const wantsProCard = Boolean(profileFields.avatarFrame && isProCardId(profileFields.avatarFrame));
+  const wantsProLook = Boolean(profileFields.bannerStyle && isProLookId(profileFields.bannerStyle));
+  if (wantsProCard || wantsProLook) {
     const { tier } = await getUserTier(userId);
     if (tier !== 'PRO') {
-      throw new ForbiddenError('That profile card is a Pro perk — upgrade to unlock it.');
+      throw new ForbiddenError(
+        wantsProCard
+          ? 'That profile card is a Pro perk — upgrade to unlock it.'
+          : 'That profile look is a Pro perk — upgrade to unlock it.'
+      );
     }
   }
 

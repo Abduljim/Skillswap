@@ -12,7 +12,8 @@
     "cap:open": "cap open android",
     "cap:add:android": "cap add android",
     "android:build": "npm run cap:sync && cd android && ./gradlew assembleRelease",
-    "theme:check": "node scripts/check-theme-coverage.mjs"
+    "theme:check": "node scripts/check-theme-coverage.mjs",
+    "sounds:gen": "node scripts/gen-call-sounds.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",

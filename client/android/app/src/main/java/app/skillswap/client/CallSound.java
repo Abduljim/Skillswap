@@ -1,15 +1,24 @@
 package app.skillswap.client;
 
 import android.content.Context;
-import android.media.RingtoneManager;
 import android.net.Uri;
 
 /**
- * Where the user's call-sound choice lives on the device: 'chime' (default —
- * the bundled marimba-style call chime), 'ringtone', 'alarm', or 'silent'.
+ * Where the user's call-sound choice lives on the device. Exactly two sounds
+ * ship with the app, both synthesised by client/scripts/gen-call-sounds.mjs:
+ *
+ *   'high'    Beacon — bright rising marimba figure (res/raw/ring_high.wav),
+ *             the default; meant to cut across a street or a lecture hall.
+ *   'soothe'  Drift — slow warm pad (res/raw/ring_soothe.wav); no percussive
+ *             attack, so it does not startle.
+ *   'silent'  no sound at all, vibrate only.
+ *
  * The JS Settings → Calls picker writes it via CallNotifier.setSoundSource, and
  * both the in-app ring and the FCM push ring read it so they always use what
- * the user picked.
+ * the user picked. Values written by older builds ('chime', 'ringtone',
+ * 'alarm') are mapped to 'high' rather than rejected, so an existing install
+ * keeps ringing after the update instead of falling through to a missing raw
+ * resource.
  */
 public final class CallSound {
     private static final String PREFS = "skillswap_prefs";
@@ -25,27 +34,24 @@ public final class CallSound {
     }
 
     public static String get(Context context) {
-        return normalize(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "chime"));
+        return normalize(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "high"));
     }
 
     private static String normalize(String value) {
-        if (value == null) return "chime";
-        if ("ringtone".equals(value) || "alarm".equals(value) || "silent".equals(value)) return value;
-        return "chime";
+        if (value == null) return "high";
+        if ("soothe".equals(value) || "silent".equals(value)) return value;
+        // 'high', and every value an older build could have stored.
+        return "high";
     }
 
     public static Uri uri(Context context) {
         switch (get(context)) {
-            case "alarm":
-                return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
             case "silent":
                 return null;
-            case "ringtone":
-                return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            case "soothe":
+                return Uri.parse("android.resource://" + context.getPackageName() + "/raw/ring_soothe");
             default:
-                // Bundled crisp marimba-style chime (res/raw/call_chime.wav) —
-                // cut through room noise without being jarring.
-                return Uri.parse("android.resource://" + context.getPackageName() + "/raw/call_chime");
+                return Uri.parse("android.resource://" + context.getPackageName() + "/raw/ring_high");
         }
     }
 }

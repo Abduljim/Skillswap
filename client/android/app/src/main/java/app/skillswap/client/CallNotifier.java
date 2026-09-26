@@ -58,7 +58,7 @@ public class CallNotifier extends Plugin {
         }
         // The channel is intentionally SILENT: the actual ringtone is played by a
         // dedicated looping MediaPlayer (see startRingTone) so each option in
-        // Settings → Calls can use its own chime/ringtone/alarm/silent sound instead
+        // Settings → Calls can use its own Beacon/Drift/Silent sound instead
         // of the one static channel sound. The notification only carries the
         // full-screen intent + vibration.
         channel.setSound(null, null);
@@ -233,7 +233,7 @@ public class CallNotifier extends Plugin {
     // rings use the same sound as in-app rings.
     @PluginMethod
     public void setSoundSource(PluginCall call) {
-        String source = call.getString("source", "chime");
+        String source = call.getString("source", "high");
         CallSound.set(getContext(), source);
         call.resolve();
     }
@@ -241,7 +241,7 @@ public class CallNotifier extends Plugin {
     @PluginMethod
     public void ring(PluginCall call) {
         String peerName = call.getString("displayName", "Incoming call");
-        String source = call.getString("soundSource", "chime");
+        String source = call.getString("soundSource", "high");
         if (!notificationsAllowed()) {
             call.resolve();
             return;
@@ -275,7 +275,7 @@ public class CallNotifier extends Plugin {
                 NotificationManagerCompat.from(getContext()).notify(CALL_NOTIFICATION_ID, notification);
 
                 // The real ring: a dedicated looping player so the chosen
-                // chime / ringtone / alarm / silent genuinely differs and actually
+                // high / soothe / silent genuinely differs and actually
                 // plays while the app is open (notification sounds are unreliable).
                 startRingTone(sound);
             } catch (Exception e) {

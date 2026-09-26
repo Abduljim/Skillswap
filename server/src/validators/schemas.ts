@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROFILE_CARD_IDS, normalizeCardId, type ProfileCardId } from '../services/profileCards';
+import { PROFILE_LOOK_IDS, normalizeLookId, type ProfileLookId } from '../services/profileThemes';
 
 // ============ Auth ============
 export const signupSchema = z.object({
@@ -53,7 +54,12 @@ export const updateProfileSchema = z.object({
   avatarFrame: z
     .preprocess(normalizeCardId, z.enum([...PROFILE_CARD_IDS] as [ProfileCardId, ...ProfileCardId[]]))
     .optional(),
-  bannerStyle: z.enum(['cream', 'purple', 'blue', 'teal', 'orange', 'pink', 'gold', 'indigo', 'green']).optional(),
+  // Profile look (header colour field). Gated separately from avatarFrame:
+  // the two used to be one choice, which is why the profile and the profile
+  // card looked identical. Legacy nine-colour values normalise to the free look.
+  bannerStyle: z
+    .preprocess(normalizeLookId, z.enum([...PROFILE_LOOK_IDS] as [ProfileLookId, ...ProfileLookId[]]))
+    .optional(),
   // Empty selects come in as "" from the web/APK forms; treat them as "not set"
   // instead of failing the entire profile save (which made saved fields vanish).
   occupation: z

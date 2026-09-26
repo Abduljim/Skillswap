@@ -5,18 +5,22 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme, THEMES } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
 import { api } from '../lib/api';
-import { Shield, KeyRound, Moon, Crown, Check, Lock, Phone, BellRing } from 'lucide-react';
+import { Shield, KeyRound, Moon, Crown, Check, Lock, Phone, BellRing, Play } from 'lucide-react';
 import {
   setCallSoundSource,
   getCallSoundSource,
   type CallSoundSource,
 } from '../lib/call-notifier';
+import { previewCallSound } from '../lib/ringtone';
 
 const CALL_SOUND_OPTIONS: { value: CallSoundSource; label: string; hint: string }[] = [
-  { value: 'chime', label: 'Marimba chime', hint: 'Crisp call chime (default)' },
-  { value: 'ringtone', label: 'Default ringtone', hint: 'Your phone ringtone' },
-  { value: 'alarm', label: 'Default alarm', hint: 'Your loudest alarm sound' },
-  { value: 'silent', label: 'Silent', hint: 'Vibrate only' },
+  {
+    value: 'high',
+    label: 'Beacon',
+    hint: 'Bright rising marimba — cuts through a street or a lecture hall',
+  },
+  { value: 'soothe', label: 'Drift', hint: 'Slow warm pad — calm, never a jolt' },
+  { value: 'silent', label: 'Silent', hint: 'Vibrate only — no sound in or out' },
 ];
 
 export default function SettingsPage() {
@@ -33,6 +37,14 @@ export default function SettingsPage() {
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
   const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
+
+  // Saving also previews nothing: the ▶ button next to each option does that,
+  // so a user can hear both sounds before committing to one.
+  const chooseSound = (o: { value: CallSoundSource; label: string }) => {
+    setCallSound(o.value);
+    setCallSoundSource(o.value);
+    toast.push({ type: 'success', title: `Incoming calls: ${o.label}` });
+  };
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,26 +239,34 @@ export default function SettingsPage() {
           {CALL_SOUND_OPTIONS.map((o) => {
             const active = callSound === o.value;
             return (
-              <button
+              <div
                 key={o.value}
-                onClick={() => {
-                  setCallSound(o.value);
-                  setCallSoundSource(o.value);
-                  toast.push({ type: 'success', title: `Incoming calls: ${o.label}` });
-                }}
-                className={`relative rounded-xl border p-3 text-left transition-all ${
+                className={`relative flex items-center gap-2 rounded-xl border p-3 transition-all ${
                   active
                     ? 'border-coral-500 ring-2 ring-coral-500/30'
                     : 'border-ink-100 hover:border-ink-200'
                 }`}
               >
-                <BellRing className={`w-4 h-4 mb-1 ${active ? 'text-coral-500' : 'text-ink-400'}`} />
-                <div className="text-sm font-semibold leading-tight">
-                  <span className="text-ink-900">{o.label}</span>
-                </div>
-                <div className="text-[11px] text-ink-500 mt-1">{o.hint}</div>
-                {active && <Check className="w-4 h-4 text-coral-500 absolute top-2 right-2" />}
-              </button>
+                <button type="button" onClick={() => chooseSound(o)} className="min-w-0 flex-1 text-left">
+                  <BellRing className={`w-4 h-4 mb-1 ${active ? 'text-coral-500' : 'text-ink-400'}`} />
+                  <div className="flex items-center gap-1.5 text-sm font-semibold leading-tight text-ink-900">
+                    {o.label}
+                    {active && <Check className="w-3.5 h-3.5 text-coral-500" />}
+                  </div>
+                  <div className="text-[11px] text-ink-500 mt-1">{o.hint}</div>
+                </button>
+                {o.value !== 'silent' && (
+                  <button
+                    type="button"
+                    onClick={() => previewCallSound(o.value)}
+                    aria-label={`Preview ${o.label}`}
+                    title={`Preview ${o.label}`}
+                    className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-ink-500 hover:bg-cream-100"
+                  >
+                    <Play className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

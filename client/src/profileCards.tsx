@@ -5,7 +5,15 @@
  * here is inline SVG/CSS: no binary assets, crisp at any size, animatable, and
  * it works offline inside the APK.
  *
- * Tiering: exactly ONE free card ("Linen", deliberately understated) and FIVE
+ * A card is the RING only. The colour field behind the profile header is a
+ * separate choice — a profile look, see client/src/profileThemes.ts. They were
+ * one setting until that split, which is why the profile and the profile card
+ * used to look identical.
+ *
+ * The card family is metallic and faceted: pearl, gold, crystal, neon, ember,
+ * chrome. Wallpapers are soft and matte; profile looks are bold and solid.
+ *
+ * Tiering: exactly ONE free card ("Pearl", deliberately understated) and FIVE
  * Pro cards. The server enforces the same list — see
  * server/src/services/profileCards.ts and updateProfile() in profile.service.ts.
  */
@@ -27,8 +35,8 @@ export interface ProfileCard {
 export const PROFILE_CARDS: ProfileCard[] = [
   {
     id: 'linen',
-    label: 'Linen',
-    tagline: 'Simple cream ring',
+    label: 'Pearl',
+    tagline: 'Iridescent silver ring',
     tier: 'FREE',
     cardCls: 'profile-card-linen',
     cardDark: false,

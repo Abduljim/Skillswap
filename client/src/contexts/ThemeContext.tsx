@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 /**
  * App themes, wallpapers and dark mode.
  *
- * SIX wallpapers: one free ("Linen", deliberately plain) and five Pro. Every
+ * SIX wallpapers: one free ("Paper", deliberately plain) and five Pro. Every
  * wallpaper paints the whole app from pure CSS (layered gradients + inline SVG
  * data-URIs) — no image assets, so it works offline in the APK and costs
  * nothing to ship. The same `--wp-image` variable is reused by the chat screen
@@ -42,7 +42,7 @@ export interface ThemeDef {
 export const THEMES: ThemeDef[] = [
   {
     id: 'light',
-    label: 'Linen',
+    label: 'Paper',
     desc: 'Clean & bright — free',
     swatchCls: 'wp-preview-linen',
     dark: false,

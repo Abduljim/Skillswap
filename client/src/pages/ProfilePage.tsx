@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
 import { PROFILE_CARDS, resolveCard } from '../profileCards';
+import { PROFILE_LOOKS, resolveLook } from '../profileThemes';
 import { Lock, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BadgesRow, ProBadge } from '../components/Badges';
@@ -70,8 +71,12 @@ export default function ProfilePage() {
     queryFn: () => api.get<{ tier: 'FREE' | 'PRO' }>('/subscription'),
   });
   const isPro = subData ? subData.tier === 'PRO' : (user as any)?.tier === 'PRO';
-  // The profile card drives the header gradient + avatar ring (free: Linen).
+  // Two independent choices. The LOOK paints the header field behind
+  // everything (free: Canvas); the CARD is the ring around the avatar (free:
+  // Pearl). They used to be one setting, which is why the profile and the
+  // profile card were indistinguishable.
   const card = resolveCard(profile?.avatarFrame);
+  const look = resolveLook(profile?.bannerStyle);
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
@@ -186,7 +191,7 @@ export default function ProfilePage() {
     <div className="space-y-6 max-w-3xl">
       {/* Profile header */}
       <div className="card overflow-hidden relative">
-        <div className={`p-6 md:p-8 relative ${card.cardCls} ${card.cardDark ? 'card-dark' : ''}`}>
+        <div className={`p-6 md:p-8 relative ${look.heroCls} ${look.heroDark ? 'card-dark' : ''}`}>
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
         <div className="relative flex items-start gap-4 md:gap-6">
           <div className="relative shrink-0">
@@ -506,11 +511,45 @@ export default function ProfilePage() {
           <Sparkles className="w-4 h-4 text-coral-500" /> Customize your profile
         </h2>
         <p className="text-xs text-ink-500 mb-5">
-          Your profile card is the ring and gradient behind your avatar. Linen is free; the five
-          premium cards are a Pro perk. Your app wallpaper and dark mode live in Settings.
+          Two separate choices. Your <span className="font-semibold text-ink-700">profile look</span> is
+          the colour field behind this header; your <span className="font-semibold text-ink-700">profile
+          card</span> is the ring around your avatar. Canvas and Pearl are free — the other five of each
+          are Pro perks. Your app wallpaper and dark mode live in Settings.
         </p>
 
-        <div className="text-sm font-semibold text-ink-700 mb-3">Profile card</div>
+        <div className="text-sm font-semibold text-ink-700 mb-3">Profile look</div>
+        <div className="flex flex-wrap gap-2">
+          {PROFILE_LOOKS.map((l) => {
+            const active = look.id === l.id;
+            const locked = l.tier === 'PRO' && !isPro;
+            return (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => (locked ? navigate('/pro') : looksMutation.mutate({ bannerStyle: l.id }))}
+                className={`relative w-[104px] rounded-2xl border p-2 pt-2.5 transition-all ${
+                  active
+                    ? 'border-coral-500 ring-2 ring-coral-500/40 bg-cream-50'
+                    : 'border-ink-200 bg-white hover:border-ink-300'
+                }`}
+                title={`${l.label} — ${l.tagline}${locked ? ' (Pro)' : ''}`}
+              >
+                <span className={`block h-12 w-full rounded-xl ${l.heroCls} ${l.heroDark ? 'card-dark' : ''}`} />
+                <span className="mt-1.5 flex items-center justify-center gap-1 text-[11px] font-semibold text-ink-700">
+                  {locked && <Lock className="w-3 h-3 text-ink-500" />}
+                  {l.label}
+                </span>
+                {active && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-coral-500 text-white">
+                    <Check className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="text-sm font-semibold text-ink-700 mt-6 mb-3">Profile card</div>
         <div className="flex flex-wrap gap-2">
           {PROFILE_CARDS.map((c) => {
             const active = card.id === c.id;

@@ -462,12 +462,28 @@ html[data-mode='dark'] .calls-shell { background-color: var(--c-bg); }
 @keyframes pc-glow { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
 /* Profile-card header gradients (one per card) */
-.profile-card-linen     { background: linear-gradient(135deg, #fbf4e3 0%, #f1e6cf 55%, #e6d7b8 100%); }
+.profile-card-linen     { background: linear-gradient(135deg, #ffffff 0%, #e9edf3 45%, #b7c2d1 100%); }
 .profile-card-aurum     { background: linear-gradient(135deg, #f7d774 0%, #d99a1c 45%, #7a4c07 100%); }
 .profile-card-diamond   { background: linear-gradient(135deg, #eaf7ff 0%, #9fd4f0 45%, #3d7fa6 100%); }
 .profile-card-nova      { background: linear-gradient(135deg, #22d3ee 0%, #7c3aed 50%, #db2777 100%); }
 .profile-card-inferno   { background: linear-gradient(135deg, #ffc46b 0%, #f4511e 45%, #7f1305 100%); }
 .profile-card-sovereign { background: linear-gradient(135deg, #6b7280 0%, #1f2937 50%, #080a0f 100%); }
+
+/* ==========================================================================
+   Profile looks (client/src/profileThemes.ts)
+   The colour field behind a profile header. A DIFFERENT family from both the
+   wallpapers (soft, matte, app-wide) and the cards (metallic, faceted, on the
+   avatar ring): these are bold, solid, earthy blocks with a single diagonal
+   sweep, so the three can never be mistaken for one another.
+   One free look (Canvas) and five Pro looks, gated in updateProfile().
+   ========================================================================== */
+
+.profile-look-canvas     { background: linear-gradient(160deg, #fdfaf4 0%, #f6efe2 58%, #ece1cd 100%); }
+.profile-look-terracotta { background: linear-gradient(160deg, #d2573c 0%, #a63a26 55%, #6d2116 100%); }
+.profile-look-verdant    { background: linear-gradient(160deg, #2f7d5b 0%, #1c5c40 55%, #0f3726 100%); }
+.profile-look-cobalt     { background: linear-gradient(160deg, #3a72f0 0%, #1e46c4 55%, #122a7d 100%); }
+.profile-look-mulberry   { background: linear-gradient(160deg, #9b2d6f 0%, #6f1d54 55%, #43113a 100%); }
+.profile-look-copper     { background: linear-gradient(160deg, #e0a06a 0%, #b5713a 55%, #7a4520 100%); }
 
 @media (prefers-reduced-motion: reduce) {
   .pc-spin, .pc-spin-slow, .pc-twinkle, .pc-flicker, .pc-rise, .pc-nova-glow { animation: none !important; }

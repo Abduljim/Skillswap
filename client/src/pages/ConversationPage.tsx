@@ -171,11 +171,11 @@ function ConversationContent({
     { id: 'chat', label: 'Chat', icon: MessageCircle },
     { id: 'voice', label: 'Voice', icon: Phone },
     { id: 'video', label: 'Video', icon: Video },
-    { id: 'calls', label: 'Call log', icon: History },
+    { id: 'calls', label: 'Calls', icon: History },
   ];
 
   return (
-    <div className={`flex flex-col h-[100dvh] overflow-hidden ${shell.surface}`}>
+    <div className={`flex flex-col h-[100dvh] overflow-hidden overscroll-none touch-pan-y ${shell.surface}`}>
       {/* WhatsApp-style header with a chat-mode picker */}
       <header className={`flex items-center h-12 px-1.5 shrink-0 border-b ${shell.border}`}>
         <button
@@ -216,12 +216,16 @@ function ConversationContent({
       </header>
 
       {/* Slim tab row */}
-      <div className={`flex gap-1 px-2 pt-1.5 pb-1 shrink-0 border-b ${shell.border} overflow-x-auto`}>
+      {/* Fixed four-column grid: the row must never become a horizontal scroll
+            container. With overflow-x-auto a sideways swipe on a tab dragged the
+            row (and looked like the whole screen sliding), and on a narrow phone
+            the fourth tab hung off the edge. Grid columns cannot overflow. */}
+      <div className={`grid grid-cols-4 gap-1 px-2 pt-1.5 pb-1 shrink-0 border-b ${shell.border} touch-pan-y select-none`}>
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${
+            className={`flex items-center justify-center gap-1 min-w-0 px-1.5 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${
               tab === t.id ? shell.pillActive : shell.pillIdle
             }`}
           >
@@ -231,7 +235,7 @@ function ConversationContent({
         ))}
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'chat' && <ChatTab exchangeId={id} socket={socket} dark={dark} />}
         {tab === 'voice' && (
           <CallPrompt
@@ -309,7 +313,7 @@ function CallPrompt({
 
 function CallLogsTab({ dark, logs, myId }: { dark: boolean; logs: CallLog[]; myId?: string }) {
   return (
-    <div className={`h-full w-full overflow-y-auto ${dark ? 'chat-dark' : 'chat-white'}`}>
+    <div className={`h-full w-full overflow-y-auto overscroll-contain ${dark ? 'chat-dark' : 'chat-white'}`}>
       {logs.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full p-8 text-center">
           <History className={`w-8 h-8 mb-3 ${dark ? 'text-[#3a4150]' : 'text-[#d5cdc0]'}`} />
