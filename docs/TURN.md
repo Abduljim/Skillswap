@@ -15,6 +15,12 @@ Without it the failure looks like this: the call rings, both sides answer, the U
 shows "connected", and nobody hears anything. This guide removes that failure for
 £0/$0 a month.
 
+> **Don't want to run a server?** See [`RELAY-HOSTED.md`](RELAY-HOSTED.md): a
+> *hosted* relay on Metered's free tier. About ten minutes, no VPS, no credit
+> card, no domain, and no code change — 500 MB/month, which covers audio calls
+> and enough video to test with real people. This guide is the unlimited path
+> (10 TB/month) and costs an afternoon plus an Oracle Always Free instance.
+
 ```
    Phone A ──┐                          ┌── Phone B
              │  (both behind CGNAT,     │

@@ -78,6 +78,7 @@ services:
       # coturn REST credential per request, so the secret never ships in the web
       # bundle or the APK and can be rotated without rebuilding either.
       # Free coturn on an Oracle Always Free VPS: docs/TURN.md.
+      # Hosted relay with no VPS at all (Metered free tier): docs/RELAY-HOSTED.md.
       # Comma-separated turn:/turns: URLs — include one of each, because
       # restrictive networks block UDP and 3478.
       - key: TURN_URLS
@@ -92,6 +93,19 @@ services:
       # on every allocation refresh.
       - key: TURN_TTL_SECONDS
         value: '3600'
+      # Static credentials for providers without HMAC support. Metered's free
+      # tier is the no-VPS / no-card / no-domain option: docs/RELAY-HOSTED.md.
+      # Read only when TURN_SECRET is empty — if TURN_SECRET holds anything the
+      # server mints coturn-style HMAC credentials instead and a hosted static
+      # endpoint will reject every allocation.
+      # sync:false so a Blueprint sync never overwrites the real values set in
+      # the dashboard with these placeholders.
+      - key: TURN_USERNAME
+        value: ''
+        sync: false
+      - key: TURN_CREDENTIAL
+        value: ''
+        sync: false
       # Escape hatch for providers that only issue static credentials (Xirsys,
       # Metered). Used only when TURN_SECRET is empty, and unlike the minted ones
       # these reach the client — so prefer TURN_SECRET. Every VITE_* value is
