@@ -417,7 +417,10 @@ export default function ChatTab({
       return;
     }
     const maxBytes = status?.maxVideoBytes ?? 64 * 1024 * 1024;
-    const maxMs = status?.maxVideoMs ?? MAX_VIDEO_MS;
+    // The server allows a few seconds of slack for container rounding, but the
+    // promise made in the UI is one minute — so that is what a gallery pick is
+    // held to, and what the refusal message says.
+    const maxMs = MAX_VIDEO_MS;
 
     if (file.size > maxBytes) {
       setMediaError(`That video is ${formatBytes(file.size)}. The limit is ${formatBytes(maxBytes)}.`);

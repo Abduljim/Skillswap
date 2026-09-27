@@ -146,6 +146,9 @@ export default function VideoRecorder({
     const start = async () => {
       setPhase('starting');
       setError(null);
+      // A fresh session must not inherit the previous clip's hand-off flag, or
+      // the teardown below would keep a URL alive that nobody will ever use.
+      handedOffRef.current = false;
 
       if (!recorderSupported()) {
         setPhase('error');
@@ -212,6 +215,14 @@ export default function VideoRecorder({
       }
       recorderRef.current = null;
       stopStream();
+      // Closing (or switching lens/quality) drops any clip still on the review
+      // screen. One that was handed to the composer belongs to the caller now.
+      if (!handedOffRef.current && clipRef.current) {
+        URL.revokeObjectURL(clipRef.current.url);
+        clipRef.current = null;
+        setClip(null);
+      }
+      setElapsed(0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, quality, facing]);
