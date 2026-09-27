@@ -105,7 +105,9 @@ Two ways to prove the credentials without guessing:
 
 - Every deploy logs one `📧 [email] …` line naming the provider, host, port,
   TLS mode, login and From address — and `INCOMPLETE` or `NONE` when the
-  variables are half-filled or empty. No secret is printed.
+  variables are half-filled or empty (including `SMTP_USER` set with `SMTP_PASS`
+  empty, which is what a fresh deploy of `render.yaml` looks like before the key
+  is added). No secret is printed.
 - `GET /api/admin/diagnostics` runs a real `transporter.verify()`: a full SMTP
   handshake **and** AUTH against the relay. It reports
   `email.smtp.verify: "ok" | "failed"` plus the server's own error text, so a

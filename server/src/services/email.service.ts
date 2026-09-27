@@ -109,6 +109,12 @@ export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean
  * is locked out of their account. Never prints SMTP_PASS.
  */
 export function describeEmailConfig(): string {
+  // isSmtpConfigured() only checks host and from, so a relay can look configured
+  // while every AUTH fails: Brevo and Gmail both need the password. Say so, with
+  // the error code it will produce, rather than printing a healthy-looking line.
+  if (isSmtpConfigured() && env.SMTP_USER && !env.SMTP_PASS) {
+    return `smtp INCOMPLETE — SMTP_USER is set but SMTP_PASS is empty, so AUTH will fail with 535. Add the SMTP key/password in the Render dashboard (docs/EMAIL.md).`;
+  }
   const smtp = isSmtpConfigured()
     ? `smtp ${env.SMTP_HOST}:${env.SMTP_PORT}${
         env.SMTP_PORT === 465 ? ' (implicit TLS)' : ' (STARTTLS)'

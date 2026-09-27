@@ -417,6 +417,27 @@ describe('email provider summary (boot log)', () => {
     );
   });
 
+  it('says INCOMPLETE when SMTP_USER is set but SMTP_PASS is empty', () => {
+    // The state render.yaml leaves a fresh deploy in: four of the five values are
+    // pre-filled, so the relay looks configured while every AUTH fails with 535.
+    withEmailEnv(
+      {
+        SMTP_HOST: 'smtp-relay.brevo.com',
+        SMTP_PORT: '587',
+        SMTP_USER: 'me@example.test',
+        SMTP_PASS: '',
+        SMTP_FROM: 'SkillSwap <me@example.test>',
+        RESEND_API_KEY: '',
+      },
+      () => {
+        const line = describeEmailConfig();
+        expect(line).toContain('INCOMPLETE');
+        expect(line).toContain('SMTP_PASS');
+        expect(line).toContain('535');
+      }
+    );
+  });
+
   it('says NONE when nothing is configured', () => {
     withEmailEnv({ SMTP_HOST: '', SMTP_FROM: '', RESEND_API_KEY: '' }, () => {
       expect(describeEmailConfig()).toContain('NONE');
