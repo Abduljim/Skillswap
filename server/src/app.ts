@@ -23,6 +23,7 @@ import matchesRoutes from './routes/matches.routes';
 import exchangeRequestsRoutes from './routes/exchangeRequests.routes';
 import exchangesRoutes from './routes/exchanges.routes';
 import messagesRoutes from './routes/messages.routes';
+import mediaRoutes from './routes/media.routes';
 import sessionsRoutes from './routes/sessions.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import safetyRoutes from './routes/safety.routes';
@@ -92,6 +93,7 @@ export function createApp() {
   app.use('/api/exchange-requests', exchangeRequestsRoutes);
   app.use('/api/exchanges', exchangesRoutes);
   app.use('/api/messages', messagesRoutes);
+  app.use('/api/media', mediaRoutes);
   app.use('/api/sessions', sessionsRoutes);
   app.use('/api/notifications', notificationsRoutes);
   // Minted TURN credentials for calls + the group-call limits the UI enforces.

@@ -307,6 +307,7 @@ enum MessageType {
   TEXT
   IMAGE
   STICKER
+  VIDEO
 }
 
 model Message {
@@ -321,6 +322,18 @@ model Message {
   createdAt  DateTime    @default(now())
   status     String      @default("SENT")
   readAt     DateTime?
+
+  // Chat media pointers. `body` still carries the payload for TEXT/STICKER and
+  // the legacy inline data URL for IMAGE rows written before v1.6; new media is
+  // stored in Supabase Storage and referenced here. Metadata is stored alongside
+  // so a bubble can be framed (width/height), badged (bytes/duration) and
+  // poster-ed (thumbUrl) without downloading the media first.
+  mediaUrl        String?
+  thumbUrl        String?
+  mediaBytes      Int?
+  mediaWidth      Int?
+  mediaHeight     Int?
+  mediaDurationMs Int?
 
   @@index([exchangeId, createdAt])
   @@index([senderId])

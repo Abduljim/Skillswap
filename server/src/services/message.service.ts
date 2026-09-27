@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { ForbiddenError, NotFoundError, BadRequestError } from '../utils/errors';
 import { emitToExchange } from '../sockets/io';
+import { isOwnMediaUrl } from './supabase.service';
 
 async function assertActiveParticipant(userId: string, exchangeId: string) {
   const exchange = await prisma.exchange.findUnique({ where: { id: exchangeId } });
@@ -77,10 +78,51 @@ export async function listConversations(userId: string) {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export async function createMessage(userId: string, exchangeId: string, body: string, type: string = 'TEXT', caption?: string | null) {
+/** Pointers + metadata for a stored photo/video (see services/supabase.service). */
+export interface MessageMedia {
+  mediaUrl?: string | null;
+  thumbUrl?: string | null;
+  mediaBytes?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  mediaDurationMs?: number | null;
+}
+
+export async function createMessage(
+  userId: string,
+  exchangeId: string,
+  body: string,
+  type: string = 'TEXT',
+  caption?: string | null,
+  media?: MessageMedia | null
+) {
   const exchange = await assertActiveParticipant(userId, exchangeId);
+
+  // A bubble may only point at media this server stored. Without the check any
+  // signed-in client could attach an arbitrary third-party URL to a chat
+  // message — a tracking pixel, a malware link rendered as a preview, or
+  // someone else's bucket billed to them.
+  if (media?.mediaUrl && !isOwnMediaUrl(media.mediaUrl)) {
+    throw new BadRequestError('That media link is not from SkillSwap storage.');
+  }
+  if (media?.thumbUrl && !isOwnMediaUrl(media.thumbUrl)) {
+    throw new BadRequestError('That thumbnail link is not from SkillSwap storage.');
+  }
+
   const message = await prisma.message.create({
-    data: { exchangeId, senderId: userId, body, type: type as any, caption: caption ?? null },
+    data: {
+      exchangeId,
+      senderId: userId,
+      body,
+      type: type as any,
+      caption: caption ?? null,
+      mediaUrl: media?.mediaUrl ?? null,
+      thumbUrl: media?.thumbUrl ?? null,
+      mediaBytes: media?.mediaBytes ?? null,
+      mediaWidth: media?.mediaWidth ?? null,
+      mediaHeight: media?.mediaHeight ?? null,
+      mediaDurationMs: media?.mediaDurationMs ?? null,
+    },
     include: { sender: { select: { id: true, displayName: true } } },
   });
   emitToExchange(exchangeId, 'message:new', message);

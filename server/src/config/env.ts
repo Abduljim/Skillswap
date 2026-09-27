@@ -37,6 +37,18 @@ export const env = {
   FCM_SERVER_KEY: process.env.FCM_SERVER_KEY || '',
   FCM_SERVICE_ACCOUNT_JSON: process.env.FCM_SERVICE_ACCOUNT_JSON || '',
 
+  // ── Chat media storage (Supabase) ───────────────────────────────────────
+  // Videos cannot live in Postgres: Render's free database is 512 MB *and* is
+  // deleted 90 days after creation, so a clip stored there has a hard expiry
+  // date. The service-role key stays on the server — the client only ever
+  // receives a single-use signed upload URL and POSTs bytes straight to
+  // storage, so large blobs never transit this API. Leave both empty and the
+  // media endpoints answer 503 MEDIA_NOT_CONFIGURED while text chat and legacy
+  // inline photos keep working. Setup: docs/MEDIA.md
+  SUPABASE_URL: process.env.SUPABASE_URL || '',
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  SUPABASE_MEDIA_BUCKET: process.env.SUPABASE_MEDIA_BUCKET || 'skillswap-media',
+
   // ── TURN relay for calls ────────────────────────────────────────────────
   // Server-side on purpose. GET /api/calls/ice-servers mints a short-lived
   // credential from TURN_SECRET per request, so the secret never ships inside

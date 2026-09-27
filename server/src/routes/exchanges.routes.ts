@@ -105,7 +105,15 @@ router.post(
       req.params.id,
       req.body.body,
       req.body.type,
-      req.body.caption ?? null
+      req.body.caption ?? null,
+      {
+        mediaUrl: req.body.mediaUrl ?? null,
+        thumbUrl: req.body.thumbUrl ?? null,
+        mediaBytes: req.body.mediaBytes ?? null,
+        mediaWidth: req.body.mediaWidth ?? null,
+        mediaHeight: req.body.mediaHeight ?? null,
+        mediaDurationMs: req.body.mediaDurationMs ?? null,
+      }
     );
     ok(res, msg);
   })

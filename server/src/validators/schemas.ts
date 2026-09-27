@@ -134,7 +134,7 @@ export const updateSessionSchema = createSessionSchema.partial();
 // ============ Messages ============
 export const createMessageSchema = z.object({
   body: z.string().min(1).max(2_000_000),
-  type: z.enum(['TEXT', 'IMAGE', 'STICKER']).default('TEXT'),
+  type: z.enum(['TEXT', 'IMAGE', 'STICKER', 'VIDEO']).default('TEXT'),
   caption: z
     .string()
     .trim()
@@ -142,6 +142,39 @@ export const createMessageSchema = z.object({
     .transform((v) => (v.length > 0 ? v : null))
     .optional()
     .nullable(),
+  // Media metadata. Only URLs from our own storage bucket are accepted — that
+  // check lives in message.service (it needs the configured host), these bounds
+  // just keep the payload sane.
+  mediaUrl: z.string().url().max(2048).optional().nullable(),
+  thumbUrl: z.string().url().max(2048).optional().nullable(),
+  mediaBytes: z.number().int().positive().max(64 * 1024 * 1024).optional().nullable(),
+  mediaWidth: z.number().int().positive().max(8000).optional().nullable(),
+  mediaHeight: z.number().int().positive().max(8000).optional().nullable(),
+  mediaDurationMs: z.number().int().positive().max(65_000).optional().nullable(),
+});
+
+// ============ Chat media uploads ============
+
+/**
+ * Object paths are generated server-side, so this shape is a hard boundary:
+ * /confirm can only ever be pointed at something /sign handed out. It is what
+ * keeps `../../` and absolute URLs out of the storage key.
+ */
+const MEDIA_PATH =
+  /^(video|image)\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov|3gp|m4v|mpg|jpg|jpeg|png|webp|gif)$/;
+
+export const mediaSignSchema = z.object({
+  kind: z.enum(['video', 'image']),
+  contentType: z.string().trim().min(3).max(80),
+  bytes: z.number().int().positive().max(64 * 1024 * 1024),
+});
+
+export const mediaConfirmSchema = z.object({
+  kind: z.enum(['video', 'image']),
+  path: z.string().regex(MEDIA_PATH, 'Unknown media path'),
+  width: z.number().int().positive().max(8000).optional().nullable(),
+  height: z.number().int().positive().max(8000).optional().nullable(),
+  durationMs: z.number().int().positive().max(65_000).optional().nullable(),
 });
 
 // ============ Reviews ============
