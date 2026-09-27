@@ -5,7 +5,12 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { COOKIE_NAME } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
-import { sendCallCancelledPush, sendIncomingCallPush } from '../services/push.service';
+import {
+  sendCallCancelledPush,
+  sendGroupCallCancelledPush,
+  sendGroupCallPush,
+  sendIncomingCallPush,
+} from '../services/push.service';
 import { createMessageSchema } from '../validators/schemas';
 import { callRingTimeoutMs, MAX_GROUP_CALL_PARTICIPANTS } from '../config/calls';
 
@@ -188,6 +193,21 @@ function cancelCalleeRing(exchangeId: string, call: ActiveCall) {
 }
 
 /**
+ * Silence phones still ringing for a group call that has just ended.
+ *
+ * Invitees who never accepted are not in the `group:{id}` room, so the
+ * `group:call:ended` emit cannot reach them — and if their app is closed the
+ * insistent notification would keep ringing for a call that no longer exists.
+ */
+function cancelAbsentGroupRings(call: GroupCall) {
+  for (const memberId of call.members) {
+    if (call.accepted.has(memberId)) continue;
+    if (calleeIsPresent(memberId)) continue;
+    void sendGroupCallCancelledPush(memberId, call.id);
+  }
+}
+
+/**
  * Ends a call nobody answered: tells both sides, silences the callee's phone,
  * and logs it as MISSED rather than leaving the caller ringing forever.
  */
@@ -231,6 +251,7 @@ async function cleanupCallsForUser(userId: string) {
     io?.to(`group:${id}`).emit('group:call:member:left', { id, userId });
     if (userId === call.hostId || call.accepted.size <= 1) {
       io?.to(`group:${id}`).emit('group:call:ended', { id });
+      cancelAbsentGroupRings(call);
       groupCalls.delete(id);
     }
   }
@@ -516,6 +537,17 @@ export function initSocket(httpServer: HTTPServer) {
             host: hostPeer,
             memberCount: valid.length + 1,
           });
+          // Same reachability rule as a 1:1 call: an invitee whose app is closed
+          // or backgrounded cannot see the sheet, so ring the phone instead.
+          // Without this the invite vanished for them and the host just waited.
+          if (!calleeIsPresent(memberId)) {
+            void sendGroupCallPush(memberId, {
+              groupId: id,
+              video: !!data.video,
+              host: hostPeer,
+              memberCount: valid.length + 1,
+            });
+          }
         }
       } catch (e) {
         console.error('[group-call] start failed', e);
@@ -575,6 +607,7 @@ export function initSocket(httpServer: HTTPServer) {
       // Host leaving (or one participant left) ends the room for everyone.
       if (userId === call.hostId || call.accepted.size <= 1) {
         io!.to(`group:${data.id}`).emit('group:call:ended', { id: data.id });
+        cancelAbsentGroupRings(call);
         groupCalls.delete(data.id);
       }
     });

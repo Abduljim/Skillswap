@@ -13,7 +13,7 @@ import {
   openCallSettings,
 } from '../lib/call-notifier';
 import { startRingtone, stopRingtone } from '../lib/ringtone';
-import { getLaunchedCall, clearLaunchedCall, getLaunchAction } from '../lib/push';
+import { getLaunchedCall, clearLaunchedCall, getLaunchAction, type LaunchedCall } from '../lib/push';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { recordLog } from '../lib/call-logs';
@@ -190,9 +190,10 @@ export function CallsProvider({ children }: { children: ReactNode }) {
    * State, not a ref: the response still has to fire when the call sheet is
    * already up and only the socket was missing.
    */
-  const [pendingLaunchAction, setPendingLaunchAction] = useState<'answer' | 'decline' | null>(
-    null
-  );
+  const [pendingLaunchAction, setPendingLaunchAction] = useState<{
+    action: 'answer' | 'decline';
+    kind: 'direct' | 'group';
+  } | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -867,31 +868,81 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupStatus, groupHost?.id]);
 
+  /**
+   * Rebuilds the incoming-call sheet from what a notification stored natively —
+   * for a call the socket never delivered, because the app was closed.
+   */
+  const showLaunchedDirectCall = useCallback(
+    (call: LaunchedCall) => {
+      exchangeIdRef.current = call.exchangeId;
+      peerIdRef.current = call.callerId || '';
+      videoEnabledRef.current = call.video;
+      update({
+        status: 'incoming',
+        peer: {
+          id: call.callerId || '',
+          displayName: call.callerName || 'Caller',
+          avatarUrl: null,
+          avatarFrame: null,
+        },
+        video: call.video,
+        incoming: true,
+        error: undefined,
+      });
+      nav(`/messages/${call.exchangeId}`);
+    },
+    [nav, update]
+  );
+
+  /**
+   * The same for a group invite. Mirrors the `group:call:ringing` socket handler
+   * field for field, so pressing Answer joins the mesh exactly as it would have
+   * if the app had been open when the invite arrived.
+   */
+  const showLaunchedGroupInvite = useCallback((call: LaunchedCall) => {
+    groupIdRef.current = call.groupId || '';
+    const host: Peer = {
+      id: call.callerId || '',
+      displayName: call.callerName || 'Group call',
+      avatarUrl: null,
+      avatarFrame: null,
+    };
+    setGroupVideo(!!call.video);
+    setGroupHost(host);
+    setGroupMembers([host]);
+    setGroupError(undefined);
+    setGroupStatus('incoming');
+  }, []);
+
   // ── Opened from an FCM incoming-call notification ──────────────────────────
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     void Promise.all([getLaunchedCall(), getLaunchAction()]).then(([call, action]) => {
       if (cancelled) return;
-      if (!call?.exchangeId || status !== 'none') {
-        // The sheet may already be up from the socket — the button press still
-        // has to be honoured.
-        if (action) setPendingLaunchAction(action);
+      const isGroup = call?.kind === 'group' && !!call.groupId;
+      const kind: 'direct' | 'group' = isGroup ? 'group' : 'direct';
+      const restorable =
+        !!call &&
+        (isGroup || !!call.exchangeId) &&
+        status === 'none' &&
+        groupStatusRef.current === 'none';
+
+      if (!restorable || !call) {
+        // Nothing to rebuild — the socket already put a sheet up, or the stored
+        // call went stale — but a button press still has to be honoured.
+        if (action) {
+          setPendingLaunchAction({
+            action,
+            kind: groupStatusRef.current !== 'none' ? 'group' : kind,
+          });
+        }
         return;
       }
       void clearLaunchedCall();
-      exchangeIdRef.current = call.exchangeId;
-      peerIdRef.current = call.callerId || '';
-      videoEnabledRef.current = call.video;
-      update({
-        status: 'incoming',
-        peer: { id: call.callerId || '', displayName: call.callerName || 'Caller', avatarUrl: null, avatarFrame: null },
-        video: call.video,
-        incoming: true,
-        error: undefined,
-      });
-      nav(`/messages/${call.exchangeId}`);
-      if (action) setPendingLaunchAction(action);
+      if (isGroup) showLaunchedGroupInvite(call);
+      else showLaunchedDirectCall(call);
+      if (action) setPendingLaunchAction({ action, kind });
     });
     return () => {
       cancelled = true;
@@ -1050,29 +1101,23 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const respondToLaunchAction = useCallback(async () => {
     const action = await getLaunchAction();
     if (!action) return;
-    if (statusRef.current === 'none') {
+    if (statusRef.current === 'none' && groupStatusRef.current === 'none') {
       const call = await getLaunchedCall();
-      if (!call?.exchangeId) return;
+      if (!call) return;
+      const isGroup = call.kind === 'group' && !!call.groupId;
+      if (!isGroup && !call.exchangeId) return;
       await clearLaunchedCall();
-      exchangeIdRef.current = call.exchangeId;
-      peerIdRef.current = call.callerId || '';
-      videoEnabledRef.current = call.video;
-      update({
-        status: 'incoming',
-        peer: {
-          id: call.callerId || '',
-          displayName: call.callerName || 'Caller',
-          avatarUrl: null,
-          avatarFrame: null,
-        },
-        video: call.video,
-        incoming: true,
-        error: undefined,
-      });
-      nav(`/messages/${call.exchangeId}`);
+      if (isGroup) showLaunchedGroupInvite(call);
+      else showLaunchedDirectCall(call);
+      setPendingLaunchAction({ action, kind: isGroup ? 'group' : 'direct' });
+      return;
     }
-    setPendingLaunchAction(action);
-  }, [nav, update]);
+    // A sheet is already up — the socket got there before the tap was read.
+    setPendingLaunchAction({
+      action,
+      kind: groupStatusRef.current !== 'none' ? 'group' : 'direct',
+    });
+  }, [showLaunchedDirectCall, showLaunchedGroupInvite]);
 
   // ── Presence: can this device actually see an incoming call? ───────────────
   useEffect(() => {
@@ -1109,18 +1154,6 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       dispose?.();
     };
   }, [respondToLaunchAction]);
-
-  // Sends the recorded Answer / Decline once the sheet is up and the socket is
-  // connected. Held as state rather than acted on inline because acceptCall()
-  // only works on an 'incoming' call, and on a cold start the socket is often
-  // still connecting when the button press is read.
-  useEffect(() => {
-    if (!pendingLaunchAction || status !== 'incoming' || !socketConnected) return;
-    setPendingLaunchAction(null);
-    if (pendingLaunchAction === 'answer') void acceptCall();
-    else declineCall();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingLaunchAction, status, socketConnected, acceptCall, declineCall]);
 
   const toggleMic = useCallback(() => {
     const stream = streamRef.current;
@@ -1220,6 +1253,36 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     socketRef.current?.emit('group:call:reject', { id: groupIdRef.current });
     endGroupCall();
   }, [endGroupCall]);
+
+  // Sends the recorded Answer / Decline once the right sheet is up and the
+  // socket is connected. Held as state rather than acted on inline because
+  // acceptCall() and agreeGroup() only work on an 'incoming' call, and on a cold
+  // start the socket is often still connecting when the press is read.
+  useEffect(() => {
+    if (!pendingLaunchAction || !socketConnected) return;
+    const { action, kind } = pendingLaunchAction;
+    if (kind === 'group') {
+      if (groupStatus !== 'incoming') return;
+      setPendingLaunchAction(null);
+      if (action === 'answer') void agreeGroup();
+      else declineGroup();
+      return;
+    }
+    if (status !== 'incoming') return;
+    setPendingLaunchAction(null);
+    if (action === 'answer') void acceptCall();
+    else declineCall();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pendingLaunchAction,
+    status,
+    groupStatus,
+    socketConnected,
+    acceptCall,
+    declineCall,
+    agreeGroup,
+    declineGroup,
+  ]);
 
   const leaveGroup = useCallback(() => {
     socketRef.current?.emit('group:call:leave', { id: groupIdRef.current });

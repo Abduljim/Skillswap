@@ -23,10 +23,14 @@ import java.util.Map;
  * full-screen "X is calling you" notification with Answer / Decline actions and
  * the ringtone chosen in Settings → Calls (high / soothe / silent).
  *
- * type=call_cancelled — the caller hung up, or the ring timed out, before this
- * device answered. The notification is FLAG_INSISTENT, so without this the phone
- * would keep ringing for a call that no longer exists; we cancel it and drop the
- * stored call.
+ * type=group_call_incoming — the same, for a group call the user was invited
+ * to. Group invites used to travel over sockets only, so an invitee with the
+ * app closed never heard anything while the host waited on them.
+ *
+ * type=call_cancelled / group_call_cancelled — the call ended before this device
+ * answered (caller hung up, ring timed out, or the group host left). The
+ * notification is FLAG_INSISTENT, so without this the phone would keep ringing
+ * for a call that no longer exists; we cancel it and drop the stored call.
  *
  * Tapping the notification — or Answer — opens the app, which picks the call up
  * through Push.getLaunchedCall(). Answer and Decline also record the choice,
@@ -56,6 +60,10 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
     private static final String KEY_ACTION = "action";
+    /** "direct" (1:1) or "group": a cancel must not silence the other kind. */
+    private static final String KEY_KIND = "kind";
+    private static final String KEY_GROUP = "group_id";
+    private static final String KEY_MEMBER_COUNT = "member_count";
 
     /**
      * Backstop in case a cancel push never arrives (offline, token rotated).
@@ -78,7 +86,25 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
         }
 
         if ("call_cancelled".equals(type)) {
-            cancelRinging(data.get("exchangeId"));
+            cancelRinging("direct", data.get("exchangeId"), KEY_EXCHANGE);
+            return;
+        }
+        if ("group_call_cancelled".equals(type)) {
+            cancelRinging("group", data.get("groupId"), KEY_GROUP);
+            return;
+        }
+        if ("group_call_incoming".equals(type)) {
+            String groupId = data.get("groupId") != null ? data.get("groupId") : "";
+            String hostName = data.get("hostName") != null ? data.get("hostName") : "Someone";
+            String hostId = data.get("hostId") != null ? data.get("hostId") : "";
+            int memberCount = parseInt(data.get("memberCount"), 0);
+            if (groupId.isEmpty()) return;
+            // The host plays the part the caller plays in a 1:1 call, so the
+            // launch state reuses those keys and the web layer reads one shape.
+            storeCall("group", KEY_GROUP, groupId, hostName, hostId,
+                    "1".equals(data.get("video")), memberCount);
+            showIncomingCallNotification(hostName,
+                    groupText(memberCount, "1".equals(data.get("video"))), groupId);
             return;
         }
         if (!"call_incoming".equals(type)) {
@@ -92,39 +118,66 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
         boolean video = "1".equals(data.get("video"));
 
         if (!exchangeId.isEmpty()) {
-            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(KEY_EXCHANGE, exchangeId)
-                    .putString(KEY_CALLER, callerName)
-                    .putString(KEY_CALLER_ID, callerId)
-                    .putBoolean(KEY_VIDEO, video)
-                    .putLong(KEY_TS, System.currentTimeMillis())
-                    // A new call must not inherit the previous tap's answer/decline.
-                    .remove(KEY_ACTION)
-                    .apply();
+            storeCall("direct", KEY_EXCHANGE, exchangeId, callerName, callerId, video, 2);
         }
-        showIncomingCallNotification(exchangeId, callerName, video);
+        showIncomingCallNotification(callerName,
+                video ? "Incoming video call…" : "Incoming call…", exchangeId);
     }
 
-    /** The call this notification is ringing for was cancelled — stop ringing. */
-    private void cancelRinging(String exchangeId) {
+    /**
+     * The call this notification is ringing for was cancelled — stop ringing.
+     *
+     * Matched on kind as well as id, so a late cancel for an old group call
+     * cannot silence a 1:1 ring that arrived after it (or the other way round).
+     * An empty id means "cancel whatever of this kind is ringing".
+     */
+    private void cancelRinging(String kind, String id, String idKey) {
         try {
-            String stored = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_EXCHANGE, "");
-            // An empty id means "cancel whatever is ringing"; otherwise only
-            // cancel if it is still the same call, so a late cancel for an old
-            // call cannot silence a new one.
-            if (exchangeId == null || exchangeId.isEmpty() || exchangeId.equals(stored)) {
-                NotificationManagerCompat.from(this).cancel(CallNotifier.CALL_NOTIFICATION_ID);
-                NotificationManagerCompat.from(this).cancel(LEGACY_NOTIFICATION_ID);
-                getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
-            }
+            android.content.SharedPreferences prefs =
+                    getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (!kind.equals(prefs.getString(KEY_KIND, "direct"))) return;
+            String stored = prefs.getString(idKey, "");
+            if (id != null && !id.isEmpty() && !id.equals(stored)) return;
+            NotificationManagerCompat.from(this).cancel(CallNotifier.CALL_NOTIFICATION_ID);
+            NotificationManagerCompat.from(this).cancel(LEGACY_NOTIFICATION_ID);
+            prefs.edit().clear().apply();
         } catch (Exception ignored) {
             // Nothing to cancel.
         }
     }
 
-    private void showIncomingCallNotification(String exchangeId, String callerName, boolean video) {
+    /** Records what the app should join when the user opens it. */
+    private void storeCall(String kind, String idKey, String id, String name, String nameId,
+                           boolean video, int memberCount) {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_KIND, kind)
+                .putString(idKey, id)
+                .putString(KEY_CALLER, name)
+                .putString(KEY_CALLER_ID, nameId)
+                .putBoolean(KEY_VIDEO, video)
+                .putInt(KEY_MEMBER_COUNT, memberCount)
+                .putLong(KEY_TS, System.currentTimeMillis())
+                // A new call must not inherit the previous tap's answer/decline.
+                .remove(KEY_ACTION)
+                .apply();
+    }
+
+    private static String groupText(int memberCount, boolean video) {
+        String people = memberCount + (memberCount == 1 ? " person" : " people");
+        return (video ? "Group video call · " : "Group call · ") + people;
+    }
+
+    private static int parseInt(String raw, int fallback) {
+        if (raw == null) return fallback;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private void showIncomingCallNotification(String callerName, String text, String exchangeId) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && getApplicationContext().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                         != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -160,7 +213,7 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentTitle(callerName)
-                    .setContentText(video ? "Incoming video call…" : "Incoming call…")
+                    .setContentText(text)
                     .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setOngoing(true)

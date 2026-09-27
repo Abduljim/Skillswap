@@ -13,7 +13,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
  *  - getToken()            → FCM device token, sent to the server
  *  - getLaunchedCall()     → the incoming call that opened the app (from an
  *                            FCM notification tap), so JS can drop the user
- *                            into that conversation
+ *                            into that conversation. kind="group" carries
+ *                            groupId instead of exchangeId
  *  - clearLaunchedCall()   → clear it after handling
  *  - getLaunchAction()     → "answer"/"decline" if the user pressed that button
  *                            on a closed-app call notification (consumed on read)
@@ -27,6 +28,9 @@ public class PushPlugin extends Plugin {
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
     private static final String KEY_ACTION = "action";
+    private static final String KEY_KIND = "kind";
+    private static final String KEY_GROUP = "group_id";
+    private static final String KEY_MEMBER_COUNT = "member_count";
     private static final long FRESH_MS = 5 * 60 * 1000L;
 
     @PluginMethod
@@ -53,6 +57,11 @@ public class PushPlugin extends Plugin {
                 return;
             }
             JSObject ret = new JSObject();
+            // "direct" or "group": a group invite has no exchange to open, and
+            // answering it joins a mesh room instead of a 1:1 peer connection.
+            ret.put("kind", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_KIND, "direct"));
+            ret.put("groupId", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_GROUP, ""));
+            ret.put("memberCount", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_MEMBER_COUNT, 0));
             ret.put("exchangeId", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_EXCHANGE, ""));
             ret.put("callerName", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CALLER, ""));
             ret.put("callerId", c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CALLER_ID, ""));

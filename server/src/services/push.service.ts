@@ -92,6 +92,48 @@ export async function sendIncomingCallPush(
   });
 }
 
+interface GroupCallPush {
+  groupId: string;
+  video: boolean;
+  host: { id: string; displayName: string };
+  memberCount: number;
+}
+
+/**
+ * Ring an invitee whose app cannot show the group call — closed, or alive in
+ * the background. Group invites used to travel over sockets only, so an
+ * invitee in that state never heard anything and the host waited on someone
+ * who had no idea they were being called.
+ */
+export async function sendGroupCallPush(
+  targetUserId: string,
+  data: GroupCallPush
+): Promise<{ sent: number; skipped: boolean }> {
+  return pushToUser(targetUserId, {
+    type: 'group_call_incoming',
+    groupId: String(data.groupId),
+    video: data.video ? '1' : '0',
+    hostId: data.host.id,
+    hostName: data.host.displayName,
+    memberCount: String(data.memberCount),
+  });
+}
+
+/**
+ * Stop a phone ringing for a group call that has ended. Invitees who never
+ * accepted are not in the group room, so `group:call:ended` cannot reach a
+ * closed app — and the notification is insistent, so it would ring on alone.
+ */
+export async function sendGroupCallCancelledPush(
+  targetUserId: string,
+  groupId: string
+): Promise<{ sent: number; skipped: boolean }> {
+  return pushToUser(targetUserId, {
+    type: 'group_call_cancelled',
+    groupId: String(groupId),
+  });
+}
+
 /**
  * Tell a device to stop ringing: the caller hung up, or nobody answered within
  * the ring timeout, before this callee picked up.

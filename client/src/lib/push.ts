@@ -1,9 +1,21 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { api } from './api';
 
+/** What a call notification stored natively before opening the app. */
+export interface LaunchedCall {
+  exchangeId: string;
+  callerName: string;
+  callerId: string;
+  video: boolean;
+  /** 'direct' (1:1) or 'group'. A group invite has no exchange to open. */
+  kind?: 'direct' | 'group';
+  groupId?: string;
+  memberCount?: number;
+}
+
 interface PushPlugin {
   getToken(): Promise<{ token: string }>;
-  getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; callerId: string; video: boolean } | null>;
+  getLaunchedCall(): Promise<LaunchedCall | null>;
   clearLaunchedCall(): Promise<void>;
   getLaunchAction(): Promise<{ action: string }>;
 }
@@ -35,7 +47,7 @@ export async function registerPushToken(): Promise<void> {
  * If the app was opened from an incoming-call notification, return the call so
  * we can drop the user straight into that conversation.
  */
-export async function getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; callerId: string; video: boolean } | null> {
+export async function getLaunchedCall(): Promise<LaunchedCall | null> {
   try {
     if (Capacitor.getPlatform() !== 'android') return null;
     return await Push.getLaunchedCall();

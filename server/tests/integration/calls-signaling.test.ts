@@ -18,17 +18,26 @@ import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import app from '../../src/app';
 import { initSocket } from '../../src/sockets/io';
 import * as callsConfig from '../../src/config/calls';
-import { sendCallCancelledPush, sendIncomingCallPush } from '../../src/services/push.service';
+import {
+  sendCallCancelledPush,
+  sendGroupCallCancelledPush,
+  sendGroupCallPush,
+  sendIncomingCallPush,
+} from '../../src/services/push.service';
 import { api, signup, resetDatabase, createSkill, prisma, type Session } from '../helpers/api';
 
 jest.mock('../../src/services/push.service', () => ({
   sendIncomingCallPush: jest.fn().mockResolvedValue(undefined),
   sendCallCancelledPush: jest.fn().mockResolvedValue(undefined),
+  sendGroupCallPush: jest.fn().mockResolvedValue(undefined),
+  sendGroupCallCancelledPush: jest.fn().mockResolvedValue(undefined),
 }));
 
 // jest.mock above replaces these with spies; the suite must never reach Google.
 const mockIncomingPush = sendIncomingCallPush as jest.Mock;
 const mockCancelledPush = sendCallCancelledPush as jest.Mock;
+const mockGroupPush = sendGroupCallPush as jest.Mock;
+const mockGroupCancelledPush = sendGroupCallCancelledPush as jest.Mock;
 
 const MESSAGE = 'Hi! Want to swap lessons?';
 
@@ -179,6 +188,8 @@ beforeEach(async () => {
   // Call counts are asserted per test, so none may leak from the previous one.
   mockIncomingPush.mockClear();
   mockCancelledPush.mockClear();
+  mockGroupPush.mockClear();
+  mockGroupCancelledPush.mockClear();
   await resetDatabase();
 });
 
@@ -482,6 +493,93 @@ describe('Reaching a callee who cannot see the app', () => {
 
     const log = await waitForCallLog(exchangeId);
     expect(log.outcome).toBe('MISSED');
+  });
+});
+
+describe('Group invites reaching a phone that cannot see the app', () => {
+  /**
+   * A third user with an ACTIVE exchange with the host — group invites are only
+   * allowed for people you already have an exchange with.
+   */
+  async function groupInvitee(host: Session) {
+    const python = await prisma.skill.findFirstOrThrow({ where: { name: 'Python (calls test)' } });
+    const theirs = await createSkill('Yoruba (group push test)');
+    const invitee = await userWithSkills('group-invitee@skillswap.test', 'Chidi Third', [theirs], []);
+    const req = await api()
+      .post('/api/exchange-requests')
+      .set('Cookie', host.cookie)
+      .send({ receiverId: invitee.userId, offeredSkillId: python.id, requestedSkillId: theirs, message: MESSAGE })
+      .expect(expectCreated);
+    await api()
+      .post(`/api/exchange-requests/${req.body.data.id}/accept`)
+      .set('Cookie', invitee.cookie)
+      .expect(expectCreated);
+    return invitee;
+  }
+
+  it('pushes a group invite to a backgrounded member and still rings the socket', async () => {
+    const { caller } = await pairWithExchange();
+    const invitee = await groupInvitee(caller);
+    const host = await connect(caller.token);
+    const member = await connect(invitee.token);
+
+    member.emit('presence:set', { foreground: false });
+    await new Promise((r) => setTimeout(r, 150));
+
+    const ringing = once<{ id: string; memberCount: number }>(member, 'group:call:ringing');
+    host.emit('group:call:start', { memberIds: [invitee.userId], video: false });
+    const started = await once<{ id: string }>(host, 'group:call:started');
+    const ring = await ringing;
+    expect(ring.id).toBe(started.id);
+
+    expect(mockGroupPush).toHaveBeenCalledTimes(1);
+    expect(mockGroupPush.mock.calls[0][0]).toBe(invitee.userId);
+    expect(mockGroupPush.mock.calls[0][1]).toMatchObject({
+      groupId: started.id,
+      video: false,
+      memberCount: 2,
+    });
+
+    host.emit('group:call:leave', { id: started.id });
+    await new Promise((r) => setTimeout(r, 250));
+  });
+
+  it('does not push a group invite to a member who is present', async () => {
+    const { caller } = await pairWithExchange();
+    const invitee = await groupInvitee(caller);
+    const host = await connect(caller.token);
+    const member = await connect(invitee.token);
+
+    const ringing = once<{ id: string }>(member, 'group:call:ringing');
+    host.emit('group:call:start', { memberIds: [invitee.userId], video: true });
+    const started = await once<{ id: string }>(host, 'group:call:started');
+    await ringing;
+
+    expect(mockGroupPush).not.toHaveBeenCalled();
+
+    host.emit('group:call:leave', { id: started.id });
+    await new Promise((r) => setTimeout(r, 250));
+  });
+
+  it('silences an absent invitee when the host ends the group call', async () => {
+    const { caller } = await pairWithExchange();
+    const invitee = await groupInvitee(caller);
+    const host = await connect(caller.token);
+    // The invitee never connects: app fully closed, so a push is the only way in.
+
+    host.emit('group:call:start', { memberIds: [invitee.userId], video: true });
+    const started = await once<{ id: string }>(host, 'group:call:started');
+    await new Promise((r) => setTimeout(r, 250));
+    expect(mockGroupPush).toHaveBeenCalledTimes(1);
+
+    // The host gives up and leaves. The invitee is not in the group room, so
+    // group:call:ended cannot reach a closed app — the phone has to be told.
+    host.emit('group:call:leave', { id: started.id });
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(mockGroupCancelledPush).toHaveBeenCalledTimes(1);
+    expect(mockGroupCancelledPush.mock.calls[0][0]).toBe(invitee.userId);
+    expect(mockGroupCancelledPush.mock.calls[0][1]).toBe(started.id);
   });
 });
 
