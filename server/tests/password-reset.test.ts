@@ -289,3 +289,63 @@ it('keeps SMTP cleanup errors out of responses and the public log', async () => 
   expect(close).toHaveBeenCalledTimes(1);
   expect(jest.getTimerCount()).toBe(0);
 });
+
+describe('reset link base', () => {
+  /** The plain-text body of the email that actually went out. */
+  function sentLink(): string {
+    const sent = sendMail.mock.calls.at(-1)?.[0];
+    expect(sent).toBeTruthy();
+    return sent.text as string;
+  }
+
+  function withEnv(over: Record<string, string>, run: () => Promise<void>) {
+    const saved: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(over)) {
+      saved[k] = (env as unknown as Record<string, string | undefined>)[k];
+      (env as unknown as Record<string, string>)[k] = v;
+    }
+    return run().finally(() => {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete (env as unknown as Record<string, string | undefined>)[k];
+        else (env as unknown as Record<string, string>)[k] = v;
+      }
+    });
+  }
+
+  it('uses the request origin when CLIENT_URL is a CORS wildcard', async () => {
+    await withEnv({ CLIENT_URL: '*', SERVER_URL: 'http://localhost:4000', RESET_URL: '' }, async () => {
+      await requestPasswordReset(email, 'https://skillswap-api-dcg8.onrender.com');
+      const link = sentLink();
+      expect(link).toContain('https://skillswap-api-dcg8.onrender.com/reset-password?token=');
+      // A wildcard is not a clickable base — this was the bug.
+      expect(link).not.toContain('*');
+      expect(link).not.toContain('localhost');
+      const html = sendMail.mock.calls.at(-1)?.[0].html as string;
+      expect(html).toContain('https://skillswap-api-dcg8.onrender.com/reset-password?token=');
+    });
+  });
+
+  it('falls back to SERVER_URL when there is no request origin either', async () => {
+    await withEnv({ CLIENT_URL: '*', SERVER_URL: 'https://api.example.test', RESET_URL: '' }, async () => {
+      await requestPasswordReset(email);
+      expect(sentLink()).toContain('https://api.example.test/reset-password?token=');
+    });
+  });
+
+  it('still prefers an explicit RESET_URL over everything', async () => {
+    await withEnv(
+      { CLIENT_URL: 'https://ignored.example.test', SERVER_URL: 'https://api.example.test', RESET_URL: 'https://app.example.test/reset-password' },
+      async () => {
+        await requestPasswordReset(email, 'https://origin.example.test');
+        expect(sentLink()).toContain('https://app.example.test/reset-password?token=');
+      }
+    );
+  });
+
+  it('keeps using a real CLIENT_URL when one is configured', async () => {
+    await withEnv({ CLIENT_URL: 'https://example.test', SERVER_URL: 'https://api.example.test', RESET_URL: '' }, async () => {
+      await requestPasswordReset(email, 'https://origin.example.test');
+      expect(sentLink()).toContain('https://example.test/reset-password?token=');
+    });
+  });
+});

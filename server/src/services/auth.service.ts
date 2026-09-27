@@ -128,7 +128,25 @@ export async function getMe(userId: string) {
   };
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
+/**
+ * Base for the password-reset link when RESET_URL is not set.
+ *
+ * CLIENT_URL is not used directly: that variable doubles as the CORS allow-list,
+ * where '*' is a deliberate and safe value, but '*' is not something anyone can
+ * click. A reset email whose link begins with that asterisk is still delivered
+ * and still logs nothing wrong; it simply cannot be used, which is the worst kind
+ * of failure for someone who is locked out. So: a real CLIENT_URL if there is one, otherwise the origin
+ * the request arrived on (trust proxy is set, so behind Render that is the public
+ * https origin), and only then SERVER_URL, which defaults to localhost.
+ */
+function resetLinkBase(originHint?: string): string {
+  const client = (env.CLIENT_URL || '').trim();
+  if (client && !client.includes('*')) return client;
+  if (originHint) return originHint;
+  return env.SERVER_URL || '';
+}
+
+export async function requestPasswordReset(email: string, originHint?: string): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
     select: { id: true, email: true },
@@ -146,7 +164,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
 
   const resetUrl = env.RESET_URL
     ? `${env.RESET_URL.replace(/\/$/, '')}?token=${raw}`
-    : `${env.CLIENT_URL.replace(/\/$/, '')}/reset-password?token=${raw}`;
+    : `${resetLinkBase(originHint).replace(/\/$/, '')}/reset-password?token=${raw}`;
 
   await sendPasswordResetEmail(user.email, resetUrl).catch(() => undefined);
 }

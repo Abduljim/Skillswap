@@ -46,6 +46,12 @@ services:
       # List real domains comma-separated if the client is ever hosted separately.
       - key: CLIENT_URL
         value: '*'
+      # This service's own public origin. CLIENT_URL above is '*' because it also
+      # feeds the CORS allow-list, and a wildcard there is safe — but it cannot be
+      # used to build links. SERVER_URL is the fallback base for password-reset
+      # links and must be a real URL, not the localhost default.
+      - key: SERVER_URL
+        value: 'https://skillswap-api-dcg8.onrender.com'
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX

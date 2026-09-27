@@ -60,7 +60,11 @@ router.post(
   '/forgot-password',
   validate(forgotPasswordSchema),
   asyncHandler(async (req, res) => {
-    await authService.requestPasswordReset(req.body.email).catch(() => undefined);
+    // The origin this request arrived on, used only as a fallback base for the
+    // reset link when neither RESET_URL nor a usable CLIENT_URL is configured.
+    const host = req.get('host');
+    const origin = host ? `${req.protocol}://${host}` : undefined;
+    await authService.requestPasswordReset(req.body.email, origin).catch(() => undefined);
     ok(res, { message: 'If an account exists for that email, you will receive a password reset link.' });
   })
 );
