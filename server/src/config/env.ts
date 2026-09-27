@@ -41,7 +41,7 @@ export const env = {
   // Videos cannot live in Postgres: Render's free database is 512 MB *and* is
   // deleted 90 days after creation, so a clip stored there has a hard expiry
   // date. The service-role key stays on the server — the client only ever
-  // receives a single-use signed upload URL and POSTs bytes straight to
+  // receives a single-use signed upload URL and PUTs bytes straight to
   // storage, so large blobs never transit this API. Leave both empty and the
   // media endpoints answer 503 MEDIA_NOT_CONFIGURED while text chat and legacy
   // inline photos keep working. Setup: docs/MEDIA.md
@@ -55,17 +55,6 @@ export const env = {
    */
   SUPABASE_SERVICE_ROLE_KEY:
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
-  /**
-   * The *publishable* key (legacy name: anon). Storage's gateway requires a real
-   * API key on the upload request itself — the single-use upload token is not a
-   * JWT it can decode, so sending only that fails with 403 "Invalid Compact
-   * JWS". This key is designed to ship inside browsers and mobile apps (it maps
-   * to the `anon` Postgres role and cannot bypass Row Level Security), and it is
-   * handed to the client only alongside a single-use upload token for one
-   * specific object path, so on its own it grants nothing.
-   */
-  SUPABASE_PUBLISHABLE_KEY:
-    process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',
   SUPABASE_MEDIA_BUCKET: process.env.SUPABASE_MEDIA_BUCKET || 'skillswap-media',
 
   // ── TURN relay for calls ────────────────────────────────────────────────

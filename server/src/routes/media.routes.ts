@@ -77,12 +77,15 @@ router.post(
       kind,
       path,
       uploadUrl,
-      method: 'POST',
+      // PUT, not POST — see uploadMethod for what POST silently does instead.
+      // The client obeys this value, which is why the verb could be corrected
+      // without shipping a new APK.
+      method: storage.uploadMethod,
       // Sent back so the client never has to know the project URL or bucket.
       publicUrl: storage.publicUrlFor(path),
       maxBytes: storage.maxBytesFor(kind),
-      // Exactly what the WebView must send with the bytes — see
-      // clientUploadHeaders for why the publishable key belongs in there.
+      // Exactly what the WebView must send with the bytes. No API key: the
+      // single-use token in the URL is the whole authorisation.
       headers: storage.clientUploadHeaders(contentType),
     });
   })

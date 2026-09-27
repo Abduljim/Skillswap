@@ -63,7 +63,7 @@ const EXT_BY_TYPE: Record<string, string> = {
  * failing halfway through a send.
  */
 export function storageConfigured(): boolean {
-  return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_PUBLISHABLE_KEY);
+  return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 /** Which required variables are absent — surfaced by GET /api/media/status so a
@@ -72,32 +72,48 @@ export function missingStorageConfig(): string[] {
   const missing: string[] = [];
   if (!env.SUPABASE_URL) missing.push('SUPABASE_URL');
   if (!env.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-  if (!env.SUPABASE_PUBLISHABLE_KEY) missing.push('SUPABASE_PUBLISHABLE_KEY');
   return missing;
 }
 
 /**
- * Headers the CLIENT must send when POSTing bytes to the signed upload URL.
+ * Headers the CLIENT must send when PUTting bytes to the signed upload URL.
  *
- * Storage's gateway authenticates every request with a real API key and treats
- * `Authorization: Bearer` as a JWT to decode. The one-time upload token is not a
- * JWT, so on its own the upload dies with 403 "Invalid Compact JWS" — verified
- * against production, where the token in Authorization, the token in apikey, an
- * empty Bearer and `Bearer anonymous` were all rejected the same way. The
- * publishable key satisfies the gateway, while the token in the query string is
- * what actually authorises the write to that one path; that split is why this
- * key is safe to hand to a phone.
+ * No API key of any kind. The single-use token in the URL is the whole
+ * authorisation: it names exactly one object path and expires in two hours, and
+ * storage performs the write as the unprivileged `anon` role — which is why the
+ * bucket needs the INSERT policy from supabase-setup.sql. Verified against
+ * production: a PUT carrying only these two headers stores the object, and the
+ * public URL then returns the bytes identically.
+ *
+ * Do not add a publishable/anon key here. It looks necessary and is not: the
+ * `403 Invalid Compact JWS` that seemed to demand one came from sending POST,
+ * which storage routes to *create a signed upload URL* — an endpoint that does
+ * require an API key. See uploadMethod.
  */
 export function clientUploadHeaders(contentType: string): Record<string, string> {
-  const type = contentType.split(';')[0].trim().toLowerCase();
-  const key = env.SUPABASE_PUBLISHABLE_KEY;
   return {
-    'Content-Type': type,
-    'x-upsert': 'true',
-    apikey: key,
-    Authorization: `Bearer ${key}`,
+    'Content-Type': contentType.split(';')[0].trim().toLowerCase(),
+    // Matches the token, which is minted with upsert:false. Every upload gets a
+    // fresh server-generated UUID path, so there is never anything to overwrite,
+    // and an upsert would additionally need an UPDATE policy on storage.objects.
+    'x-upsert': 'false',
   };
 }
+
+/**
+ * The verb the client must use for the upload leg: PUT, not POST.
+ *
+ * On the signed-upload route storage reads POST as "mint me a signed URL" and
+ * PUT as "here are the bytes" — and answers 200 to both. A POST therefore looks
+ * like a successful upload, returns a token, and leaves the bucket empty; the
+ * failure only surfaces later as "That upload did not arrive". Confirmed against
+ * production, where the same token and headers stored the object under PUT and
+ * stored nothing under POST.
+ *
+ * The client takes this from the /sign response, so correcting the verb is a
+ * server-only change and needs no new APK.
+ */
+export const uploadMethod = 'PUT';
 
 export function bucketName(): string {
   return env.SUPABASE_MEDIA_BUCKET || 'skillswap-media';
@@ -209,7 +225,14 @@ export async function createSignedUploadUrl(path: string, contentType: string): 
   if (!data.url || !data.token) {
     throw new HttpError(502, 'MEDIA_UPLOAD_SIGN_FAILED', 'The storage host returned an unusable upload token.');
   }
-  return `${storageBase()}${data.url}?token=${encodeURIComponent(data.token)}`;
+  // `url` already carries `?token=...` on current Storage versions. Appending
+  // the token a second time produced a URL with two of them; HTTP splits the
+  // query at the first `?`, so storage received a corrupt token and answered as
+  // though none had been sent. Append only when it is genuinely absent.
+  const absolute = `${storageBase()}${data.url}`;
+  return absolute.includes('token=')
+    ? absolute
+    : `${absolute}${absolute.includes('?') ? '&' : '?'}token=${encodeURIComponent(data.token)}`;
 }
 
 /**

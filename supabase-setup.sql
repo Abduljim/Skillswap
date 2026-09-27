@@ -45,8 +45,9 @@
 -- A secret key (sb_secret_…) must be sent on BOTH apikey and Authorization:
 -- the gateway JWT-decodes Authorization: Bearer and a new-style secret key is
 -- not a JWT, so sending it only in the bearer header fails with
--- 403 "Invalid Compact JWS". The publishable key (sb_publishable_…) is a
--- different, browser-safe key — see docs/MEDIA.md step 3.
+-- 403 "Invalid Compact JWS". This applies to server-side calls only — the
+-- upload leg from the phone needs no API key at all, because the single-use
+-- token in the signed URL is the whole authorisation. See docs/MEDIA.md step 3.
 --
 -- Public only controls READS. Objects stay readable at
 --   https://<ref>.supabase.co/storage/v1/object/public/skillswap-media/<path>

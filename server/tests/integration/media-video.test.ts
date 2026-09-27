@@ -119,18 +119,15 @@ function stubFetch(handler: FetchHandler): () => void {
  * `without` names a variable to leave unset, which is how the half-configured
  * cases are exercised.
  */
-function configuredApp(without?: 'publishable' | 'secret' | 'url') {
+function configuredApp(without?: 'secret' | 'url') {
   const saved = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_MEDIA_BUCKET,
-    publishable: process.env.SUPABASE_PUBLISHABLE_KEY,
   };
   process.env.SUPABASE_URL = SUPABASE_URL;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'fake-service-role-key';
   process.env.SUPABASE_MEDIA_BUCKET = BUCKET;
-  process.env.SUPABASE_PUBLISHABLE_KEY = 'fake-publishable-key';
-  if (without === 'publishable') delete process.env.SUPABASE_PUBLISHABLE_KEY;
   if (without === 'secret') delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (without === 'url') delete process.env.SUPABASE_URL;
 
@@ -145,7 +142,6 @@ function configuredApp(without?: 'publishable' | 'secret' | 'url') {
     SUPABASE_URL: saved.url,
     SUPABASE_SERVICE_ROLE_KEY: saved.key,
     SUPABASE_MEDIA_BUCKET: saved.bucket,
-    SUPABASE_PUBLISHABLE_KEY: saved.publishable,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -160,26 +156,9 @@ describe('Media hosting status', () => {
 
     expect(res.body.data.configured).toBe(false);
     // Names what is absent, so a half-finished setup is diagnosable with one curl.
-    expect(res.body.data.missing).toEqual([
-      'SUPABASE_URL',
-      'SUPABASE_SERVICE_ROLE_KEY',
-      'SUPABASE_PUBLISHABLE_KEY',
-    ]);
+    expect(res.body.data.missing).toEqual(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
     expect(res.body.data.maxVideoBytes).toBe(MAX_VIDEO_BYTES);
     expect(res.body.data.maxVideoMs).toBe(MAX_VIDEO_MS);
-  });
-
-  it('treats a missing publishable key as unconfigured and says so', async () => {
-    const session = await signup('partial@skillswap.test', 'Partial Config');
-    const res = await request(configuredApp('publishable'))
-      .get('/api/media/status')
-      .set('Cookie', session.cookie)
-      .expect(200);
-
-    // Two of three keys present is still "cannot send video" — and the app must
-    // be told that before the user records something it cannot store.
-    expect(res.body.data.configured).toBe(false);
-    expect(res.body.data.missing).toEqual(['SUPABASE_PUBLISHABLE_KEY']);
   });
 
   it('refuses to sign or confirm uploads while unconfigured (503, not 500)', async () => {
@@ -229,18 +208,45 @@ describe('Signing uploads (storage configured)', () => {
       // The client never chooses the path — that is what keeps traversal out.
       expect(data.path).toMatch(/^video\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\.mp4$/);
       expect(data.uploadUrl).toContain('token=signed-token-123');
+      // Storage sometimes returns a bare path, so the token is appended here —
+      // exactly once. See the next test for the shape production actually sends.
+      expect(data.uploadUrl.split('token=').length - 1).toBe(1);
       expect(data.publicUrl).toBe(`${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${data.path}`);
       expect(data.maxBytes).toBe(MAX_VIDEO_BYTES);
-      expect(data.method).toBe('POST');
-      // The WebView must present a real API key with the bytes: Storage's gateway
-      // JWT-decodes Authorization and the one-time upload token is not a JWT, so
-      // without the publishable key the upload fails with "Invalid Compact JWS".
-      expect(data.headers.apikey).toBe('fake-publishable-key');
-      expect(data.headers.Authorization).toBe('Bearer fake-publishable-key');
-      expect(data.headers['Content-Type']).toBe('video/mp4');
-      expect(data.headers['x-upsert']).toBe('true');
+      // PUT stores the bytes; POST asks storage to mint another signed URL and
+      // answers 200 while storing nothing. This verb is the whole fix.
+      expect(data.method).toBe('PUT');
+      // No key material reaches the phone. The single-use token in the URL is the
+      // entire authorisation, and storage writes as the unprivileged anon role.
+      expect(data.headers).toEqual({ 'Content-Type': 'video/mp4', 'x-upsert': 'false' });
+      expect(data.headers.apikey).toBeUndefined();
+      expect(data.headers.Authorization).toBeUndefined();
       // The secret key must never be handed to a client.
       expect(JSON.stringify(data)).not.toContain('fake-service-role-key');
+    } finally {
+      restore();
+    }
+  });
+
+  it('does not append the token twice when storage already included it', async () => {
+    // The shape production actually returns: `url` already carries ?token=.
+    // Appending a second one made HTTP treat everything after the first `?` as
+    // the query, so storage saw a corrupt token, answered 200 with a fresh
+    // signed URL, and stored nothing — the bucket stayed empty and /confirm
+    // reported "That upload did not arrive".
+    const signedPath = `/object/upload/sign/${BUCKET}/video/y.mp4?token=real-token-abc`;
+    const restore = stubFetch(() => ({ status: 200, body: { url: signedPath, token: 'real-token-abc' } }));
+    try {
+      const session = await signup('signtwice@skillswap.test', 'Sign Twice');
+      const res = await request(configuredApp())
+        .post('/api/media/sign')
+        .set('Cookie', session.cookie)
+        .send({ kind: 'video', contentType: 'video/mp4', bytes: 1_000 })
+        .expect(200);
+
+      expect(res.body.data.uploadUrl).toBe(`${SUPABASE_URL}/storage/v1${signedPath}`);
+      expect(res.body.data.uploadUrl.split('token=').length - 1).toBe(1);
+      expect(res.body.data.method).toBe('PUT');
     } finally {
       restore();
     }

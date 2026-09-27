@@ -90,7 +90,7 @@ further; enable them once video messages are confirmed working, so a failure
 during setup has only one possible cause.
 
 
-### 3. Copy the three values
+### 3. Copy the two values
 
 1. Left sidebar → **Project Settings** (the gear) → **API Keys**.
    You will see two tabs:
@@ -113,22 +113,14 @@ during setup has only one possible cause.
    If your project is old enough to only offer the legacy tab, copy the
    `service_role` JWT instead — the server sends both an `apikey` and an
    `Authorization` header, so either key format works.
-4. On the **same tab**, find the key labelled **Publishable** — it starts with
-   `sb_publishable_` — click **Reveal** then **Copy**.
-   → that value is `SUPABASE_PUBLISHABLE_KEY`
+4. Nothing else is needed from this page. In particular, **do not** add the
+   Publishable (`sb_publishable_...`) key: the upload leg is authorised entirely
+   by the single-use token in the signed URL, so no API key of any kind travels
+   to the phone. An earlier version of this guide asked for it, because a bug in
+   the upload verb made Supabase answer as if no token had been sent — see
+   *"Upload succeeds but the video never arrives"* below.
 
-   Yes, this one goes to the phone, and that is by design. Supabase's own
-   documentation lists the publishable key as *"safe to expose online: web page,
-   mobile or desktop app"* — it maps to the unprivileged `anon` Postgres role and
-   cannot bypass Row Level Security. It is needed because Storage's gateway
-   authenticates **every** request with a real API key, including the upload
-   itself: the one-time upload token is not a JWT the gateway can decode, so
-   without the publishable key the upload is rejected with
-   `403 "Invalid Compact JWS"` even though the token is valid. The token is still
-   what authorises the write, and only to that one object path, so the publishable
-   key on its own can write nothing.
-
-   All three values are required. `GET /api/media/status` reports
+   Both values are required. `GET /api/media/status` reports
    `"configured": false` plus a `missing` list naming any that are absent, so a
    half-finished setup tells you exactly which one you forgot.
 
@@ -151,7 +143,6 @@ during setup has only one possible cause.
    |---|---|
    | `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the **Secret** key from step 3 (`sb_secret_...`) |
-   | `SUPABASE_PUBLISHABLE_KEY` | the **Publishable** key from step 3 (`sb_publishable_...`) |
    | `SUPABASE_MEDIA_BUCKET` | `skillswap-media` (optional — this is the default) |
 
 3. **Save changes**, then **Manual deploy → Deploy latest commit**.
@@ -262,7 +253,8 @@ Old photos already stored inline keep rendering exactly as before.
 | `502 … The storage bucket "skillswap-media" was not found` | Bucket missing, misnamed, or private | Step 2 — name and **Public bucket** ON |
 | `502 … Supabase refused the storage key` (401/403 underneath) | Wrong key: the **Publishable** key instead of **Secret**, or a key from a different project | Step 3 — copy the `sb_secret_...` key for THIS project |
 | `Invalid Compact JWS` on **`/api/media/sign`** (server leg) | The secret key reached Supabase only in `Authorization: Bearer`, which the gateway tries to JWT-decode; an opaque `sb_secret_` key is not a JWT | Fixed — `supabase.service.ts` sends the key on `apikey` **and** `Authorization` |
-| `Invalid Compact JWS` on the **upload itself** (client leg) | `SUPABASE_PUBLISHABLE_KEY` is empty, so the phone had no API key to present with the bytes | Step 3.4 — add the Publishable key. `/api/media/status` will list it under `missing` |
+| Upload returns **200** but the video never arrives, and `/confirm` says *"That upload did not arrive"* | The bytes were sent with **POST**. On the signed-upload route storage reads POST as "mint me another signed URL" — it answers 200 with a token and stores nothing | Fixed — `/api/media/sign` returns `method: "PUT"` and the app obeys it. No APK rebuild needed |
+| `Invalid Compact JWS` on the **upload itself** (client leg) | The upload URL carried two `?token=` segments, so storage saw a corrupt token and fell back to the create-signed-URL endpoint, which does require an API key | Fixed — the URL now carries one token, and no API key is sent with the bytes |
 | `403 … new row violates row-level security policy` on the upload | `storage.objects` has no policies — a public bucket still needs them for writes | Step 2b: run **PART 2** of `supabase-setup.sql` in the SQL Editor |
 | `400 That file is 71.0 MB. The limit is 64 MB.` | Clip too big | Record at Standard, or trim the clip |
 | Upload stalls then fails | Weak signal on a big HD clip | Standard quality; the app allows 10 minutes for an upload |
