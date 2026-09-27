@@ -180,6 +180,37 @@ afterAll(async () => {
 });
 
 describe('1:1 call signalling', () => {
+  it('delivers each call event exactly once to a peer who has the chat open', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+
+    // Both have the chat open, so each socket is in the exchange room AND its own
+    // user room. Emitting to those rooms separately delivered one call as two
+    // ring events, two accepts and two ends — observed against production.
+    a.emit('exchange:join', exchangeId);
+    b.emit('exchange:join', exchangeId);
+    await new Promise((r) => setTimeout(r, 200));
+
+    const seen: Record<string, unknown[]> = { ringing: [], accepted: [], ended: [] };
+    b.on('call:ringing', (p) => seen.ringing.push(p));
+    a.on('call:accepted', (p) => seen.accepted.push(p));
+    a.on('call:ended', (p) => seen.ended.push(p));
+
+    a.emit('call:request', { exchangeId, video: false });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(seen.ringing).toHaveLength(1);
+    expect((seen.ringing[0] as { exchangeId: string }).exchangeId).toBe(exchangeId);
+
+    b.emit('call:accept', { exchangeId });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(seen.accepted).toHaveLength(1);
+
+    b.emit('call:hangup', { exchangeId });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(seen.ended).toHaveLength(1);
+  });
+
   it('connects a call when the caller does NOT have the chat open', async () => {
     const { caller, callee, exchangeId } = await pairWithExchange();
     const a = await connect(caller.token);

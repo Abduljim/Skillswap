@@ -95,6 +95,22 @@ async function counterpartOfCall(exchangeId: string, userId: string): Promise<st
 }
 
 /**
+ * The rooms that reach the other participant exactly once.
+ *
+ * A call event has to arrive whether or not the peer has the chat open: the
+ * exchange room only exists while that screen is mounted, whereas every socket
+ * is always in its own `user:<id>` room. Emitting to the two rooms separately
+ * delivered every event twice to anyone on the chat screen, because they are in
+ * both. Socket.IO dedupes sockets across a room array, so a single emit to both
+ * keeps the reach and drops the duplicate.
+ */
+function peerRooms(exchangeId: string, other: string | null, self: string): string[] {
+  const rooms = [`exchange:${exchangeId}`];
+  if (other && other !== self) rooms.push(`user:${other}`);
+  return rooms;
+}
+
+/**
  * Ends every call a user was in when their socket dropped and tells the other
  * participants, so nobody is left staring at a frozen call screen.
  */
@@ -103,8 +119,7 @@ async function cleanupCallsForUser(userId: string) {
     if (call.callerId !== userId && call.calleeId !== userId) continue;
     const other = call.callerId === userId ? call.calleeId : call.callerId;
     const payload = { exchangeId, endedBy: userId, reason: 'disconnect' };
-    io?.to(`exchange:${exchangeId}`).emit('call:ended', payload);
-    io?.to(`user:${other}`).emit('call:ended', payload);
+    io?.to(peerRooms(exchangeId, other, userId)).emit('call:ended', payload);
     await persistCallLog(exchangeId, userId, 'COMPLETED');
   }
 
@@ -259,8 +274,7 @@ export function initSocket(httpServer: HTTPServer) {
           avatarFrame: caller?.profile?.avatarFrame ?? null,
         };
         const payload = { exchangeId: data.exchangeId, video: !!data.video, caller: callerPayload };
-        io!.to(`exchange:${data.exchangeId}`).emit('call:ringing', payload);
-        io!.to(`user:${targetUserId}`).emit('call:ringing', payload);
+        io!.to(peerRooms(data.exchangeId, targetUserId, userId)).emit('call:ringing', payload);
         // Callee isn't running the app — ring their phone via FCM so they still
         // get told "someone is calling" even with the app fully closed.
         if (!connectedUsers.has(targetUserId)) {
@@ -277,25 +291,22 @@ export function initSocket(httpServer: HTTPServer) {
 
     socket.on('call:accept', async (data: { exchangeId: string }) => {
       const payload = { exchangeId: data.exchangeId, acceptorId: userId };
-      socket.to(`exchange:${data.exchangeId}`).emit('call:accepted', payload);
       const caller = await counterpartOfCall(data.exchangeId, userId);
-      if (caller && caller !== userId) io!.to(`user:${caller}`).emit('call:accepted', payload);
+      socket.to(peerRooms(data.exchangeId, caller, userId)).emit('call:accepted', payload);
     });
 
     socket.on('call:reject', async (data: { exchangeId: string }) => {
       const payload = { exchangeId: data.exchangeId, rejectorId: userId };
-      socket.to(`exchange:${data.exchangeId}`).emit('call:rejected', payload);
       // Resolve the counterpart before persistCallLog() clears the call map.
       const other = await counterpartOfCall(data.exchangeId, userId);
-      if (other && other !== userId) io!.to(`user:${other}`).emit('call:rejected', payload);
+      socket.to(peerRooms(data.exchangeId, other, userId)).emit('call:rejected', payload);
       await persistCallLog(data.exchangeId, userId, 'DECLINED');
     });
 
     socket.on('call:hangup', async (data: { exchangeId: string }) => {
       const payload = { exchangeId: data.exchangeId, endedBy: userId };
-      socket.to(`exchange:${data.exchangeId}`).emit('call:ended', payload);
       const other = await counterpartOfCall(data.exchangeId, userId);
-      if (other && other !== userId) io!.to(`user:${other}`).emit('call:ended', payload);
+      socket.to(peerRooms(data.exchangeId, other, userId)).emit('call:ended', payload);
       await persistCallLog(data.exchangeId, userId, 'COMPLETED');
     });
 
