@@ -650,9 +650,22 @@ export default function ChatTab({
                     key: 'record',
                     label: 'Record video',
                     icon: <VideoIcon className="w-5 h-5" />,
+                    // Checked BEFORE the camera opens: recording a clip only to
+                    // be told at the end that the server cannot store it wastes
+                    // the user's minute and their data.
                     run: () => {
-                      setEmojiOpen(false);
-                      setRecorderOpen(true);
+                      void (async () => {
+                        setEmojiOpen(false);
+                        setMediaError(null);
+                        const status = await mediaStatus().catch(() => null);
+                        if (status && !status.configured) {
+                          setMediaError(
+                            'Video sending is not switched on for this server yet. Add the Supabase keys (docs/MEDIA.md) to enable it.'
+                          );
+                          return;
+                        }
+                        setRecorderOpen(true);
+                      })();
                     },
                   },
                   {
