@@ -99,6 +99,101 @@ export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean
   }
 }
 
+/**
+ * Live check for GET /api/admin/diagnostics.
+ *
+ * `transporter.verify()` performs a real SMTP handshake and AUTH. That is the
+ * only way to prove these credentials work: createTransport() accepts nonsense
+ * and stays silent until something is actually sent, which for a password reset
+ * means the failure surfaces to a locked-out user instead of to you. Returns no
+ * password.
+ */
+export async function emailDiagnostics(): Promise<{
+  provider: 'resend' | 'smtp' | 'none';
+  smtp: {
+    configured: boolean;
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    from: string;
+    verify: 'ok' | 'failed' | 'not_attempted';
+    error: string | null;
+  };
+  resend: {
+    configured: boolean;
+    from: string;
+    keyCheck: 'ok' | 'failed' | 'not_attempted';
+    error: string | null;
+  };
+}> {
+  const smtp = {
+    configured: isSmtpConfigured(),
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_PORT === 465,
+    user: env.SMTP_USER,
+    from: env.SMTP_FROM,
+    verify: 'not_attempted' as 'ok' | 'failed' | 'not_attempted',
+    error: null as string | null,
+  };
+  const resend = {
+    configured: Boolean(env.RESEND_API_KEY),
+    from: env.EMAIL_FROM || 'SkillSwap <onboarding@resend.dev>',
+    keyCheck: 'not_attempted' as 'ok' | 'failed' | 'not_attempted',
+    error: null as string | null,
+  };
+
+  if (smtp.configured) {
+    let transporter: ReturnType<typeof nodemailer.createTransport> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      transporter = nodemailer.createTransport({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        secure: env.SMTP_PORT === 465,
+        auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
+      });
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('SMTP verify timed out after 15s')), 15_000);
+      });
+      await Promise.race([transporter.verify(), timeout]);
+      smtp.verify = 'ok';
+    } catch (e) {
+      const err = e as Error;
+      smtp.verify = 'failed';
+      // Strip URLs so a credential embedded in an error string cannot leak.
+      smtp.error = `${err?.name || 'Error'}: ${String(err?.message ?? e)
+        .replace(/https?:\/\/\S+/gi, '[url]')
+        .slice(0, 200)}`;
+    } finally {
+      clearTimeout(timer);
+      try {
+        transporter?.close();
+      } catch {}
+    }
+  }
+
+  if (resend.configured) {
+    try {
+      const res = await fetch('https://api.resend.com/domains', {
+        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+      });
+      resend.keyCheck = res.ok ? 'ok' : 'failed';
+      if (!res.ok) resend.error = `HTTP ${res.status}`;
+    } catch (e) {
+      resend.keyCheck = 'failed';
+      resend.error = String((e as Error).message).slice(0, 120);
+    }
+  }
+
+  const provider = resend.configured ? 'resend' : smtp.configured ? 'smtp' : 'none';
+  return { provider, smtp, resend };
+}
+
 export function sendPasswordResetEmail(to: string, resetUrl: string) {
   return sendEmail({
     to,

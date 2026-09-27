@@ -1,4 +1,8 @@
 import { prisma } from '../lib/prisma';
+import { env, playVerificationEnabled } from '../config/env';
+import { fcmDiagnostics } from './fcm.service';
+import { emailDiagnostics } from './email.service';
+import { storageConfigured, missingStorageConfig } from './supabase.service';
 
 export async function getStats() {
   const [
@@ -129,4 +133,61 @@ export async function updateReport(
       resolvedAt: input.status === 'RESOLVED' || input.status === 'DISMISSED' ? new Date() : null,
     },
   });
+}
+
+/**
+ * Live health of every external integration, for GET /api/admin/diagnostics.
+ *
+ * Each check contacts the real service rather than reporting whether an
+ * environment variable is non-empty: a pasted key that is truncated, from the
+ * wrong project, or stripped of its newlines by a dashboard looks perfectly
+ * "configured" and then fails silently at 2am. Values are redacted — this
+ * response is meant to be safe to paste into a chat or an issue.
+ */
+export async function getDiagnostics() {
+  const [push, email, deviceTokens, users, messages, exchanges] = await Promise.all([
+    fcmDiagnostics(),
+    emailDiagnostics(),
+    prisma.pushToken.count(),
+    prisma.user.count(),
+    prisma.message.count(),
+    prisma.exchange.count(),
+  ]);
+
+  let supabaseHost = '';
+  try {
+    supabaseHost = env.SUPABASE_URL ? new URL(env.SUPABASE_URL).host : '';
+  } catch {
+    supabaseHost = 'SUPABASE_URL is not a valid URL';
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    push: {
+      ...push,
+      deviceTokens,
+      legacyServerKeySet: Boolean(env.FCM_SERVER_KEY),
+      hint:
+        push.oauth === 'ok' && deviceTokens === 0
+          ? 'Credentials work, but no device has registered a token yet. Install the app, sign in, then send that account a message.'
+          : push.oauth === 'ok'
+            ? 'Credentials work and devices are registered.'
+            : 'Fix the credential problem in "error" before expecting any notification.',
+    },
+    email,
+    media: {
+      configured: storageConfigured(),
+      missing: missingStorageConfig(),
+      bucket: env.SUPABASE_MEDIA_BUCKET,
+      supabaseHost,
+    },
+    billing: {
+      playVerificationEnabled,
+      playServiceAccountSet: Boolean(env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON),
+      hint: playVerificationEnabled
+        ? 'Android Pro purchases are verified against Google Play.'
+        : 'PLAY_BILLING_VERIFY is not "true", so the server rejects every Android Pro purchase. Revenue is off.',
+    },
+    database: { users, messages, exchanges },
+  };
 }

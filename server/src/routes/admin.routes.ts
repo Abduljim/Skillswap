@@ -20,6 +20,13 @@ router.get(
 );
 
 router.get(
+  '/diagnostics',
+  asyncHandler(async (_req, res) => {
+    ok(res, await adminService.getDiagnostics());
+  })
+);
+
+router.get(
   '/users',
   asyncHandler(async (req, res) => {
     const page = parseInt((req.query.page as string) || '1');

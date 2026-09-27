@@ -282,3 +282,42 @@ If you prefer another host, the codebase is fully portable:
 - **Railway**: New Project → Deploy from GitHub → Add Postgres plugin → Set env vars → Deploy
 
 The only host-specific file is `render.yaml`. Everything else is plain Node + TypeScript.
+## Verify your integrations are actually live
+
+Pasting a key into Render proves nothing. A truncated paste, a key from the wrong
+Firebase project, or `private_key` newlines flattened by the dashboard all look
+identical in the Environment tab and then fail silently — for push, the failure
+surfaces as "notifications just stopped arriving", and for email as a locked-out
+user who never received a reset link.
+
+`GET /api/admin/diagnostics` contacts each service for real and reports the
+verdict. It needs an admin account: `ADMIN_EMAIL` bootstraps one — set it to an
+address you control, sign in as that user, and `isAdmin` is granted automatically.
+
+```bash
+API=https://skillswap-api-dcg8.onrender.com
+
+TOKEN=$(curl -s -X POST "$API/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"your-password"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["token"])')
+
+curl -s "$API/api/admin/diagnostics" -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+How to read it:
+
+| Field | Good | Bad, and what it means |
+|---|---|---|
+| `push.oauth` | `"ok"` — Google accepted the private key | `"failed"`, with `error` naming `invalid_grant` or an HTTP status: the JSON is truncated, mangled, or from a different Firebase project |
+| `push.projectId` | matches the app's `google-services.json` project | a mismatch here means pushes are sent to the wrong project and every token looks dead |
+| `push.deviceTokens` | `> 0` | `0` — no device has registered yet. Install the app and sign in before judging push at all |
+| `email.provider` | `"smtp"` or `"resend"` | `"none"` — neither `SMTP_HOST`+`SMTP_FROM` nor `RESEND_API_KEY` is set, so nothing can send |
+| `email.smtp.verify` | `"ok"` — real handshake and AUTH succeeded | `"failed"` with the reason: `EAUTH` = wrong password or a Gmail account without an app password, `ETIMEDOUT`/`ECONNREFUSED` = wrong port or blocked egress |
+| `media.configured` / `media.missing` | `true` / `[]` | `missing` names the exact Supabase variables still absent |
+| `billing.playVerificationEnabled` | `true` | `false` — **every Android Pro purchase is rejected.** Revenue is off |
+
+The response contains no secret material — no private keys, no passwords, no
+access tokens — so it is safe to paste into an issue or a chat. The checks are
+live (`push.oauth` performs a real token exchange, `email.smtp.verify` opens a
+real connection), so a slow first response is expected.
