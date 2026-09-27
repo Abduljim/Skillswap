@@ -37,6 +37,11 @@ and 5 GB served per month. The database then holds only a URL.
 
 ### 2. Create the bucket
 
+> [`supabase-setup.sql`](../supabase-setup.sql) covers steps 2 and 2b, but its two
+> halves run in different places: the bucket comes from the dashboard (or the
+> Storage API on your own machine — Supabase's hosted Postgres cannot shell out),
+> while the policies are pasted into the SQL Editor.
+
 1. In the left sidebar click **Storage** (the box icon).
 2. Click **New bucket**.
 3. **Name:** `skillswap-media`
@@ -50,6 +55,40 @@ and 5 GB served per month. The database then holds only a URL.
 5. Optional but sensible: in the bucket's **Settings**, set **File size limit**
    to `64 MB` (the same ceiling the API enforces).
 6. Click **Create bucket**.
+
+### 2b. Install the storage policies — required, or every upload 403s
+
+**"Public bucket" only controls reads.** Storage keeps object metadata in the
+row-level-security-protected table `storage.objects`, and an upload runs
+`INSERT … RETURNING *`. With no policies at all, every signed upload fails with:
+
+    403 {"statusCode":"403","error":"new row violates row-level security policy"}
+
+— even though the token is valid, the bucket is public, and the request is
+authenticated correctly. This was verified against a live project, and it is not
+caused by `x-upsert`: turning that header off changes nothing.
+
+Fix: Supabase dashboard → **SQL Editor** → paste **PART 2** of
+[`supabase-setup.sql`](../supabase-setup.sql) → **Run**. It creates two policies:
+
+| Policy | Grants | Scope |
+|---|---|---|
+| `skillswap media insert` | `INSERT` | this bucket only, and only the exact `<kind>/<8 hex of sender>/<date>/<uuid>.<ext>` path the API generates |
+| `skillswap media read` | `SELECT` | this bucket only (the upload needs it for the `RETURNING *` clause) |
+
+Nothing can be written under a different name, into a different bucket, or over
+an existing object — each upload gets a fresh server-generated UUID path, and
+`/api/media/confirm` refuses any path the server never issued.
+
+The honest trade-off is written into `supabase-setup.sql` rather than left
+implicit: the publishable key is public by design and ships inside the app, so
+someone holding it can upload a file that *looks* like SkillSwap media without
+going through the API. They cannot read anything the public bucket does not
+already expose and cannot overwrite anything. The optional `file_size_limit` /
+`allowed_mime_types` statements at the bottom of that script cap the surface
+further; enable them once video messages are confirmed working, so a failure
+during setup has only one possible cause.
+
 
 ### 3. Copy the three values
 
@@ -219,11 +258,12 @@ Old photos already stored inline keep rendering exactly as before.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Video buttons hidden, or *"Video sending is not switched on"* | `/api/media/status` says `configured: false` | The two keys are not in the running process — step 4 |
+| Video buttons hidden, or *"Video sending is not switched on"* | `/api/media/status` says `configured: false` | The keys are not in the running process — step 4. `/api/media/status` lists exactly which ones under `missing` |
 | `502 … The storage bucket "skillswap-media" was not found` | Bucket missing, misnamed, or private | Step 2 — name and **Public bucket** ON |
 | `502 … Supabase refused the storage key` (401/403 underneath) | Wrong key: the **Publishable** key instead of **Secret**, or a key from a different project | Step 3 — copy the `sb_secret_...` key for THIS project |
 | `Invalid Compact JWS` on **`/api/media/sign`** (server leg) | The secret key reached Supabase only in `Authorization: Bearer`, which the gateway tries to JWT-decode; an opaque `sb_secret_` key is not a JWT | Fixed — `supabase.service.ts` sends the key on `apikey` **and** `Authorization` |
 | `Invalid Compact JWS` on the **upload itself** (client leg) | `SUPABASE_PUBLISHABLE_KEY` is empty, so the phone had no API key to present with the bytes | Step 3.4 — add the Publishable key. `/api/media/status` will list it under `missing` |
+| `403 … new row violates row-level security policy` on the upload | `storage.objects` has no policies — a public bucket still needs them for writes | Step 2b: run **PART 2** of `supabase-setup.sql` in the SQL Editor |
 | `400 That file is 71.0 MB. The limit is 64 MB.` | Clip too big | Record at Standard, or trim the clip |
 | Upload stalls then fails | Weak signal on a big HD clip | Standard quality; the app allows 10 minutes for an upload |
 | Black video bubble, audio plays | The device recorded WebM and the poster failed | Cosmetic — playback still works; the poster is best-effort |
