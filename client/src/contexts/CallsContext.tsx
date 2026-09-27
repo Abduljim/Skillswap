@@ -133,6 +133,10 @@ interface CallsContextValue extends CallState {
   gToggleMic: () => void;
   gToggleCamera: () => void;
   attachGroupVideo: (memberId: string) => void;
+  /** True while an active group call is collapsed to the floating bar. */
+  groupMinimized: boolean;
+  minimizeGroupCall: () => void;
+  restoreGroupCall: () => void;
 }
 
 const CallsContext = createContext<CallsContextValue | null>(null);
@@ -235,6 +239,13 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
   // ── Group call state ──────────────────────────────────────────────────────
   const [groupStatus, setGroupStatus] = useState<GroupStatus>('none');
+  const [groupMinimized, setGroupMinimized] = useState(false);
+
+  // Same rule as the 1:1 call: collapsing is dropped as soon as the group call
+  // is ringing, errors or ends, so Join/Decline stays full screen.
+  useEffect(() => {
+    if (groupStatus !== 'active') setGroupMinimized(false);
+  }, [groupStatus]);
   const [groupVideo, setGroupVideo] = useState(false);
   const [groupHost, setGroupHost] = useState<Peer | null>(null);
   const [groupMembers, setGroupMembers] = useState<Peer[]>([]);
@@ -1352,6 +1363,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     minimized,
     minimizeCall: () => setMinimized(true),
     restoreCall: () => setMinimized(false),
+    groupMinimized,
+    minimizeGroupCall: () => setGroupMinimized(true),
+    restoreGroupCall: () => setGroupMinimized(false),
   };
 
   return (
@@ -1403,6 +1417,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onToggleCamera={gToggleCamera}
         onOpenSettings={openCallSettings}
         relayHint={relayHint}
+        minimized={groupMinimized}
+        onMinimize={() => setGroupMinimized(true)}
+        onRestore={() => setGroupMinimized(false)}
       />
     </CallsContext.Provider>
   );

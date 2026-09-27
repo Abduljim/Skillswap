@@ -1,5 +1,5 @@
 import { FrameAvatar } from './ui';
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Settings, X } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, Settings, X, ChevronDown } from 'lucide-react';
 import type { Peer } from './CallOverlay';
 import type { GroupPeerState, GroupStatus } from '../contexts/CallsContext';
 
@@ -102,6 +102,9 @@ export function GroupCallOverlay({
   onToggleCamera,
   onOpenSettings,
   relayHint = null,
+  minimized = false,
+  onMinimize,
+  onRestore,
 }: {
   status: GroupStatus;
   video: boolean;
@@ -123,12 +126,19 @@ export function GroupCallOverlay({
   onOpenSettings?: () => void;
   /** Explains a missing TURN relay while the call is ringing. */
   relayHint?: string | null;
+  /** Collapse the active group call to a floating bar so the app stays usable. */
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
 }) {
   if (status === 'none') return null;
 
   const others = members.filter((m) => m.id !== meId);
   const label = `${members.length} ${members.length === 1 ? 'person' : 'people'}`;
   const callLabel = `${video ? 'Video' : 'Voice'} group call`;
+  // Only an established group call can be collapsed: while it is ringing the
+  // participants need Join / Decline on screen.
+  const mini = minimized && status === 'active';
 
   if (status === 'incoming' || status === 'outgoing') {
     const title = status === 'incoming' ? (host?.displayName ?? 'Group call') : 'New group call';
@@ -194,18 +204,44 @@ export function GroupCallOverlay({
   // active
   const tiles: Peer[] = [{ id: meId, displayName: 'You' }, ...others];
   return (
-    <div className="fixed inset-0 z-50 flex flex-col animate-fade-in" style={{ backgroundColor: '#0d0f15' }}>
+    <div
+      className={
+        mini
+          ? 'fixed inset-0 z-50 flex flex-col'
+          : 'fixed inset-0 z-50 flex flex-col animate-fade-in'
+      }
+      style={mini ? undefined : { backgroundColor: '#0d0f15' }}
+    >
       <div
-        className="absolute inset-0"
+        className={mini ? 'hidden' : 'absolute inset-0'}
         style={{ background: 'radial-gradient(120% 80% at 50% 0%, #1b2130 0%, #0d0f15 60%)' }}
       />
-      <div className="relative z-20 flex flex-col h-full">
+      <div
+        className={
+          mini
+            ? 'relative z-20 flex flex-col h-full invisible pointer-events-none'
+            : 'relative z-20 flex flex-col h-full'
+        }
+        aria-hidden={mini || undefined}
+      >
         <div className="pt-[max(1.25rem,env(safe-area-inset-top))] px-5 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/50 font-semibold">Group call</div>
-            <div className="text-white font-semibold text-sm mt-0.5 flex items-center gap-2">
-              <Users className="w-4 h-4 text-white/70" />
-              {label} · <span className="tabular-nums text-white/80">{formatDuration(durationSec)}</span>
+          <div className="flex items-center gap-3">
+            {onMinimize && (
+              <button
+                onClick={onMinimize}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/20 active:scale-95"
+                aria-label="Minimise group call"
+                title="Minimise group call"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            )}
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-white/50 font-semibold">Group call</div>
+              <div className="text-white font-semibold text-sm mt-0.5 flex items-center gap-2">
+                <Users className="w-4 h-4 text-white/70" />
+                {label} · <span className="tabular-nums text-white/80">{formatDuration(durationSec)}</span>
+              </div>
             </div>
           </div>
           {video && (
@@ -300,6 +336,45 @@ export function GroupCallOverlay({
           </div>
         </div>
       </div>
+
+      {mini && (
+        // The floating bar. Everything above stays mounted but invisible, so the
+        // app underneath is usable and the mesh keeps running untouched.
+        <div
+          className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] flex h-[4.5rem] items-center gap-2 rounded-2xl bg-[#0d0f15]/95 px-3 shadow-2xl ring-1 ring-white/15 backdrop-blur animate-fade-in"
+          role="status"
+          aria-label="Ongoing group call, minimised"
+        >
+          <button
+            onClick={onRestore}
+            className="flex min-w-0 flex-1 items-center gap-3 py-2 text-left"
+            aria-label="Return to group call"
+            title="Return to group call"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
+              <Users className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-white">
+                {host?.displayName ?? 'Group call'}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-white/60 tabular-nums">
+                {video ? <Video className="h-3 w-3" /> : <Phone className="h-3 w-3" />}
+                {label} · {formatDuration(durationSec)}
+                {!micOn && <MicOff className="h-3 w-3 text-[#ff6b60]" />}
+              </span>
+            </span>
+          </button>
+          <button
+            onClick={onLeave}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ff3b30] text-white active:scale-95"
+            aria-label="Leave group call"
+            title="Leave group call"
+          >
+            <PhoneOff className="h-5 w-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
