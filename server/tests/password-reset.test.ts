@@ -6,7 +6,7 @@ import { env } from '../src/config/env';
 import { prisma } from '../src/lib/prisma';
 import authRouter from '../src/routes/auth.routes';
 import { requestPasswordReset } from '../src/services/auth.service';
-import { sendPasswordResetEmail } from '../src/services/email.service';
+import { describeEmailConfig, sendPasswordResetEmail } from '../src/services/email.service';
 
 jest.mock('../src/config/env', () => ({
   env: {
@@ -347,5 +347,94 @@ describe('reset link base', () => {
       await requestPasswordReset(email, 'https://origin.example.test');
       expect(sentLink()).toContain('https://example.test/reset-password?token=');
     });
+  });
+});
+
+describe('email provider summary (boot log)', () => {
+  // describeEmailConfig() is read at boot from the same env object the rest of
+  // the suite mutates, so restore whatever it touched.
+  function withEmailEnv(over: Record<string, string>, run: () => void) {
+    const saved: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(over)) {
+      saved[k] = (env as unknown as Record<string, string | undefined>)[k];
+      (env as unknown as Record<string, string>)[k] = v;
+    }
+    try {
+      run();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete (env as unknown as Record<string, string | undefined>)[k];
+        else (env as unknown as Record<string, string>)[k] = v;
+      }
+    }
+  }
+
+  const secret = 'xsmtpsib-not-a-real-key';
+
+  it('names the relay, port, TLS mode and sender when SMTP is complete', () => {
+    withEmailEnv(
+      {
+        SMTP_HOST: 'smtp-relay.brevo.com',
+        SMTP_PORT: '587',
+        SMTP_USER: 'me@example.test',
+        SMTP_PASS: secret,
+        SMTP_FROM: 'SkillSwap <me@example.test>',
+        RESEND_API_KEY: '',
+      },
+      () => {
+        const line = describeEmailConfig();
+        expect(line).toContain('smtp-relay.brevo.com:587');
+        expect(line).toContain('STARTTLS');
+        expect(line).toContain('me@example.test');
+        expect(line).toContain('SkillSwap <me@example.test>');
+      }
+    );
+  });
+
+  it('never prints the SMTP password', () => {
+    withEmailEnv(
+      {
+        SMTP_HOST: 'smtp-relay.brevo.com',
+        SMTP_USER: 'me@example.test',
+        SMTP_PASS: secret,
+        SMTP_FROM: 'SkillSwap <me@example.test>',
+        RESEND_API_KEY: '',
+      },
+      () => {
+        expect(describeEmailConfig()).not.toContain(secret);
+      }
+    );
+  });
+
+  it('says INCOMPLETE and names the missing key when only one of the pair is set', () => {
+    withEmailEnv(
+      { SMTP_HOST: 'smtp-relay.brevo.com', SMTP_FROM: '', RESEND_API_KEY: '' },
+      () => {
+        const line = describeEmailConfig();
+        expect(line).toContain('INCOMPLETE');
+        expect(line).toContain('SMTP_FROM');
+      }
+    );
+  });
+
+  it('says NONE when nothing is configured', () => {
+    withEmailEnv({ SMTP_HOST: '', SMTP_FROM: '', RESEND_API_KEY: '' }, () => {
+      expect(describeEmailConfig()).toContain('NONE');
+    });
+  });
+
+  it('reports Resend first with SMTP as the fallback when both are set', () => {
+    withEmailEnv(
+      {
+        SMTP_HOST: 'smtp-relay.brevo.com',
+        SMTP_FROM: 'SkillSwap <me@example.test>',
+        RESEND_API_KEY: 're_test_x',
+      },
+      () => {
+        const line = describeEmailConfig();
+        expect(line).toContain('tried first');
+        expect(line).toContain('fallback');
+      }
+    );
   });
 });

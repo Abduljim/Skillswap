@@ -101,6 +101,16 @@ Sender setup: **Senders & Domains → Add a sender** → Brevo emails a 6-digit 
 that address → enter it. **No DNS records and no domain required**, and the free
 plan is 300 emails/day with no time limit and no card.
 
+Two ways to prove the credentials without guessing:
+
+- Every deploy logs one `📧 [email] …` line naming the provider, host, port,
+  TLS mode, login and From address — and `INCOMPLETE` or `NONE` when the
+  variables are half-filled or empty. No secret is printed.
+- `GET /api/admin/diagnostics` runs a real `transporter.verify()`: a full SMTP
+  handshake **and** AUTH against the relay. It reports
+  `email.smtp.verify: "ok" | "failed"` plus the server's own error text, so a
+  rejected key is visible without sending anyone an email.
+
 The honest trade-off: the message leaves Brevo's servers but claims
 `From: …@gmail.com`, so SPF/DKIM are not aligned with gmail.com and DMARC
 alignment fails. At 300/day that still normally lands in the inbox, but it is more
@@ -142,6 +152,8 @@ code change and no APK rebuild, ever: email is entirely server-side.
 | --- | --- |
 | `[email] no delivery provider configured` | `SMTP_HOST` or `SMTP_FROM` missing — both are required |
 | `535-5.7.8` / `534-5.7.9` | Used the Gmail password instead of an App Password, or 2SV is off |
+| `535 5.7.8` from **Brevo** | The SMTP key is wrong or was regenerated, or `SMTP_USER` is not the email the Brevo account was created with. `AUTH LOGIN` and `AUTH PLAIN` fail identically, and the relay itself is reachable (STARTTLS succeeds), so this is never a network problem. It is also *not* sender verification — that fails later, at send time |
+| `550` from Brevo, at send time | `SMTP_FROM` is not a verified sender. Brevo → **Senders & Domains → Add a sender** → enter the 6-digit code it emails you |
 | `550-5.4.5` | Daily quota reached — waits up to 24 h |
 | `421-4.7.0` | Too many concurrent SMTP sessions; the code closes the transporter after every send, so this is unlikely |
 | `Email delivery timed out` | 15 s socket timeout — often a Render free-tier cold start. Retry once before investigating |

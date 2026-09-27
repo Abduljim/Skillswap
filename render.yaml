@@ -142,22 +142,29 @@ services:
         value: ''
       # ── Email (password reset only) — docs/EMAIL.md ───────────────────────
       # Empty means password reset silently fails: auth.service.ts swallows the
-      # send error so the endpoint cannot reveal which addresses exist. Fastest
-      # fix with no domain and no card is Gmail SMTP with an App Password
-      # (587 => STARTTLS, 500 recipients/day); Brevo's relay is 300/day.
+      # send error so the endpoint cannot reveal which addresses exist.
+      # Pre-filled for Brevo's free relay (300 emails/day, no card, no domain).
+      # Four of the five are not secret, so only SMTP_PASS has to be typed into
+      # the dashboard. Gmail SMTP instead (smtp.gmail.com + a 16-char App
+      # Password, 500/day) has better inbox placement — docs/EMAIL.md explains
+      # the trade-off, and switching means editing these four values.
       # RESEND_API_KEY below is useless until a domain is verified: unverified
       # Resend delivers only to the account owner's own address, so it passes a
-      # self-test and rejects every real user.
+      # self-test and rejects every real user. Delete it if it is set.
       - key: SMTP_HOST
-        value: ''
+        value: 'smtp-relay.brevo.com'
       - key: SMTP_PORT
         value: '587'
       - key: SMTP_USER
-        value: ''
+        # The email the Brevo account was CREATED with — not a sender address.
+        value: jimoh0004@gmail.com
       - key: SMTP_PASS
+        # Brevo → SMTP & API → SMTP → "Generate a new SMTP key". Shown once.
+        # Secret: set it in the Render dashboard, never commit it here.
         value: ''
       - key: SMTP_FROM
-        value: ''
+        # Must be a sender verified in Brevo (Senders & Domains → Add a sender).
+        value: 'SkillSwap <jimoh0004@gmail.com>'
       - key: RESEND_API_KEY
         value: ''
       - key: EMAIL_FROM

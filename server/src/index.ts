@@ -12,6 +12,7 @@ import { createApp } from './app';
 import { initSocket } from './sockets/io';
 import { SKILLS } from './catalogue';
 import { describeTurnConfig } from './services/turn.service';
+import { describeEmailConfig } from './services/email.service';
 
 const app = createApp();
 const httpServer = http.createServer(app);
@@ -68,6 +69,9 @@ function logConfigSummary() {
   // A missing relay looks exactly like a firewall problem from the user's seat
   // ("the call rang and nobody could hear anything"), so say what is configured.
   console.log(`📞 [turn] ${describeTurnConfig()}`);
+  // Password reset is the only thing email does and it fails silently by
+  // design, so the deploy log is where a missing provider has to show up.
+  console.log(`📧 [email] ${describeEmailConfig()}`);
   if (env.CLIENT_URL === '*') {
     console.log('ℹ️  CLIENT_URL="*" is treated as "not configured" — only the allowlist above is permitted.');
   }

@@ -100,6 +100,34 @@ export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean
 }
 
 /**
+ * One-line, secret-free summary of what will actually deliver a password reset,
+ * for the boot log.
+ *
+ * Email failure is silent by design — auth.service.ts swallows the send error so
+ * the endpoint cannot reveal which addresses exist — which makes the deploy log
+ * the only place a missing or half-configured provider is visible before someone
+ * is locked out of their account. Never prints SMTP_PASS.
+ */
+export function describeEmailConfig(): string {
+  const smtp = isSmtpConfigured()
+    ? `smtp ${env.SMTP_HOST}:${env.SMTP_PORT}${
+        env.SMTP_PORT === 465 ? ' (implicit TLS)' : ' (STARTTLS)'
+      } as "${env.SMTP_USER || 'no auth'}" from "${env.SMTP_FROM}"`
+    : env.SMTP_HOST || env.SMTP_FROM
+    ? `smtp INCOMPLETE — ${[!env.SMTP_HOST && 'SMTP_HOST', !env.SMTP_FROM && 'SMTP_FROM']
+        .filter(Boolean)
+        .join(' and ')} missing, and both are required, so nothing will be sent`
+    : '';
+  const resend = env.RESEND_API_KEY
+    ? 'resend (delivers only to the account owner until a domain is verified — docs/EMAIL.md)'
+    : '';
+  if (smtp && resend) return `${resend} tried first; ${smtp} as fallback`;
+  if (smtp) return smtp;
+  if (resend) return resend;
+  return 'NONE — password-reset emails will not be sent. Set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM (docs/EMAIL.md).';
+}
+
+/**
  * Live check for GET /api/admin/diagnostics.
  *
  * `transporter.verify()` performs a real SMTP handshake and AUTH. That is the
