@@ -2,11 +2,46 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, Smile, Check, CheckCheck, Camera, Image as ImageIcon, X, Pencil, Keyboard } from 'lucide-react';
+import {
+  Send,
+  Smile,
+  Check,
+  CheckCheck,
+  Camera,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Film,
+  Plus,
+  X,
+  Pencil,
+  Keyboard,
+  AlertTriangle,
+} from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
+import VideoRecorder, { MAX_VIDEO_MS, type RecordedClip } from './VideoRecorder';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
-import type { Message } from '../types';
+import {
+  uploadMedia,
+  mediaStatus,
+  probeVideo,
+  grabVideoFrame,
+  formatBytes,
+  formatDuration,
+  qualityForHeight,
+} from '../lib/media-upload';
+import type { Message, MessageMediaFields } from '../types';
+
+/** A recorded or picked clip waiting to be reviewed and sent. */
+interface PendingVideo {
+  url: string;
+  blob: Blob;
+  bytes: number;
+  width: number;
+  height: number;
+  durationMs: number;
+  quality: 'standard' | 'hd';
+}
 
 export default function ChatTab({
   exchangeId,
@@ -36,11 +71,31 @@ export default function ChatTab({
   // composer never changes height twice in a row.
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  // Staged video, the attach sheet, the recorder, and the photo's binary form
+  // (kept alongside the preview data URL so it can be uploaded as a real file).
+  const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [recorderOpen, setRecorderOpen] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
+  const [pendingImageSize, setPendingImageSize] = useState<{ width: number; height: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(socket ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const pendingVideoRef = useRef<PendingVideo | null>(null);
+  pendingVideoRef.current = pendingVideo;
+
+  // Leaving the chat must not leak the preview URL we created for a staged clip.
+  useEffect(
+    () => () => {
+      if (pendingVideoRef.current) URL.revokeObjectURL(pendingVideoRef.current.url);
+    },
+    []
+  );
 
   const m = dark
     ? {
@@ -194,11 +249,21 @@ export default function ChatTab({
     }, 0);
   };
 
-  const sendMessage = async (body: string, type: string = 'TEXT', caption?: string | null) => {
+  const sendMessage = async (
+    body: string,
+    type: string = 'TEXT',
+    caption?: string | null,
+    media?: MessageMediaFields
+  ) => {
     if (!body.trim() || sending) return;
     setSending(true);
     try {
-      await api.post(`/exchanges/${exchangeId}/messages`, { body, type, caption: caption || null });
+      await api.post(`/exchanges/${exchangeId}/messages`, {
+        body,
+        type,
+        caption: caption || null,
+        ...(media || {}),
+      });
       setText('');
       void qc.invalidateQueries({ queryKey: ['conversations'] });
       refetch();
@@ -209,8 +274,8 @@ export default function ChatTab({
     }
   };
 
-  const sendImage = async (body: string, caption?: string | null) => {
-    await sendMessage(body, 'IMAGE', caption);
+  const sendImage = async (body: string, caption?: string | null, media?: MessageMediaFields) => {
+    await sendMessage(body, 'IMAGE', caption, media);
   };
 
   // Compress to a ~1600px JPEG so phone camera photos (often 3–8MB) never hit
@@ -231,11 +296,18 @@ export default function ChatTab({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPendingImageSize({ width: canvas.width, height: canvas.height });
         try {
           setPendingImage(canvas.toDataURL('image/jpeg', 0.82));
+          // Keep the binary as well: when the server has media hosting switched
+          // on, the photo is uploaded as a file and the row stores a short URL
+          // instead of ~300 KB of base64 — which also stops photos dying with
+          // the database and keeps the message list light.
+          canvas.toBlob((blob) => setPendingImageBlob(blob), 'image/jpeg', 0.82);
         } catch {
           // fall back to the raw data URL if JPEG not supported
           setPendingImage(reader.result as string);
+          setPendingImageBlob(null);
         }
       };
       img.src = reader.result as string;
@@ -249,20 +321,184 @@ export default function ChatTab({
     if (f) stageImage(f);
   };
 
+  /**
+   * Sends the staged photo. Uploads it as a file when the server has media
+   * hosting switched on; falls back to the v1.5 inline data URL when it does not,
+   * so photos keep working with no Supabase keys configured.
+   */
   const sendPending = async () => {
     if (!pendingImage || sending) return;
     const image = pendingImage;
+    const blob = pendingImageBlob;
+    const dims = pendingImageSize;
     const caption = pendingCaption;
     setSending(true);
-    await sendImage(image, caption);
+    setMediaError(null);
+
+    let body = image;
+    let media: MessageMediaFields | undefined;
+    if (blob) {
+      try {
+        setMediaBusy('Uploading photo…');
+        const uploaded = await uploadMedia(blob, 'image');
+        body = uploaded.url;
+        media = {
+          mediaUrl: uploaded.url,
+          mediaBytes: uploaded.bytes,
+          mediaWidth: dims?.width ?? null,
+          mediaHeight: dims?.height ?? null,
+        };
+      } catch (error) {
+        // Not configured = the old inline path is still correct, so carry on.
+        // Any other failure is worth telling the user about rather than
+        // silently sending a photo they may not have wanted sent that way.
+        if (error instanceof ApiError && error.code !== 'MEDIA_NOT_CONFIGURED') {
+          setMediaError(error.message);
+          setSending(false);
+          setMediaBusy(null);
+          return;
+        }
+      }
+    }
+
+    setMediaBusy('Sending…');
+    await sendImage(body, caption, media);
     setSending(false);
+    setMediaBusy(null);
     setPendingImage(null);
+    setPendingImageBlob(null);
+    setPendingImageSize(null);
     setPendingCaption('');
     setReviewOpen(false);
   };
 
   const discardPending = () => {
     setPendingImage(null);
+    setPendingImageBlob(null);
+    setPendingImageSize(null);
+    setPendingCaption('');
+    setReviewOpen(false);
+  };
+
+  // ── Video ────────────────────────────────────────────────────────────────
+
+  /** The recorder hands back a finished clip; stage it and open the review. */
+  const handleRecorded = (clip: RecordedClip) => {
+    setRecorderOpen(false);
+    setAttachOpen(false);
+    setMediaError(null);
+    setPendingVideo({
+      url: clip.url,
+      blob: clip.blob,
+      bytes: clip.bytes,
+      width: clip.width,
+      height: clip.height,
+      durationMs: clip.durationMs,
+      quality: clip.quality,
+    });
+    setReviewOpen(true);
+  };
+
+  /**
+   * A video from the gallery (or the system camera app). Checked against the
+   * same ceilings as a recording *before* anything uploads, so the user gets
+   * "that clip is 2:14 long" instead of a spinner followed by a failure.
+   */
+  const handleVideoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setAttachOpen(false);
+    if (!file) return;
+    setMediaError(null);
+
+    const status = await mediaStatus().catch(() => null);
+    if (status && !status.configured) {
+      setMediaError('Video sending is not switched on for this server yet.');
+      return;
+    }
+    const maxBytes = status?.maxVideoBytes ?? 64 * 1024 * 1024;
+    const maxMs = status?.maxVideoMs ?? MAX_VIDEO_MS;
+
+    if (file.size > maxBytes) {
+      setMediaError(`That video is ${formatBytes(file.size)}. The limit is ${formatBytes(maxBytes)}.`);
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const probe = await probeVideo(url).catch(() => ({ durationMs: 0, width: 0, height: 0 }));
+    if (probe.durationMs > maxMs) {
+      URL.revokeObjectURL(url);
+      setMediaError(
+        `That video is ${formatDuration(probe.durationMs)} long. SkillSwap sends clips up to ${formatDuration(maxMs)}.`
+      );
+      return;
+    }
+
+    setPendingVideo({
+      url,
+      blob: file,
+      bytes: file.size,
+      width: probe.width,
+      height: probe.height,
+      durationMs: probe.durationMs,
+      quality: qualityForHeight(probe.height),
+    });
+    setReviewOpen(true);
+  };
+
+  const sendPendingVideo = async () => {
+    if (!pendingVideo || sending) return;
+    const clip = pendingVideo;
+    const caption = pendingCaption;
+    setSending(true);
+    setMediaError(null);
+    try {
+      // Poster frame first: it is a few KB and lets the recipient's list draw
+      // the bubble without downloading the video at all.
+      setMediaBusy('Preparing…');
+      const frame = await grabVideoFrame(clip.url);
+      let thumbUrl: string | null = null;
+      if (frame) {
+        try {
+          thumbUrl = (await uploadMedia(frame, 'image')).url;
+        } catch {
+          thumbUrl = null; // no poster is fine — the video still plays
+        }
+      }
+
+      setMediaBusy('Uploading video…');
+      const uploaded = await uploadMedia(clip.blob, 'video');
+
+      setMediaBusy('Sending…');
+      await api.post(`/exchanges/${exchangeId}/messages`, {
+        body: uploaded.url,
+        type: 'VIDEO',
+        caption: caption || null,
+        mediaUrl: uploaded.url,
+        thumbUrl,
+        mediaBytes: uploaded.bytes,
+        mediaWidth: clip.width || null,
+        mediaHeight: clip.height || null,
+        mediaDurationMs: Math.max(1, Math.round(clip.durationMs)),
+      });
+
+      URL.revokeObjectURL(clip.url);
+      setPendingVideo(null);
+      setPendingCaption('');
+      setReviewOpen(false);
+      void qc.invalidateQueries({ queryKey: ['conversations'] });
+      refetch();
+    } catch (error) {
+      setMediaError(error instanceof ApiError ? error.message : 'Could not send that video. Please try again.');
+    } finally {
+      setSending(false);
+      setMediaBusy(null);
+    }
+  };
+
+  const discardPendingVideo = () => {
+    if (pendingVideo) URL.revokeObjectURL(pendingVideo.url);
+    setPendingVideo(null);
     setPendingCaption('');
     setReviewOpen(false);
   };
@@ -286,7 +522,7 @@ export default function ChatTab({
                   bubble. Text keeps its padding; photos get a 4px mat instead. */}
               <div
                 className={
-                  message.type === 'IMAGE'
+                  message.type === 'IMAGE' || message.type === 'VIDEO'
                     ? `w-[min(78%,320px)] min-w-0 rounded-2xl p-1 shadow-sm overflow-hidden ${
                         mine ? m.bubbleMine : m.bubbleTheirs
                       }`
@@ -298,13 +534,37 @@ export default function ChatTab({
                 {message.type === 'IMAGE' ? (
                   <div>
                     <img
-                      src={message.body}
+                      src={message.mediaUrl || message.body}
                       alt={message.caption || 'Shared image'}
                       loading="lazy"
                       decoding="async"
                       className="block w-full h-auto max-h-[340px] object-cover rounded-xl"
                       onLoad={onMediaLoad}
                     />
+                    {message.caption && (
+                      <div className="text-sm whitespace-pre-wrap break-words px-2.5 pt-2">{message.caption}</div>
+                    )}
+                  </div>
+                ) : message.type === 'VIDEO' ? (
+                  <div className="relative">
+                    {/* The same hard frame as a photo: the video fills the
+                        bubble and is cropped to it, so it can never spill
+                        outside. `preload="metadata"` + a poster means a chat
+                        full of clips costs kilobytes, not megabytes, to open. */}
+                    <video
+                      src={message.mediaUrl || message.body}
+                      poster={message.thumbUrl || undefined}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="block w-full h-auto max-h-[340px] rounded-xl bg-black object-cover"
+                      onLoadedData={onMediaLoad}
+                    />
+                    <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white pointer-events-none">
+                      <VideoIcon className="w-3 h-3" />
+                      {message.mediaDurationMs ? formatDuration(message.mediaDurationMs) : 'Video'}
+                      {message.mediaBytes ? ` · ${formatBytes(message.mediaBytes)}` : ''}
+                    </div>
                     {message.caption && (
                       <div className="text-sm whitespace-pre-wrap break-words px-2.5 pt-2">{message.caption}</div>
                     )}
@@ -316,7 +576,7 @@ export default function ChatTab({
                 )}
                 <div
                   className={`text-[10px] flex items-center justify-end gap-1 ${
-                    message.type === 'IMAGE' ? 'mt-1 px-2 pb-1' : 'mt-1'
+                    message.type === 'IMAGE' || message.type === 'VIDEO' ? 'mt-1 px-2 pb-1' : 'mt-1'
                   } ${mine ? m.infoMine : m.infoTheirs}`}
                 >
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -337,8 +597,133 @@ export default function ChatTab({
         {typing && <div className={`text-xs italic px-2 ${m.muted}`}>typing…</div>}
       </div>
 
-      <div className={`pt-3 px-4 pb-4 border-t ${m.rowBorder}`}>
-        {pendingImage ? (
+      <div className={`pt-3 px-4 pb-4 border-t ${m.rowBorder} relative`}>
+        {mediaError && (
+          <div className="mb-2 flex items-start gap-2 rounded-xl bg-[#fdecea] px-3 py-2 text-[#8a1c13]">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0 text-xs leading-snug">{mediaError}</div>
+            <button
+              type="button"
+              onClick={() => setMediaError(null)}
+              className="shrink-0 text-[#8a1c13]/70 hover:text-[#8a1c13]"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Attach sheet. Floats above the composer (absolute) so opening it
+            never resizes the message list — the same rule that keeps the chat
+            from jumping when the emoji panel opens. */}
+        {attachOpen && !pendingImage && !pendingVideo && (
+          <>
+            <button
+              type="button"
+              aria-label="Close attach menu"
+              className="fixed inset-0 z-20 cursor-default"
+              onClick={() => setAttachOpen(false)}
+            />
+            <div className="absolute bottom-full left-0 right-0 z-30 mb-2 px-1">
+              <div
+                className={`rounded-2xl border p-2 grid grid-cols-4 gap-1 shadow-lg ${
+                  dark ? 'bg-[#1a1e29] border-[#2a2f3d]' : 'bg-white border-[#e2dcd1]'
+                }`}
+              >
+                {[
+                  {
+                    key: 'camera',
+                    label: 'Take photo',
+                    icon: <Camera className="w-5 h-5" />,
+                    run: () => cameraInputRef.current?.click(),
+                  },
+                  {
+                    key: 'photo',
+                    label: 'Photos',
+                    icon: <ImageIcon className="w-5 h-5" />,
+                    run: () => fileInputRef.current?.click(),
+                  },
+                  {
+                    key: 'record',
+                    label: 'Record video',
+                    icon: <VideoIcon className="w-5 h-5" />,
+                    run: () => {
+                      setEmojiOpen(false);
+                      setRecorderOpen(true);
+                    },
+                  },
+                  {
+                    key: 'video',
+                    label: 'Videos',
+                    icon: <Film className="w-5 h-5" />,
+                    run: () => videoInputRef.current?.click(),
+                  },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setAttachOpen(false);
+                      item.run();
+                    }}
+                    className="flex flex-col items-center gap-1 rounded-xl py-2 active:scale-95"
+                  >
+                    <span
+                      className={`w-11 h-11 rounded-full flex items-center justify-center ${
+                        dark ? 'bg-[#1f2430] text-[#eef0f4]' : 'bg-[#f5f2ec] text-[#12131a]'
+                      }`}
+                    >
+                      {item.icon}
+                    </span>
+                    <span className={`text-[10px] leading-tight text-center ${m.muted}`}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {pendingVideo ? (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="relative shrink-0 w-12 h-12 rounded-xl overflow-hidden border bg-black active:scale-95"
+              title="Review video"
+            >
+              <video src={pendingVideo.url} muted playsInline preload="metadata" className="w-12 h-12 object-cover" />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <VideoIcon className="w-4 h-4 text-white drop-shadow" />
+              </span>
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>
+                {pendingCaption ? 'Video with caption ready' : 'Video ready'}
+              </div>
+              <div className={`text-xs truncate ${m.muted}`}>
+                {pendingCaption ||
+                  `${formatDuration(pendingVideo.durationMs)} · ${formatBytes(pendingVideo.bytes)} · ${
+                    pendingVideo.quality === 'hd' ? 'HD' : 'Standard'
+                  }`}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={discardPendingVideo}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${m.iconBtn}`}
+              title="Remove video"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="btn-coral text-sm px-4 py-2 shrink-0 whitespace-nowrap"
+            >
+              <Pencil className="w-4 h-4" /> Review
+            </button>
+          </div>
+        ) : pendingImage ? (
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -391,20 +776,16 @@ export default function ChatTab({
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={() => {
+                  setEmojiOpen(false);
+                  setAttachOpen((open) => !open);
+                }}
                 className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-                title="Take a photo"
+                aria-label="Attach a photo or a video"
+                title="Attach a photo or a video"
+                aria-expanded={attachOpen}
               >
-                <Camera className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => fileInputRef.current?.click()}
-                className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-                title="Send an image"
-              >
-                <ImageIcon className="w-5 h-5" />
+                <Plus className={`w-5 h-5 transition-transform ${attachOpen ? 'rotate-45' : ''}`} />
               </button>
               <input
                 ref={cameraInputRef}
@@ -420,6 +801,13 @@ export default function ChatTab({
                 accept="image/*"
                 className="hidden"
                 onChange={handleMediaFile}
+              />
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => void handleVideoFile(e)}
               />
             </div>
 
@@ -451,7 +839,14 @@ export default function ChatTab({
         <EmojiPicker dark={dark} onInsert={insertAtCursor} onSendBig={sendBigEmoji} onClose={openKeyboard} />
       )}
 
-      {reviewOpen && pendingImage && (
+      <VideoRecorder
+        open={recorderOpen}
+        onClose={() => setRecorderOpen(false)}
+        onRecorded={handleRecorded}
+        onFallbackToGallery={() => videoInputRef.current?.click()}
+      />
+
+      {reviewOpen && (pendingImage || pendingVideo) && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
           <div className="flex items-center justify-between px-3 pt-3 pb-2 bg-gradient-to-b from-black/80 to-transparent">
             <button
@@ -464,21 +859,40 @@ export default function ChatTab({
             </button>
             <button
               type="button"
-              onClick={() => void sendPending()}
+              onClick={() => void (pendingVideo ? sendPendingVideo() : sendPending())}
               disabled={sending}
               className="flex items-center gap-2 rounded-full bg-[#00a884] text-white text-sm font-semibold px-5 py-2.5 active:scale-95 disabled:opacity-60"
             >
-              <Send className="w-4 h-4" /> {sending ? 'Sending…' : 'Send'}
+              <Send className="w-4 h-4" /> {sending ? mediaBusy || 'Sending…' : 'Send'}
             </button>
           </div>
 
           <div className="flex-1 min-h-0 flex items-center justify-center px-2">
-            <img
-              src={pendingImage}
-              alt="Photo to send"
-              className="max-w-full max-h-full w-auto h-auto object-contain"
-            />
+            {pendingVideo ? (
+              <video
+                src={pendingVideo.url}
+                controls
+                autoPlay
+                loop
+                playsInline
+                className="max-w-full max-h-full w-auto h-auto object-contain"
+              />
+            ) : (
+              <img
+                src={pendingImage || ''}
+                alt="Photo to send"
+                className="max-w-full max-h-full w-auto h-auto object-contain"
+              />
+            )}
           </div>
+
+          {pendingVideo && (
+            <div className="px-3 pt-1 text-center text-white/70 text-[11px]">
+              {formatDuration(pendingVideo.durationMs)} · {formatBytes(pendingVideo.bytes)} ·{' '}
+              {pendingVideo.quality === 'hd' ? 'HD (uses more data)' : 'Standard'}
+              {pendingVideo.width > 0 && ` · ${pendingVideo.width}×${pendingVideo.height}`}
+            </div>
+          )}
 
           <div className="px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 bg-gradient-to-t from-black/80 to-transparent">
             <div className="flex items-center gap-2 rounded-full bg-[#1f2c34] px-4 py-2.5">
@@ -492,7 +906,7 @@ export default function ChatTab({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    void sendPending();
+                    void (pendingVideo ? sendPendingVideo() : sendPending());
                   }
                 }}
               />

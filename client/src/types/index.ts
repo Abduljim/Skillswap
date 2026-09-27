@@ -4,7 +4,7 @@ export type TimeOfDay = 'MORNING' | 'AFTERNOON' | 'EVENING';
 export type Proficiency = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
 export type SkillType = 'TEACH' | 'WANT';
 export type SessionFormat = 'ONLINE' | 'IN_PERSON';
-export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER';
+export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER' | 'VIDEO';
 export type Tier = 'FREE' | 'PRO';
 
 export interface Badge {
@@ -111,7 +111,22 @@ export interface Exchange {
   sessionCount?: number;
 }
 
-export interface Message {
+/**
+ * Stored media pointers. `body` still carries the payload for TEXT/STICKER and
+ * the legacy inline data URL for photos sent by v1.5 and earlier, so a bubble
+ * renders with `mediaUrl || body`. Dimensions/duration/bytes let the frame and
+ * the badge be drawn before the media itself is fetched.
+ */
+export interface MessageMediaFields {
+  mediaUrl?: string | null;
+  thumbUrl?: string | null;
+  mediaBytes?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  mediaDurationMs?: number | null;
+}
+
+export interface Message extends MessageMediaFields {
   id: string;
   exchangeId: string;
   senderId: string;
