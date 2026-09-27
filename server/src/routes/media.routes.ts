@@ -32,6 +32,9 @@ router.get(
   asyncHandler(async (_req, res) => {
     ok(res, {
       configured: storage.storageConfigured(),
+      // Lets a half-finished setup name what is absent, so "video does not work"
+      // is one curl away from being diagnosable instead of guesswork.
+      missing: storage.missingStorageConfig(),
       maxVideoBytes: storage.MAX_VIDEO_BYTES,
       maxImageBytes: storage.MAX_IMAGE_BYTES,
       maxVideoMs: storage.MAX_VIDEO_MS,
@@ -78,7 +81,9 @@ router.post(
       // Sent back so the client never has to know the project URL or bucket.
       publicUrl: storage.publicUrlFor(path),
       maxBytes: storage.maxBytesFor(kind),
-      headers: { 'Content-Type': contentType.split(';')[0].trim().toLowerCase(), 'x-upsert': 'true' },
+      // Exactly what the WebView must send with the bytes — see
+      // clientUploadHeaders for why the publishable key belongs in there.
+      headers: storage.clientUploadHeaders(contentType),
     });
   })
 );

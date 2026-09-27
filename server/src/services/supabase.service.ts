@@ -55,9 +55,48 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/gif': 'gif',
 };
 
-/** True only when both the project URL and the service-role key are present. */
+/**
+ * True only when hosting can work end to end: project URL, the secret key (which
+ * signs uploads server-side) and the publishable key (which the client must
+ * present when it POSTs the bytes). Missing any one means video cannot be sent,
+ * so the app is told "not configured" and photos fall back to inline rather than
+ * failing halfway through a send.
+ */
 export function storageConfigured(): boolean {
-  return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_PUBLISHABLE_KEY);
+}
+
+/** Which required variables are absent — surfaced by GET /api/media/status so a
+ *  half-finished setup reports what is missing instead of a bare `false`. */
+export function missingStorageConfig(): string[] {
+  const missing: string[] = [];
+  if (!env.SUPABASE_URL) missing.push('SUPABASE_URL');
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (!env.SUPABASE_PUBLISHABLE_KEY) missing.push('SUPABASE_PUBLISHABLE_KEY');
+  return missing;
+}
+
+/**
+ * Headers the CLIENT must send when POSTing bytes to the signed upload URL.
+ *
+ * Storage's gateway authenticates every request with a real API key and treats
+ * `Authorization: Bearer` as a JWT to decode. The one-time upload token is not a
+ * JWT, so on its own the upload dies with 403 "Invalid Compact JWS" — verified
+ * against production, where the token in Authorization, the token in apikey, an
+ * empty Bearer and `Bearer anonymous` were all rejected the same way. The
+ * publishable key satisfies the gateway, while the token in the query string is
+ * what actually authorises the write to that one path; that split is why this
+ * key is safe to hand to a phone.
+ */
+export function clientUploadHeaders(contentType: string): Record<string, string> {
+  const type = contentType.split(';')[0].trim().toLowerCase();
+  const key = env.SUPABASE_PUBLISHABLE_KEY;
+  return {
+    'Content-Type': type,
+    'x-upsert': 'true',
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+  };
 }
 
 export function bucketName(): string {

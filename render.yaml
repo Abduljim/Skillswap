@@ -173,5 +173,13 @@ services:
         value: ''
       - key: SUPABASE_SERVICE_ROLE_KEY
         value: ''
+      # The Publishable key (legacy name: anon) from the same API Keys page. Not
+      # a leak: Supabase designs it to ship inside browsers and mobile apps, and
+      # Storage's gateway still demands a real API key on the upload request —
+      # the single-use upload token is not a JWT it can decode, so without this
+      # every upload fails 403 "Invalid Compact JWS". The write itself is
+      # authorised by the one-time token for one specific object path.
+      - key: SUPABASE_PUBLISHABLE_KEY
+        value: ''
       - key: SUPABASE_MEDIA_BUCKET
         value: 'skillswap-media'

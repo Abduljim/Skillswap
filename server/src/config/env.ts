@@ -55,6 +55,17 @@ export const env = {
    */
   SUPABASE_SERVICE_ROLE_KEY:
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
+  /**
+   * The *publishable* key (legacy name: anon). Storage's gateway requires a real
+   * API key on the upload request itself — the single-use upload token is not a
+   * JWT it can decode, so sending only that fails with 403 "Invalid Compact
+   * JWS". This key is designed to ship inside browsers and mobile apps (it maps
+   * to the `anon` Postgres role and cannot bypass Row Level Security), and it is
+   * handed to the client only alongside a single-use upload token for one
+   * specific object path, so on its own it grants nothing.
+   */
+  SUPABASE_PUBLISHABLE_KEY:
+    process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',
   SUPABASE_MEDIA_BUCKET: process.env.SUPABASE_MEDIA_BUCKET || 'skillswap-media',
 
   // ── TURN relay for calls ────────────────────────────────────────────────

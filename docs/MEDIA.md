@@ -51,7 +51,7 @@ and 5 GB served per month. The database then holds only a URL.
    to `64 MB` (the same ceiling the API enforces).
 6. Click **Create bucket**.
 
-### 3. Copy the two keys
+### 3. Copy the three values
 
 1. Left sidebar → **Project Settings** (the gear) → **API Keys**.
    You will see two tabs:
@@ -74,6 +74,24 @@ and 5 GB served per month. The database then holds only a URL.
    If your project is old enough to only offer the legacy tab, copy the
    `service_role` JWT instead — the server sends both an `apikey` and an
    `Authorization` header, so either key format works.
+4. On the **same tab**, find the key labelled **Publishable** — it starts with
+   `sb_publishable_` — click **Reveal** then **Copy**.
+   → that value is `SUPABASE_PUBLISHABLE_KEY`
+
+   Yes, this one goes to the phone, and that is by design. Supabase's own
+   documentation lists the publishable key as *"safe to expose online: web page,
+   mobile or desktop app"* — it maps to the unprivileged `anon` Postgres role and
+   cannot bypass Row Level Security. It is needed because Storage's gateway
+   authenticates **every** request with a real API key, including the upload
+   itself: the one-time upload token is not a JWT the gateway can decode, so
+   without the publishable key the upload is rejected with
+   `403 "Invalid Compact JWS"` even though the token is valid. The token is still
+   what authorises the write, and only to that one object path, so the publishable
+   key on its own can write nothing.
+
+   All three values are required. `GET /api/media/status` reports
+   `"configured": false` plus a `missing` list naming any that are absent, so a
+   half-finished setup tells you exactly which one you forgot.
 
 > ⚠️ **The secret key goes on the server only.** Never into the app, the web
 > bundle, GitHub, or a chat message. It can read and write every file in your
@@ -93,7 +111,8 @@ and 5 GB served per month. The database then holds only a URL.
    | Key | Value |
    |---|---|
    | `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
-   | `SUPABASE_SERVICE_ROLE_KEY` | the secret key from step 3 |
+   | `SUPABASE_SERVICE_ROLE_KEY` | the **Secret** key from step 3 (`sb_secret_...`) |
+   | `SUPABASE_PUBLISHABLE_KEY` | the **Publishable** key from step 3 (`sb_publishable_...`) |
    | `SUPABASE_MEDIA_BUCKET` | `skillswap-media` (optional — this is the default) |
 
 3. **Save changes**, then **Manual deploy → Deploy latest commit**.
@@ -118,8 +137,11 @@ curl -s -H "Authorization: Bearer <your token>" \
 You want:
 
 ```json
-{ "success": true, "data": { "configured": true, "maxVideoBytes": 67108864, "maxImageBytes": 12582912, "maxVideoMs": 65000 } }
+{ "success": true, "data": { "configured": true, "missing": [], "maxVideoBytes": 67108864, "maxImageBytes": 12582912, "maxVideoMs": 65000 } }
 ```
+
+If it says `"configured": false`, read the `missing` array — it names the exact
+variable that is empty, which is faster than guessing.
 
 `"configured": false` means the two keys are not visible to the running process
 — re-check spelling and that the deploy actually restarted.
@@ -200,7 +222,8 @@ Old photos already stored inline keep rendering exactly as before.
 | Video buttons hidden, or *"Video sending is not switched on"* | `/api/media/status` says `configured: false` | The two keys are not in the running process — step 4 |
 | `502 … The storage bucket "skillswap-media" was not found` | Bucket missing, misnamed, or private | Step 2 — name and **Public bucket** ON |
 | `502 … Supabase refused the storage key` (401/403 underneath) | Wrong key: the **Publishable** key instead of **Secret**, or a key from a different project | Step 3 — copy the `sb_secret_...` key for THIS project |
-| Storage logs show `Invalid Compact JWS` / `AccessDenied` | The key reached Supabase only in `Authorization: Bearer`, which the gateway tries to JWT-decode; an opaque `sb_secret_` key is not a JWT | Fixed in `supabase.service.ts` — the key is sent on `apikey` **and** `Authorization`. If you see this, you are running a build from before that fix |
+| `Invalid Compact JWS` on **`/api/media/sign`** (server leg) | The secret key reached Supabase only in `Authorization: Bearer`, which the gateway tries to JWT-decode; an opaque `sb_secret_` key is not a JWT | Fixed — `supabase.service.ts` sends the key on `apikey` **and** `Authorization` |
+| `Invalid Compact JWS` on the **upload itself** (client leg) | `SUPABASE_PUBLISHABLE_KEY` is empty, so the phone had no API key to present with the bytes | Step 3.4 — add the Publishable key. `/api/media/status` will list it under `missing` |
 | `400 That file is 71.0 MB. The limit is 64 MB.` | Clip too big | Record at Standard, or trim the clip |
 | Upload stalls then fails | Weak signal on a big HD clip | Standard quality; the app allows 10 minutes for an upload |
 | Black video bubble, audio plays | The device recorded WebM and the poster failed | Cosmetic — playback still works; the poster is best-effort |

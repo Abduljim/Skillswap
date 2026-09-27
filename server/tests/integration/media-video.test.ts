@@ -114,16 +114,25 @@ function stubFetch(handler: FetchHandler): () => void {
   };
 }
 
-/** Boots an app instance that believes Supabase is configured. */
-function configuredApp() {
+/**
+ * Boots an app instance that believes Supabase is configured.
+ * `without` names a variable to leave unset, which is how the half-configured
+ * cases are exercised.
+ */
+function configuredApp(without?: 'publishable' | 'secret' | 'url') {
   const saved = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_MEDIA_BUCKET,
+    publishable: process.env.SUPABASE_PUBLISHABLE_KEY,
   };
   process.env.SUPABASE_URL = SUPABASE_URL;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'fake-service-role-key';
   process.env.SUPABASE_MEDIA_BUCKET = BUCKET;
+  process.env.SUPABASE_PUBLISHABLE_KEY = 'fake-publishable-key';
+  if (without === 'publishable') delete process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (without === 'secret') delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (without === 'url') delete process.env.SUPABASE_URL;
 
   let app: any;
   jest.isolateModules(() => {
@@ -136,6 +145,7 @@ function configuredApp() {
     SUPABASE_URL: saved.url,
     SUPABASE_SERVICE_ROLE_KEY: saved.key,
     SUPABASE_MEDIA_BUCKET: saved.bucket,
+    SUPABASE_PUBLISHABLE_KEY: saved.publishable,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -149,8 +159,27 @@ describe('Media hosting status', () => {
     const res = await api().get('/api/media/status').set('Cookie', session.cookie).expect(200);
 
     expect(res.body.data.configured).toBe(false);
+    // Names what is absent, so a half-finished setup is diagnosable with one curl.
+    expect(res.body.data.missing).toEqual([
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_PUBLISHABLE_KEY',
+    ]);
     expect(res.body.data.maxVideoBytes).toBe(MAX_VIDEO_BYTES);
     expect(res.body.data.maxVideoMs).toBe(MAX_VIDEO_MS);
+  });
+
+  it('treats a missing publishable key as unconfigured and says so', async () => {
+    const session = await signup('partial@skillswap.test', 'Partial Config');
+    const res = await request(configuredApp('publishable'))
+      .get('/api/media/status')
+      .set('Cookie', session.cookie)
+      .expect(200);
+
+    // Two of three keys present is still "cannot send video" — and the app must
+    // be told that before the user records something it cannot store.
+    expect(res.body.data.configured).toBe(false);
+    expect(res.body.data.missing).toEqual(['SUPABASE_PUBLISHABLE_KEY']);
   });
 
   it('refuses to sign or confirm uploads while unconfigured (503, not 500)', async () => {
@@ -203,6 +232,15 @@ describe('Signing uploads (storage configured)', () => {
       expect(data.publicUrl).toBe(`${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${data.path}`);
       expect(data.maxBytes).toBe(MAX_VIDEO_BYTES);
       expect(data.method).toBe('POST');
+      // The WebView must present a real API key with the bytes: Storage's gateway
+      // JWT-decodes Authorization and the one-time upload token is not a JWT, so
+      // without the publishable key the upload fails with "Invalid Compact JWS".
+      expect(data.headers.apikey).toBe('fake-publishable-key');
+      expect(data.headers.Authorization).toBe('Bearer fake-publishable-key');
+      expect(data.headers['Content-Type']).toBe('video/mp4');
+      expect(data.headers['x-upsert']).toBe('true');
+      // The secret key must never be handed to a client.
+      expect(JSON.stringify(data)).not.toContain('fake-service-role-key');
     } finally {
       restore();
     }
