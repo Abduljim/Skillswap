@@ -41,7 +41,14 @@ import com.getcapacitor.annotation.PermissionCallback;
         })
 public class CallNotifier extends Plugin {
     private static final String CHANNEL_ID = "calls";
-    private static final int CALL_NOTIFICATION_ID = 9001;
+    /**
+     * Shared with CallFirebaseMessagingService so the closed-app notification
+     * and the in-app ring replace each other instead of stacking, and so one
+     * stop() silences whichever of the two paths posted it.
+     */
+    static final int CALL_NOTIFICATION_ID = 9001;
+    /** Id the FCM service used before the two were unified. */
+    private static final int LEGACY_FCM_NOTIFICATION_ID = 9002;
     private static final String PREFS = "skillswap_prefs";
     private static final String KEY_FSI_PROMPTED = "fsi_prompted";
 
@@ -291,6 +298,8 @@ public class CallNotifier extends Plugin {
             stopRingToneInternal();
             try {
                 NotificationManagerCompat.from(getContext()).cancel(CALL_NOTIFICATION_ID);
+                // A ring posted before the ids were unified used a different one.
+                NotificationManagerCompat.from(getContext()).cancel(LEGACY_FCM_NOTIFICATION_ID);
             } catch (Exception e) {
                 // Ignored
             }

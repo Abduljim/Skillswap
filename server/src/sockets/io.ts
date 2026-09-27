@@ -5,21 +5,68 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { COOKIE_NAME } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
-import { sendIncomingCallPush } from '../services/push.service';
+import { sendCallCancelledPush, sendIncomingCallPush } from '../services/push.service';
 import { createMessageSchema } from '../validators/schemas';
-import { MAX_GROUP_CALL_PARTICIPANTS } from '../config/calls';
+import { callRingTimeoutMs, MAX_GROUP_CALL_PARTICIPANTS } from '../config/calls';
 
 let io: IOServer | null = null;
 
-// Live sockets per user (used to decide whether an incoming call needs an FCM
-// push because the callee has no connected app instance).
-const connectedUsers = new Set<string>();
+/**
+ * Live sockets per user, keyed by socket id.
+ *
+ * A user can hold several sockets at once — two browser tabs, or a phone and a
+ * laptop. Tracking only "this user is connected" meant one of them dropping
+ * looked like the whole user had gone, which hid them from call routing and
+ * pushed to a phone that was still sitting on the chat screen.
+ */
+const connectedSockets = new Map<string, Set<string>>();
+
+/**
+ * Sockets whose app has reported itself NOT visible: Android backgrounded, or a
+ * hidden browser tab.
+ *
+ * A socket counts as foreground until it says otherwise, so an older client
+ * that never reports presence behaves exactly as it did before instead of
+ * getting both the in-app call sheet and a push notification.
+ */
+const backgroundSockets = new Map<string, Set<string>>();
+
+function addSocket(map: Map<string, Set<string>>, userId: string, socketId: string) {
+  const set = map.get(userId);
+  if (set) set.add(socketId);
+  else map.set(userId, new Set([socketId]));
+}
+
+function dropSocket(map: Map<string, Set<string>>, userId: string, socketId: string) {
+  const set = map.get(userId);
+  if (!set) return;
+  set.delete(socketId);
+  if (!set.size) map.delete(userId);
+}
+
+/**
+ * Can this user actually see an incoming call right now?
+ *
+ * False when no socket is connected (app closed) and also when every socket
+ * they hold has reported the app as backgrounded. A backgrounded Android app
+ * keeps its socket alive for minutes, and in that window it can neither show
+ * the call sheet nor be reached by a socket event — which is how calls got
+ * missed with the app apparently "open".
+ */
+function calleeIsPresent(userId: string): boolean {
+  if (!connectedSockets.has(userId)) return false;
+  return !backgroundSockets.has(userId);
+}
 
 interface ActiveCall {
   callerId: string;
   calleeId: string;
   type: 'VOICE' | 'VIDEO';
   startedAt: Date;
+  /** Set once the callee accepts; until then the call is still ringing. */
+  acceptedAt: Date | null;
+  /** Ends a ring nobody answered — see callRingTimeoutMs(). */
+  ringTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const activeCalls = new Map<string, ActiveCall>();
@@ -53,7 +100,11 @@ async function loadUserPeer(userId: string) {
   };
 }
 
-async function persistCallLog(exchangeId: string, endedByUserId: string, outcome: 'COMPLETED' | 'DECLINED') {
+async function persistCallLog(
+  exchangeId: string,
+  endedByUserId: string,
+  outcome: 'COMPLETED' | 'DECLINED' | 'MISSED'
+) {
   const active = activeCalls.get(exchangeId);
   if (!active) return;
   activeCalls.delete(exchangeId);
@@ -110,6 +161,50 @@ function peerRooms(exchangeId: string, other: string | null, self: string): stri
   return rooms;
 }
 
+/** Rooms that reach BOTH participants, still exactly once per socket. */
+function bothPeerRooms(exchangeId: string, a: string, b: string): string[] {
+  return [...peerRooms(exchangeId, a, b), ...peerRooms(exchangeId, b, a)];
+}
+
+function clearRingTimer(call: ActiveCall) {
+  if (call.ringTimer) {
+    clearTimeout(call.ringTimer);
+    call.ringTimer = null;
+  }
+}
+
+/**
+ * Silence a phone that is ringing from a push notification.
+ *
+ * Only needed while the call is unanswered and the callee cannot see the app:
+ * the notification is insistent, and a closed app has no socket to receive
+ * `call:ended` on, so the caller hanging up would otherwise leave the other
+ * phone ringing for a call that no longer exists.
+ */
+function cancelCalleeRing(exchangeId: string, call: ActiveCall) {
+  if (call.acceptedAt) return;
+  if (calleeIsPresent(call.calleeId)) return;
+  void sendCallCancelledPush(call.calleeId, exchangeId);
+}
+
+/**
+ * Ends a call nobody answered: tells both sides, silences the callee's phone,
+ * and logs it as MISSED rather than leaving the caller ringing forever.
+ */
+async function endUnansweredCall(exchangeId: string) {
+  const call = activeCalls.get(exchangeId);
+  if (!call || call.acceptedAt) return;
+  clearRingTimer(call);
+  io?.to(bothPeerRooms(exchangeId, call.callerId, call.calleeId)).emit('call:ended', {
+    exchangeId,
+    endedBy: call.calleeId,
+    reason: 'no-answer',
+  });
+  void sendCallCancelledPush(call.calleeId, exchangeId);
+  // persistCallLog also drops the call from activeCalls.
+  await persistCallLog(exchangeId, call.calleeId, 'MISSED');
+}
+
 /**
  * Ends every call a user was in when their socket dropped and tells the other
  * participants, so nobody is left staring at a frozen call screen.
@@ -118,9 +213,14 @@ async function cleanupCallsForUser(userId: string) {
   for (const [exchangeId, call] of Array.from(activeCalls.entries())) {
     if (call.callerId !== userId && call.calleeId !== userId) continue;
     const other = call.callerId === userId ? call.calleeId : call.callerId;
+    clearRingTimer(call);
     const payload = { exchangeId, endedBy: userId, reason: 'disconnect' };
     io?.to(peerRooms(exchangeId, other, userId)).emit('call:ended', payload);
-    await persistCallLog(exchangeId, userId, 'COMPLETED');
+    // The peer who vanished may have been ringing this phone from a push.
+    cancelCalleeRing(exchangeId, call);
+    // A call that dropped before anyone answered is a missed call, not a
+    // completed one — that is what the CallOutcome.MISSED value is for.
+    await persistCallLog(exchangeId, userId, call.acceptedAt ? 'COMPLETED' : 'MISSED');
   }
 
   // Mirrors `group:call:leave` for a member who vanished instead of hanging up.
@@ -175,11 +275,25 @@ export function initSocket(httpServer: HTTPServer) {
   io.on('connection', (socket) => {
     const userId = (socket as any).userId as string;
     socket.join(`user:${userId}`);
-    connectedUsers.add(userId);
+    addSocket(connectedSockets, userId, socket.id);
 
     socket.on('disconnect', () => {
-      connectedUsers.delete(userId);
+      dropSocket(connectedSockets, userId, socket.id);
+      dropSocket(backgroundSockets, userId, socket.id);
       void cleanupCallsForUser(userId);
+    });
+
+    /**
+     * Foreground reporting from the client: `false` when the app is backgrounded
+     * or the tab is hidden, `true` when it comes back.
+     *
+     * This is what lets an incoming call ring a phone that is merely locked or
+     * on the home screen — its socket is still alive, so presence, not
+     * connectivity, is the only way to know the user cannot see the call.
+     */
+    socket.on('presence:set', (data: { foreground?: unknown }) => {
+      if (data?.foreground === false) addSocket(backgroundSockets, userId, socket.id);
+      else dropSocket(backgroundSockets, userId, socket.id);
     });
 
     socket.on('exchange:join', async (exchangeId: string) => {
@@ -253,11 +367,17 @@ export function initSocket(httpServer: HTTPServer) {
           return socket.emit('error', { message: 'Cannot place call' });
         }
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
+        // A re-dial replaces any stale entry; clear its timer so it cannot fire
+        // and end the new call.
+        const stale = activeCalls.get(data.exchangeId);
+        if (stale) clearRingTimer(stale);
         activeCalls.set(data.exchangeId, {
           callerId: userId,
           calleeId: targetUserId,
           type: data.video ? 'VIDEO' : 'VOICE',
           startedAt: new Date(),
+          acceptedAt: null,
+          ringTimer: null,
         });
         const caller = await prisma.user.findUnique({
           where: { id: userId },
@@ -275,15 +395,27 @@ export function initSocket(httpServer: HTTPServer) {
         };
         const payload = { exchangeId: data.exchangeId, video: !!data.video, caller: callerPayload };
         io!.to(peerRooms(data.exchangeId, targetUserId, userId)).emit('call:ringing', payload);
-        // Callee isn't running the app — ring their phone via FCM so they still
-        // get told "someone is calling" even with the app fully closed.
-        if (!connectedUsers.has(targetUserId)) {
+        // Ring their phone when they cannot see the app: no socket at all (app
+        // closed), or every socket they hold has reported the app backgrounded
+        // (locked screen, home screen). The socket stays alive for minutes in
+        // that state, so connectivity alone used to mean the call was missed.
+        if (!calleeIsPresent(targetUserId)) {
           void sendIncomingCallPush(targetUserId, {
             exchangeId: data.exchangeId,
             video: !!data.video,
             caller: callerPayload,
           });
         }
+
+        // Nobody answers → end it. Otherwise the caller stays on "Ringing…"
+        // forever and a callee ringing from a push keeps an insistent
+        // notification going until they notice it.
+        const ringTimer = setTimeout(() => {
+          void endUnansweredCall(data.exchangeId);
+        }, callRingTimeoutMs());
+        ringTimer.unref?.();
+        const ringing = activeCalls.get(data.exchangeId);
+        if (ringing) ringing.ringTimer = ringTimer;
       } catch (e) {
         socket.emit('error', { message: 'Failed to initiate call' });
       }
@@ -291,6 +423,11 @@ export function initSocket(httpServer: HTTPServer) {
 
     socket.on('call:accept', async (data: { exchangeId: string }) => {
       const payload = { exchangeId: data.exchangeId, acceptorId: userId };
+      const accepted = activeCalls.get(data.exchangeId);
+      if (accepted) {
+        accepted.acceptedAt = new Date();
+        clearRingTimer(accepted);
+      }
       const caller = await counterpartOfCall(data.exchangeId, userId);
       socket.to(peerRooms(data.exchangeId, caller, userId)).emit('call:accepted', payload);
     });
@@ -299,15 +436,25 @@ export function initSocket(httpServer: HTTPServer) {
       const payload = { exchangeId: data.exchangeId, rejectorId: userId };
       // Resolve the counterpart before persistCallLog() clears the call map.
       const other = await counterpartOfCall(data.exchangeId, userId);
+      const rejected = activeCalls.get(data.exchangeId);
+      if (rejected) clearRingTimer(rejected);
       socket.to(peerRooms(data.exchangeId, other, userId)).emit('call:rejected', payload);
       await persistCallLog(data.exchangeId, userId, 'DECLINED');
     });
 
     socket.on('call:hangup', async (data: { exchangeId: string }) => {
       const payload = { exchangeId: data.exchangeId, endedBy: userId };
+      const call = activeCalls.get(data.exchangeId);
+      // Both lookups must happen before persistCallLog() clears the call map.
       const other = await counterpartOfCall(data.exchangeId, userId);
+      if (call) {
+        clearRingTimer(call);
+        // Hanging up before the other side answered: their phone may still be
+        // ringing from a push, and no socket event will ever reach it.
+        cancelCalleeRing(data.exchangeId, call);
+      }
       socket.to(peerRooms(data.exchangeId, other, userId)).emit('call:ended', payload);
-      await persistCallLog(data.exchangeId, userId, 'COMPLETED');
+      await persistCallLog(data.exchangeId, userId, call?.acceptedAt ? 'COMPLETED' : 'MISSED');
     });
 
     socket.on('webrtc:signal', (data: { exchangeId: string; to: string; signal: any }) => {

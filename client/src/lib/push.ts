@@ -5,6 +5,7 @@ interface PushPlugin {
   getToken(): Promise<{ token: string }>;
   getLaunchedCall(): Promise<{ exchangeId: string; callerName: string; callerId: string; video: boolean } | null>;
   clearLaunchedCall(): Promise<void>;
+  getLaunchAction(): Promise<{ action: string }>;
 }
 
 const Push = registerPlugin<PushPlugin>('Push');
@@ -48,5 +49,20 @@ export async function clearLaunchedCall(): Promise<void> {
     if (Capacitor.getPlatform() === 'android') await Push.clearLaunchedCall();
   } catch {
     // Ignored
+  }
+}
+
+/**
+ * The Answer / Decline button pressed on an incoming-call notification that was
+ * posted while the app was closed. Consumed on read, so one tap answers one
+ * call. Empty on web, where there is no such notification.
+ */
+export async function getLaunchAction(): Promise<'answer' | 'decline' | ''> {
+  try {
+    if (Capacitor.getPlatform() !== 'android') return '';
+    const res = await Push.getLaunchAction();
+    return res?.action === 'answer' || res?.action === 'decline' ? res.action : '';
+  } catch {
+    return '';
   }
 }

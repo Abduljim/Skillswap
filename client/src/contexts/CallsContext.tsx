@@ -13,7 +13,9 @@ import {
   openCallSettings,
 } from '../lib/call-notifier';
 import { startRingtone, stopRingtone } from '../lib/ringtone';
-import { getLaunchedCall, clearLaunchedCall } from '../lib/push';
+import { getLaunchedCall, clearLaunchedCall, getLaunchAction } from '../lib/push';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { recordLog } from '../lib/call-logs';
 import {
   getIceConfig,
@@ -168,6 +170,38 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
   const statusRef = useRef<CallStatus>('none');
   statusRef.current = status;
+
+  /**
+   * Whether the socket is really connected, as state. Presence has to be
+   * re-reported after every reconnect, and an Answer pressed on a call
+   * notification has to wait for the socket before it can be sent.
+   */
+  const [socketConnected, setSocketConnected] = useState(false);
+
+  /** True while the app is on screen; false when backgrounded or the tab is hidden. */
+  const [foreground, setForeground] = useState(true);
+
+  /**
+   * Answer / Decline pressed on a notification posted while the app was closed.
+   * State, not a ref: the response still has to fire when the call sheet is
+   * already up and only the socket was missing.
+   */
+  const [pendingLaunchAction, setPendingLaunchAction] = useState<'answer' | 'decline' | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!socket) return;
+    setSocketConnected(socket.connected);
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, [socket]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -826,8 +860,14 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    void getLaunchedCall().then((call) => {
-      if (cancelled || !call?.exchangeId || status !== 'none') return;
+    void Promise.all([getLaunchedCall(), getLaunchAction()]).then(([call, action]) => {
+      if (cancelled) return;
+      if (!call?.exchangeId || status !== 'none') {
+        // The sheet may already be up from the socket — the button press still
+        // has to be honoured.
+        if (action) setPendingLaunchAction(action);
+        return;
+      }
       void clearLaunchedCall();
       exchangeIdRef.current = call.exchangeId;
       peerIdRef.current = call.callerId || '';
@@ -840,6 +880,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         error: undefined,
       });
       nav(`/messages/${call.exchangeId}`);
+      if (action) setPendingLaunchAction(action);
     });
     return () => {
       cancelled = true;
@@ -984,6 +1025,91 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     cleanup(true);
     update({ status: 'none', incoming: false });
   }, [status, cleanup, update]);
+
+  /**
+   * Acts on an Answer / Decline pressed on a call notification that was posted
+   * while the app was closed.
+   *
+   * Only the socket can accept or decline — the BroadcastReceiver that caught
+   * the button press has no socket — so it records the choice natively and this
+   * sends it. A cold start also stored the call itself; a warm start usually
+   * already has the sheet on screen from the socket, so the call is only
+   * restored when nothing is ringing yet.
+   */
+  const respondToLaunchAction = useCallback(async () => {
+    const action = await getLaunchAction();
+    if (!action) return;
+    if (statusRef.current === 'none') {
+      const call = await getLaunchedCall();
+      if (!call?.exchangeId) return;
+      await clearLaunchedCall();
+      exchangeIdRef.current = call.exchangeId;
+      peerIdRef.current = call.callerId || '';
+      videoEnabledRef.current = call.video;
+      update({
+        status: 'incoming',
+        peer: {
+          id: call.callerId || '',
+          displayName: call.callerName || 'Caller',
+          avatarUrl: null,
+          avatarFrame: null,
+        },
+        video: call.video,
+        incoming: true,
+        error: undefined,
+      });
+      nav(`/messages/${call.exchangeId}`);
+    }
+    setPendingLaunchAction(action);
+  }, [nav, update]);
+
+  // ── Presence: can this device actually see an incoming call? ───────────────
+  useEffect(() => {
+    if (!socket || !socketConnected) return;
+    socket.emit('presence:set', { foreground });
+  }, [socket, socketConnected, foreground]);
+
+  useEffect(() => {
+    const isVisible = () =>
+      typeof document === 'undefined' ? true : document.visibilityState !== 'hidden';
+    const onVisibility = () => setForeground(isVisible());
+    document.addEventListener('visibilitychange', onVisibility);
+
+    let dispose: (() => void) | undefined;
+    let cancelled = false;
+    if (Capacitor.isNativePlatform()) {
+      // The native lifecycle event is the reliable signal on Android: the WebView
+      // does not always fire visibilitychange when the app is backgrounded.
+      void CapApp.addListener('appStateChange', ({ isActive }) => {
+        setForeground(isActive);
+        // Returning to the front is how an Answer / Decline tap arrives when the
+        // process was still alive in the background.
+        if (isActive) void respondToLaunchAction();
+      })
+        .then((handle) => {
+          if (cancelled) void handle.remove();
+          else dispose = () => void handle.remove();
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      dispose?.();
+    };
+  }, [respondToLaunchAction]);
+
+  // Sends the recorded Answer / Decline once the sheet is up and the socket is
+  // connected. Held as state rather than acted on inline because acceptCall()
+  // only works on an 'incoming' call, and on a cold start the socket is often
+  // still connecting when the button press is read.
+  useEffect(() => {
+    if (!pendingLaunchAction || status !== 'incoming' || !socketConnected) return;
+    setPendingLaunchAction(null);
+    if (pendingLaunchAction === 'answer') void acceptCall();
+    else declineCall();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingLaunchAction, status, socketConnected, acceptCall, declineCall]);
 
   const toggleMic = useCallback(() => {
     const stream = streamRef.current;

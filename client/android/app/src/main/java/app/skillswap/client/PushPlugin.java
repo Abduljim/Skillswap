@@ -15,6 +15,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
  *                            FCM notification tap), so JS can drop the user
  *                            into that conversation
  *  - clearLaunchedCall()   → clear it after handling
+ *  - getLaunchAction()     → "answer"/"decline" if the user pressed that button
+ *                            on a closed-app call notification (consumed on read)
  */
 @CapacitorPlugin(name = "Push")
 public class PushPlugin extends Plugin {
@@ -24,6 +26,7 @@ public class PushPlugin extends Plugin {
     private static final String KEY_CALLER_ID = "caller_id";
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
+    private static final String KEY_ACTION = "action";
     private static final long FRESH_MS = 5 * 60 * 1000L;
 
     @PluginMethod
@@ -63,5 +66,24 @@ public class PushPlugin extends Plugin {
         getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().clear().apply();
         call.resolve();
+    }
+
+    /**
+     * Which button the user pressed on an incoming-call notification that was
+     * posted while the app was closed (CallActionReceiver writes this). Read
+     * once and cleared, so a single tap cannot accept two calls.
+     */
+    @PluginMethod
+    public void getLaunchAction(PluginCall call) {
+        Context c = getContext();
+        String action = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ACTION, "");
+        if (action != null && !action.isEmpty()) {
+            c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().remove(KEY_ACTION).apply();
+        }
+        JSObject ret = new JSObject();
+        ret.put("action", action == null ? "" : action);
+        call.resolve(ret);
     }
 }

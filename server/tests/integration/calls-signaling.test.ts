@@ -18,11 +18,17 @@ import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import app from '../../src/app';
 import { initSocket } from '../../src/sockets/io';
 import * as callsConfig from '../../src/config/calls';
+import { sendCallCancelledPush, sendIncomingCallPush } from '../../src/services/push.service';
 import { api, signup, resetDatabase, createSkill, prisma, type Session } from '../helpers/api';
 
 jest.mock('../../src/services/push.service', () => ({
   sendIncomingCallPush: jest.fn().mockResolvedValue(undefined),
+  sendCallCancelledPush: jest.fn().mockResolvedValue(undefined),
 }));
+
+// jest.mock above replaces these with spies; the suite must never reach Google.
+const mockIncomingPush = sendIncomingCallPush as jest.Mock;
+const mockCancelledPush = sendCallCancelledPush as jest.Mock;
 
 const MESSAGE = 'Hi! Want to swap lessons?';
 
@@ -170,6 +176,9 @@ beforeEach(async () => {
   for (const s of openSockets.splice(0)) {
     if (s.connected) s.disconnect();
   }
+  // Call counts are asserted per test, so none may leak from the previous one.
+  mockIncomingPush.mockClear();
+  mockCancelledPush.mockClear();
   await resetDatabase();
 });
 
@@ -309,6 +318,170 @@ describe('1:1 call signalling', () => {
     const ended = await endedPromise;
     expect(ended.endedBy).toBe(caller.userId);
     expect(ended.reason).toBe('disconnect');
+  });
+});
+
+describe('Reaching a callee who cannot see the app', () => {
+  /**
+   * Shortens the ring timeout for one test only. callRingTimeoutMs() reads the
+   * environment when the call is placed, so this needs no fake timers — and it
+   * is restored afterwards, so one test cannot change the next one's timing.
+   */
+  async function withRingTimeout(ms: number, fn: () => Promise<void>) {
+    const prev = process.env.CALL_RING_TIMEOUT_MS;
+    process.env.CALL_RING_TIMEOUT_MS = String(ms);
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined) delete process.env.CALL_RING_TIMEOUT_MS;
+      else process.env.CALL_RING_TIMEOUT_MS = prev;
+    }
+  }
+
+  it('rings a backgrounded callee whose socket is still connected', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+
+    // A locked phone, or the app sitting on the home screen, keeps its socket
+    // alive for minutes. Pushing only when the socket was gone meant such a
+    // callee saw nothing at all: no in-app sheet (nothing is visible) and no
+    // notification (the server believed the app was open).
+    b.emit('presence:set', { foreground: false });
+    await new Promise((r) => setTimeout(r, 150));
+
+    const ringing = once(b, 'call:ringing');
+    a.emit('call:request', { exchangeId, video: false });
+    await ringing;
+
+    expect(mockIncomingPush).toHaveBeenCalledTimes(1);
+    expect(mockIncomingPush.mock.calls[0][0]).toBe(callee.userId);
+    expect(mockIncomingPush.mock.calls[0][1]).toMatchObject({ exchangeId, video: false });
+
+    a.emit('call:hangup', { exchangeId });
+    await once(b, 'call:ended');
+  });
+
+  it('does not push to a callee who is looking at the app', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+
+    // Foreground is the default: a socket that never reports presence behaves
+    // exactly as it did before, so an older client cannot end up with both the
+    // in-app sheet and a notification for the same call.
+    const ringing = once(b, 'call:ringing');
+    a.emit('call:request', { exchangeId, video: false });
+    await ringing;
+    expect(mockIncomingPush).not.toHaveBeenCalled();
+
+    // Hanging up before an answer must not push either — they can see the end.
+    a.emit('call:hangup', { exchangeId });
+    await once(b, 'call:ended');
+    expect(mockCancelledPush).not.toHaveBeenCalled();
+  });
+
+  it('stops pushing once the app comes back to the foreground', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+
+    b.emit('presence:set', { foreground: false });
+    await new Promise((r) => setTimeout(r, 150));
+    b.emit('presence:set', { foreground: true });
+    await new Promise((r) => setTimeout(r, 150));
+
+    const ringing = once(b, 'call:ringing');
+    a.emit('call:request', { exchangeId, video: false });
+    await ringing;
+    expect(mockIncomingPush).not.toHaveBeenCalled();
+
+    a.emit('call:hangup', { exchangeId });
+    await once(b, 'call:ended');
+  });
+
+  it('ends an unanswered call on both phones and logs it MISSED', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    await withRingTimeout(300, async () => {
+      const a = await connect(caller.token);
+      const b = await connect(callee.token);
+
+      const callerEnds: unknown[] = [];
+      const calleeEnds: unknown[] = [];
+      a.on('call:ended', (p) => callerEnds.push(p));
+      b.on('call:ended', (p) => calleeEnds.push(p));
+
+      a.emit('call:request', { exchangeId, video: false });
+      await once(b, 'call:ringing');
+      // ...and nobody answers.
+      await new Promise((r) => setTimeout(r, 900));
+
+      // Both sides are told, each exactly once.
+      expect(callerEnds).toHaveLength(1);
+      expect(calleeEnds).toHaveLength(1);
+      expect((callerEnds[0] as { reason?: string }).reason).toBe('no-answer');
+      expect((calleeEnds[0] as { endedBy: string }).endedBy).toBe(callee.userId);
+
+      // A phone ringing from a push has no socket to hear the end on, so it has
+      // to be told to stop.
+      expect(mockCancelledPush).toHaveBeenCalledTimes(1);
+      expect(mockCancelledPush.mock.calls[0][0]).toBe(callee.userId);
+
+      const log = await waitForCallLog(exchangeId);
+      expect(log.outcome).toBe('MISSED');
+    });
+  });
+
+  it('does not end a call that was answered inside the ring window', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    await withRingTimeout(300, async () => {
+      const a = await connect(caller.token);
+      const b = await connect(callee.token);
+
+      a.emit('call:request', { exchangeId, video: false });
+      await once(b, 'call:ringing');
+      b.emit('call:accept', { exchangeId });
+      await once(a, 'call:accepted');
+
+      let ends = 0;
+      a.on('call:ended', () => {
+        ends += 1;
+      });
+      b.on('call:ended', () => {
+        ends += 1;
+      });
+      // Well past the 300ms ring window: an answered call must survive it.
+      await new Promise((r) => setTimeout(r, 800));
+      expect(ends).toBe(0);
+
+      a.emit('call:hangup', { exchangeId });
+      await new Promise((r) => setTimeout(r, 300));
+      const log = await waitForCallLog(exchangeId);
+      // It was answered, so a real conversation — not a missed call.
+      expect(log.outcome).toBe('COMPLETED');
+    });
+  });
+
+  it('silences a closed phone when the caller hangs up before an answer', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    // The callee never connects at all: app fully closed, so a push is the only
+    // way to reach them.
+
+    a.emit('call:request', { exchangeId, video: false });
+    await new Promise((r) => setTimeout(r, 250));
+    expect(mockIncomingPush).toHaveBeenCalledTimes(1);
+
+    a.emit('call:hangup', { exchangeId });
+    await new Promise((r) => setTimeout(r, 250));
+
+    // The notification is insistent: without a cancel it keeps ringing for a
+    // call that no longer exists, and no socket event will ever reach it.
+    expect(mockCancelledPush).toHaveBeenCalledTimes(1);
+    expect(mockCancelledPush.mock.calls[0][0]).toBe(callee.userId);
+
+    const log = await waitForCallLog(exchangeId);
+    expect(log.outcome).toBe('MISSED');
   });
 });
 

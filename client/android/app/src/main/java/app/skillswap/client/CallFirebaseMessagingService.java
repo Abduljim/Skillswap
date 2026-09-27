@@ -15,29 +15,77 @@ import com.google.firebase.messaging.RemoteMessage;
 import java.util.Map;
 
 /**
- * Receives FCM data messages from the SkillSwap server. When another user calls
- * and this device has the app closed, the server sends a data message with
- * type=call_incoming; we show a full-screen "X is calling you" notification
- * with the user's chosen sound (ringtone/alarm/silent from Settings → Calls).
- * Tapping it opens the app, which picks up the stored call via PushPlugin.
+ * Receives FCM data messages from the SkillSwap server.
+ *
+ * type=call_incoming — another user is calling and this device is not showing
+ * the app (closed, or alive in the background: the server pushes whenever the
+ * callee is not in the foreground, not only when the socket is gone). We show a
+ * full-screen "X is calling you" notification with Answer / Decline actions and
+ * the ringtone chosen in Settings → Calls (high / soothe / silent).
+ *
+ * type=call_cancelled — the caller hung up, or the ring timed out, before this
+ * device answered. The notification is FLAG_INSISTENT, so without this the phone
+ * would keep ringing for a call that no longer exists; we cancel it and drop the
+ * stored call.
+ *
+ * Tapping the notification — or Answer — opens the app, which picks the call up
+ * through Push.getLaunchedCall(). Answer and Decline also record the choice,
+ * read back with Push.getLaunchAction(), so the web layer can accept or decline
+ * over its socket; see CallActionReceiver for why the receiver cannot do that
+ * itself.
+ *
+ * The notification id is shared with CallNotifier on purpose. Whichever path
+ * posts — this service with the app closed, CallNotifier.ring() with it open —
+ * replaces the other instead of stacking a second ringing notification, and
+ * CallNotifier.stop() silences both.
  */
 public class CallFirebaseMessagingService extends FirebaseMessagingService {
     private static final String CHANNEL_ID = "calls";
-    private static final int CALL_NOTIFICATION_ID = 9002;
+
+    /**
+     * Id this service used before it shared CallNotifier's. Still cancelled so a
+     * device upgrading from that build does not keep an old ring alive.
+     */
+    static final int LEGACY_NOTIFICATION_ID = 9002;
+
+    /** Must match the keys PushPlugin reads. */
     private static final String PREFS = "call_state";
     private static final String KEY_EXCHANGE = "exchange_id";
     private static final String KEY_CALLER = "caller_name";
     private static final String KEY_CALLER_ID = "caller_id";
     private static final String KEY_VIDEO = "video";
     private static final String KEY_TS = "ts";
+    private static final String KEY_ACTION = "action";
+
+    /**
+     * Backstop in case a cancel push never arrives (offline, token rotated).
+     * Deliberately longer than the server's ring timeout so the server's
+     * call_cancelled normally wins and the notification dies with the call.
+     */
+    private static final long RING_TIMEOUT_MS = 60_000L;
+
+    private static final int REQ_OPEN = 1;
+    private static final int REQ_ANSWER = 2;
+    private static final int REQ_DECLINE = 3;
 
     @Override
     public void onMessageReceived(RemoteMessage remoteMessage) {
         Map<String, String> data = remoteMessage.getData();
-        if (data == null || !"call_incoming".equals(data.get("type"))) {
+        String type = data == null ? null : data.get("type");
+        if (data == null || type == null) {
             super.onMessageReceived(remoteMessage);
             return;
         }
+
+        if ("call_cancelled".equals(type)) {
+            cancelRinging(data.get("exchangeId"));
+            return;
+        }
+        if (!"call_incoming".equals(type)) {
+            super.onMessageReceived(remoteMessage);
+            return;
+        }
+
         String exchangeId = data.get("exchangeId") != null ? data.get("exchangeId") : "";
         String callerName = data.get("callerName") != null ? data.get("callerName") : "Someone";
         String callerId = data.get("callerId") != null ? data.get("callerId") : "";
@@ -51,12 +99,32 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
                     .putString(KEY_CALLER_ID, callerId)
                     .putBoolean(KEY_VIDEO, video)
                     .putLong(KEY_TS, System.currentTimeMillis())
+                    // A new call must not inherit the previous tap's answer/decline.
+                    .remove(KEY_ACTION)
                     .apply();
         }
-        showIncomingCallNotification(exchangeId, callerName);
+        showIncomingCallNotification(exchangeId, callerName, video);
     }
 
-    private void showIncomingCallNotification(String exchangeId, String callerName) {
+    /** The call this notification is ringing for was cancelled — stop ringing. */
+    private void cancelRinging(String exchangeId) {
+        try {
+            String stored = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_EXCHANGE, "");
+            // An empty id means "cancel whatever is ringing"; otherwise only
+            // cancel if it is still the same call, so a late cancel for an old
+            // call cannot silence a new one.
+            if (exchangeId == null || exchangeId.isEmpty() || exchangeId.equals(stored)) {
+                NotificationManagerCompat.from(this).cancel(CallNotifier.CALL_NOTIFICATION_ID);
+                NotificationManagerCompat.from(this).cancel(LEGACY_NOTIFICATION_ID);
+                getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
+            }
+        } catch (Exception ignored) {
+            // Nothing to cancel.
+        }
+    }
+
+    private void showIncomingCallNotification(String exchangeId, String callerName, boolean video) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && getApplicationContext().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                         != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -75,33 +143,54 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
                 }
             }
 
-            Intent intent = new Intent(this, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             int flags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-            PendingIntent openApp = PendingIntent.getActivity(this, 1, intent, flags);
+
+            Intent open = new Intent(this, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent openApp = PendingIntent.getActivity(this, REQ_OPEN, open, flags);
+
+            PendingIntent answer = PendingIntent.getBroadcast(this, REQ_ANSWER,
+                    actionIntent(CallActionReceiver.ACTION_ANSWER, exchangeId), flags);
+            PendingIntent decline = PendingIntent.getBroadcast(this, REQ_DECLINE,
+                    actionIntent(CallActionReceiver.ACTION_DECLINE, exchangeId), flags);
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentTitle(callerName)
-                    .setContentText("Incoming call…")
+                    .setContentText(video ? "Incoming video call…" : "Incoming call…")
                     .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setOngoing(true)
                     .setFullScreenIntent(openApp, true)
                     .setContentIntent(openApp)
                     .setAutoCancel(false)
+                    .setTimeoutAfter(RING_TIMEOUT_MS)
+                    .addAction(0, "Answer", answer)
+                    .addAction(0, "Decline", decline)
                     .setVibrate(new long[] { 0, 700, 400, 700 });
 
             Uri sound = CallSound.uri(this);
             if (sound != null) builder.setSound(sound);
 
             Notification notification = builder.build();
+            // Ring until answered, declined, cancelled or timed out.
             notification.flags |= Notification.FLAG_INSISTENT;
-            NotificationManagerCompat.from(this).notify(CALL_NOTIFICATION_ID, notification);
+            NotificationManagerCompat.from(this)
+                    .notify(CallNotifier.CALL_NOTIFICATION_ID, notification);
+            NotificationManagerCompat.from(this).cancel(LEGACY_NOTIFICATION_ID);
         } catch (Exception e) {
             // Ignored — e.g. permission revoked or device policy.
         }
+    }
+
+    private Intent actionIntent(String action, String exchangeId) {
+        Intent intent = new Intent(this, CallActionReceiver.class);
+        intent.setAction(action);
+        intent.putExtra("exchangeId", exchangeId == null ? "" : exchangeId);
+        return intent;
     }
 
     @Override

@@ -79,6 +79,8 @@ export const env = {
   // Mesh: every participant uploads one stream per other participant, so cost
   // and CPU grow with n*(n-1). Capped, and groups start audio-only.
   MAX_GROUP_CALL_PARTICIPANTS: parseInt(process.env.MAX_GROUP_CALL_PARTICIPANTS || '4', 10),
+  // How long a 1:1 call rings before the server ends it as unanswered.
+  CALL_RING_TIMEOUT_MS: parseInt(process.env.CALL_RING_TIMEOUT_MS || '45000', 10),
 };
 
 if (env.NODE_ENV === 'production' && env.JWT_SECRET === 'dev-secret-change-me') {

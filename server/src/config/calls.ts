@@ -31,3 +31,21 @@ export const MAX_GROUP_CALL_PARTICIPANTS = Math.max(
  * difference between "free" and "expensive".
  */
 export const GROUP_CALLS_AUDIO_FIRST = true;
+
+/**
+ * How long a 1:1 call may ring before the server ends it as unanswered.
+ *
+ * Without a limit the caller sits on "Ringing…" forever, and a callee whose app
+ * is closed keeps an insistent call notification ringing until they notice it.
+ * Ending the call also pushes `call_cancelled` to that phone so it goes quiet.
+ *
+ * Read at call time rather than at import so it can be tuned per environment
+ * (CALL_RING_TIMEOUT_MS) and shortened inside a single test.
+ */
+export function callRingTimeoutMs(): number {
+  const override = Number(process.env.CALL_RING_TIMEOUT_MS);
+  if (Number.isFinite(override) && override > 0) return override;
+  return Number.isFinite(env.CALL_RING_TIMEOUT_MS) && env.CALL_RING_TIMEOUT_MS > 0
+    ? env.CALL_RING_TIMEOUT_MS
+    : 45_000;
+}

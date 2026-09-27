@@ -50,6 +50,7 @@ android {
             main {
                 java.exclude '**/CallFirebaseMessagingService.java'
                 java.exclude '**/PushPlugin.java'
+                java.exclude '**/CallActionReceiver.java'
             }
         }
     }
