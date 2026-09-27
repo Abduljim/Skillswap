@@ -166,7 +166,11 @@ const MEDIA_PATH =
 export const mediaSignSchema = z.object({
   kind: z.enum(['video', 'image']),
   contentType: z.string().trim().min(3).max(80),
-  bytes: z.number().int().positive().max(64 * 1024 * 1024),
+  // An absolute sanity ceiling, deliberately looser than the real per-kind cap:
+  // media.routes enforces 64 MB video / 12 MB image so the rejection carries a
+  // human-readable message ("That file is 71.0 MB. The limit is 64 MB.") instead
+  // of a bare "Invalid request".
+  bytes: z.number().int().positive().max(512 * 1024 * 1024),
 });
 
 export const mediaConfirmSchema = z.object({
