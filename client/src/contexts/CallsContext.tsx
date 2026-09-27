@@ -105,6 +105,10 @@ interface CallsContextValue extends CallState {
   toggleMic: () => void;
   toggleCamera: () => void;
   durationSec: number;
+  /** True while an active call is collapsed to the floating bar. */
+  minimized: boolean;
+  minimizeCall: () => void;
+  restoreCall: () => void;
   summary: CallSummary | null;
   clearSummary: () => void;
   openSettings: () => void;
@@ -150,6 +154,14 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const [micMuted, setMicMuted] = useState(false);
   const [cameraAvailable, setCameraAvailable] = useState(false);
   const [summary, setSummary] = useState<CallSummary | null>(null);
+  const [minimized, setMinimized] = useState(false);
+
+  // Minimising only applies to an established call: the collapsed state is
+  // dropped as soon as the call rings, errors or ends, so the incoming-call
+  // sheet and the call-ended summary are always full screen.
+  useEffect(() => {
+    if (status !== 'active') setMinimized(false);
+  }, [status]);
   const [now, setNow] = useState(() => Date.now());
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1211,6 +1223,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     gToggleMic,
     gToggleCamera,
     attachGroupVideo,
+    minimized,
+    minimizeCall: () => setMinimized(true),
+    restoreCall: () => setMinimized(false),
   };
 
   return (
@@ -1224,6 +1239,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onToggleMic={toggleMic}
         onToggleCamera={toggleCamera}
         onOpenSettings={openCallSettings}
+        minimized={minimized}
+        onMinimize={() => setMinimized(true)}
+        onRestore={() => setMinimized(false)}
         micMuted={micMuted}
         cameraAvailable={cameraAvailable}
         localVideoRef={localVideoRef}
