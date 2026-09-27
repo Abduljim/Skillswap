@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { env, playVerificationEnabled } from '../config/env';
 import { fcmDiagnostics } from './fcm.service';
+import { resetLinkBase } from './auth.service';
 import { emailDiagnostics } from './email.service';
 import { storageConfigured, missingStorageConfig } from './supabase.service';
 
@@ -174,7 +175,10 @@ export async function getDiagnostics() {
             ? 'Credentials work and devices are registered.'
             : 'Fix the credential problem in "error" before expecting any notification.',
     },
-    email,
+    // The base password-reset links are built from, without a token. Worth
+    // reporting because a wildcard or a localhost default here produces emails
+    // that are delivered, log nothing wrong, and cannot be clicked.
+    email: { ...email, resetLinkBase: resetLinkBase() },
     media: {
       configured: storageConfigured(),
       missing: missingStorageConfig(),

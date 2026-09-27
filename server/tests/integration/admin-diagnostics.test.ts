@@ -20,6 +20,11 @@ const PINNED = {
   SMTP_USER: '',
   SMTP_PASS: '',
   RESEND_API_KEY: '',
+  // A wildcard CLIENT_URL is the production CORS value; the reset link must not
+  // be built from it, so SERVER_URL is what should surface here.
+  CLIENT_URL: '*',
+  RESET_URL: '',
+  SERVER_URL: 'https://api.example.test',
 };
 
 describe('GET /api/admin/diagnostics', () => {
@@ -83,6 +88,9 @@ describe('GET /api/admin/diagnostics', () => {
     expect(d.email.smtp.verify).toBe('not_attempted');
     expect(d.email.resend.keyCheck).toBe('not_attempted');
     expect(d.email.smtp).not.toHaveProperty('pass');
+    // Never a wildcard, never localhost: this is what a reset email will use.
+    expect(d.email.resetLinkBase).toBe('https://api.example.test');
+    expect(d.email.resetLinkBase).not.toContain('*');
 
     expect(Array.isArray(d.media.missing)).toBe(true);
     expect(typeof d.media.configured).toBe('boolean');

@@ -139,7 +139,7 @@ export async function getMe(userId: string) {
  * the request arrived on (trust proxy is set, so behind Render that is the public
  * https origin), and only then SERVER_URL, which defaults to localhost.
  */
-function resetLinkBase(originHint?: string): string {
+export function resetLinkBase(originHint?: string): string {
   const client = (env.CLIENT_URL || '').trim();
   if (client && !client.includes('*')) return client;
   if (originHint) return originHint;
