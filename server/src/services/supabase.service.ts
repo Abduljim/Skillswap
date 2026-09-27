@@ -77,6 +77,25 @@ function storageBase(): string {
   return `${env.SUPABASE_URL.replace(/\/+$/, '')}/storage/v1`;
 }
 
+/**
+ * Auth headers for a Storage call — deliberately BOTH of them.
+ *
+ * Supabase runs two key systems side by side: the legacy `service_role` JWT and
+ * the new opaque `sb_secret_...` key — which is the only kind a project created
+ * today gets, and the only kind that survives the legacy deprecation at the end
+ * of 2026. The gateway resolves `apikey` by direct lookup, but it tries to
+ * *JWT-decode* whatever sits in `Authorization: Bearer`, so a new-format key sent
+ * only there fails with `403 {"error":"Unauthorized","message":"Invalid Compact
+ * JWS"}` — a miserable dead end, because the key itself is perfectly valid.
+ *
+ * Sending both works for either format, and is what supabase-js itself does for
+ * direct REST/Storage calls.
+ */
+function storageHeaders(extra?: Record<string, string>): Record<string, string> {
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  return { apikey: key, Authorization: `Bearer ${key}`, ...(extra || {}) };
+}
+
 /** Public read URL for a stored object (the bucket must be public). */
 export function publicUrlFor(path: string): string {
   return `${storageBase()}/object/public/${bucketName()}/${path}`;
@@ -131,11 +150,7 @@ export function buildMediaPath(kind: MediaKind, contentType: string, userId: str
 export async function createSignedUploadUrl(path: string, contentType: string): Promise<string> {
   const res = await fetch(`${storageBase()}/object/upload/sign/${bucketName()}/${path}`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      'Content-Type': 'application/json',
-      'x-upsert': 'false',
-    },
+    headers: storageHeaders({ 'Content-Type': 'application/json', 'x-upsert': 'false' }),
     body: JSON.stringify({ contentType: contentType.split(';')[0].trim().toLowerCase() }),
   });
   if (!res.ok) {
@@ -145,7 +160,9 @@ export async function createSignedUploadUrl(path: string, contentType: string): 
       'MEDIA_UPLOAD_SIGN_FAILED',
       res.status === 404
         ? `The storage bucket "${bucketName()}" was not found. Create it (public) as described in docs/MEDIA.md.`
-        : 'Could not start the upload. Please try again.',
+        : res.status === 401 || res.status === 403
+          ? 'Supabase refused the storage key. Check SUPABASE_SERVICE_ROLE_KEY is the secret key (sb_secret_...) or the legacy service_role JWT for THIS project — a key copied from another project looks the same and fails the same way. See docs/MEDIA.md.'
+          : 'Could not start the upload. Please try again.',
       { status: res.status, detail: detail.slice(0, 300) }
     );
   }
@@ -163,7 +180,7 @@ export async function createSignedUploadUrl(path: string, contentType: string): 
 export async function statObject(path: string): Promise<{ bytes: number; contentType: string } | null> {
   const res = await fetch(`${storageBase()}/object/${bucketName()}/${path}`, {
     method: 'HEAD',
-    headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    headers: storageHeaders(),
   });
   if (res.status === 400 || res.status === 404) return null;
   if (!res.ok) {
@@ -181,6 +198,6 @@ export async function statObject(path: string): Promise<{ bytes: number; content
 export async function deleteObject(path: string): Promise<void> {
   await fetch(`${storageBase()}/object/${bucketName()}/${path}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    headers: storageHeaders(),
   }).catch(() => undefined);
 }

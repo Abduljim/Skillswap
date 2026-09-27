@@ -181,6 +181,10 @@ describe('Signing uploads (storage configured)', () => {
   it('returns a server-generated path, a token-bearing upload URL and the caps', async () => {
     const restore = stubFetch((url, init) => {
       expect(url).toContain('/storage/v1/object/upload/sign/');
+      // Both headers, on purpose: an opaque sb_secret_ key is not a JWT, and a
+      // gateway that JWT-decodes Authorization rejects it with "Invalid Compact
+      // JWS". apikey is resolved by direct lookup and works for either format.
+      expect(init.headers.apikey).toBe('fake-service-role-key');
       expect(init.headers.Authorization).toBe('Bearer fake-service-role-key');
       return { status: 200, body: { url: `/object/upload/sign/${BUCKET}/video/x.mp4`, token: 'signed-token-123' } };
     });

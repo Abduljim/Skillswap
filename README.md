@@ -15,6 +15,7 @@ The matching engine is **deterministic** — no LLM, no AI APIs, no generative A
 - 🎯 Reciprocal skill matching (deterministic, explainable scores)
 - 💌 Exchange requests (send / accept / reject / cancel)
 - 🤝 Exchange workspaces with real-time chat (Socket.IO)
+- 🎬 **Video messages** — record in-app with a Standard/HD choice (HD warns it uses more data) or pick from the gallery, capped at 60s. Plus photos, an in-app emoji picker, and big-emoji stickers
 - 📞 **Voice + video calls** (WebRTC) between exchange partners, and **group calls** with a live mesh
 - 🖼️ **Profile cards** — an animated SVG/CSS ring + header gradient around your avatar (1 free, 5 Pro)
 - 🌈 **App wallpapers** — themed backgrounds for the whole app including chats (1 free, 5 Pro)
@@ -320,6 +321,7 @@ See `server/src/routes/` for the full REST surface. Key resources:
 - `/api/exchange-requests/*` — request lifecycle
 - `/api/exchanges/*` — active exchanges
 - `/api/notifications/*` — notifications
+- `/api/media/*` — signed chat media uploads: `GET /status`, `POST /sign`, `POST /confirm` (bytes go client → Supabase Storage directly, never through the API — see [`docs/MEDIA.md`](docs/MEDIA.md))
 - `/api/reports`, `/api/users/:id/block` — safety
 - `/api/admin/*` — admin only
 - `/api/subscription/*` — Pro membership, billing, restore, cancel
@@ -351,7 +353,7 @@ skillswap/
 │   │   └── sockets/
 │   └── tests/
 ├── shared/                 # shared types
-├── docs/ANDROID.md
+├── docs/                   # ANDROID · DEPLOY · MEDIA · TURN · RELAY-HOSTED · EMAIL · AUDIT
 └── package.json            # workspace orchestrator
 ```
 

@@ -158,3 +158,20 @@ services:
         # Resend's sandbox sender. Only usable with a verified domain — until
         # then it delivers solely to your own signup address. See docs/EMAIL.md.
         value: 'SkillSwap <onboarding@resend.dev>'
+      # ── Chat media storage (video + photos) — docs/MEDIA.md ───────────────
+      # Videos CANNOT live in this database: the free Render Postgres is 512 MB
+      # and is deleted 90 days after creation. Supabase Storage is the no-card
+      # option (1 GB stored, 5 GB/month served). The service key stays here on
+      # the server — the client only ever receives a single-use signed upload URL
+      # and POSTs bytes straight to storage, so large files never transit this
+      # free 512 MB instance. Leave both empty and video/photo uploads answer
+      # 503 MEDIA_NOT_CONFIGURED while text chat and legacy inline photos keep
+      # working; the app hides the video buttons in that state.
+      # Existing services may not pick up NEW keys from a Blueprint change — if
+      # these do not appear after syncing, add them by hand in the dashboard.
+      - key: SUPABASE_URL
+        value: ''
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: ''
+      - key: SUPABASE_MEDIA_BUCKET
+        value: 'skillswap-media'

@@ -46,7 +46,15 @@ export const env = {
   // media endpoints answer 503 MEDIA_NOT_CONFIGURED while text chat and legacy
   // inline photos keep working. Setup: docs/MEDIA.md
   SUPABASE_URL: process.env.SUPABASE_URL || '',
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  /**
+   * Either key format works: the new `sb_secret_...` (all a project created today
+   * has) or the legacy `service_role` JWT. SUPABASE_SECRET_KEY is accepted as an
+   * alias because that is what Supabase's own docs now call it. Server-side only —
+   * the client is handed a single-use signed upload URL instead, so this key never
+   * reaches a phone.
+   */
+  SUPABASE_SERVICE_ROLE_KEY:
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
   SUPABASE_MEDIA_BUCKET: process.env.SUPABASE_MEDIA_BUCKET || 'skillswap-media',
 
   // ── TURN relay for calls ────────────────────────────────────────────────
