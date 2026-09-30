@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -322,6 +323,34 @@ public class CallNotifier extends Plugin {
             }
             call.resolve();
         });
+    }
+
+    /**
+     * What Android currently allows, so the web layer can ask for the microphone
+     * before a call needs it — and can offer a route into Settings once somebody
+     * has hit "don't ask again", which the OS otherwise makes permanent.
+     */
+    @PluginMethod
+    public void getPermissionState(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            ret.put("microphone", hasPermission("microphone") ? "granted" : "denied");
+            ret.put("camera", hasPermission("camera") ? "granted" : "denied");
+            // Notifications are granted by default before Android 13; there is no
+            // runtime permission to check, so report the truth rather than "denied".
+            boolean notifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                    || hasPermission("notifications");
+            ret.put("notifications", notifications ? "granted" : "denied");
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                ret.put("fullScreenIntent", "unsupported");
+            } else {
+                ret.put("fullScreenIntent", canUseFullScreenIntent() ? "granted" : "denied");
+            }
+        } catch (Throwable ignored) {
+            // A partial answer still beats none: the caller treats missing keys
+            // as "denied".
+        }
+        call.resolve(ret);
     }
 
     // In-call full-screen "simulated call alarm": hide the Android system bars

@@ -5,8 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme, FREE_THEME, FREE_MODE } from '../contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { ensureMediaPermissions } from '../lib/media-permissions';
-import { requestCallNotificationPermission } from '../lib/call-notifier';
+import CallPermissionGate from '../components/CallPermissionGate';
 import { registerPushToken } from '../lib/push';
 import { unlockAudio } from '../lib/ringtone';
 import type { Conversation, ExchangeRequest } from '../types';
@@ -33,15 +32,11 @@ export default function AppLayout() {
     };
   }, []);
 
-  // One-time permission prompt for camera + mic so calls work for everyone.
-  useEffect(() => {
-    void ensureMediaPermissions();
-  }, []);
-
-  // Ask for Android notification permission up front (incoming call ringtone).
-  useEffect(() => {
-    void requestCallNotificationPermission();
-  }, []);
+  // Call permissions are handled by <CallPermissionGate /> below: it explains
+  // what each one is for, asks once, and keeps a one-tap route into Android's
+  // settings page until the microphone actually works. Firing the three OS
+  // dialogs cold here — no explanation, nothing afterwards — is how people ended
+  // up permanently denied, which silently breaks every call they answer.
 
   // Push registration: after login, keep the device registered so calls ring
   // when the app is closed. (Opening the app from a call notification is
@@ -130,6 +125,7 @@ export default function AppLayout() {
           You are offline. Check your internet connection.
         </div>
       )}
+      <CallPermissionGate />
       {/* Top bar (desktop + tablet) */}
       {!isFullScreenChat && (
       <header className="hidden md:flex glass-nav border-b border-ink-100 sticky top-0 z-30 h-16 items-center px-6">

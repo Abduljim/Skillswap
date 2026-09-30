@@ -23,6 +23,16 @@ interface CallNotifierPlugin {
   ring(opts: { displayName: string; soundSource?: CallSoundSource }): Promise<void>;
   stop(): Promise<void>;
   openSettings(): Promise<void>;
+  getPermissionState(): Promise<Partial<CallPermissions>>;
+}
+
+/** What Android currently allows, from CallNotifier.getPermissionState(). */
+export interface CallPermissions {
+  microphone: 'granted' | 'denied';
+  camera: 'granted' | 'denied';
+  notifications: 'granted' | 'denied';
+  /** Android 11+ hides full-screen incoming-call screens behind this. */
+  fullScreenIntent: 'granted' | 'denied' | 'unsupported';
 }
 
 const CallNotifier = registerPlugin<CallNotifierPlugin>('CallNotifier');
@@ -95,6 +105,41 @@ export async function stopIncomingCallRing(): Promise<void> {
     if (Capacitor.getPlatform() === 'android') await CallNotifier.stop();
   } catch {
     // Ignored
+  }
+}
+
+/**
+ * Reads the real Android permission state, so the app can ask for the
+ * microphone before a call needs it instead of failing halfway through one.
+ *
+ * Web builds report everything granted: the browser prompts at getUserMedia
+ * time and has no equivalent of a permanently-denied runtime permission, so
+ * there is nothing for the gate to fix.
+ */
+export async function getCallPermissionState(): Promise<CallPermissions> {
+  const web: CallPermissions = {
+    microphone: 'granted',
+    camera: 'granted',
+    notifications: 'granted',
+    fullScreenIntent: 'unsupported',
+  };
+  try {
+    if (Capacitor.getPlatform() !== 'android') return web;
+    const state = await CallNotifier.getPermissionState();
+    return {
+      microphone: state?.microphone === 'granted' ? 'granted' : 'denied',
+      camera: state?.camera === 'granted' ? 'granted' : 'denied',
+      notifications: state?.notifications === 'granted' ? 'granted' : 'denied',
+      fullScreenIntent:
+        state?.fullScreenIntent === 'granted'
+          ? 'granted'
+          : state?.fullScreenIntent === 'unsupported'
+            ? 'unsupported'
+            : 'denied',
+    };
+  } catch {
+    // Non-native build, or an older APK without the method: nothing to gate on.
+    return web;
   }
 }
 

@@ -5,6 +5,7 @@ import { useGlobalSocket } from './SocketContext';
 import { CallOverlay, CallStatus, Peer } from '../components/CallOverlay';
 import { GroupCallOverlay } from '../components/GroupCallOverlay';
 import { ensureMediaPermissions } from '../lib/media-permissions';
+import { notifyCallPermissionNeeded } from '../lib/permission-gate';
 import {
   ringIncomingCall,
   stopIncomingCallRing,
@@ -336,7 +337,12 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       got = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }).catch(() => null);
       hasVideo = false;
     }
-    if (!got) return null;
+    if (!got) {
+      // Bring the fix on screen. A denied microphone cannot be solved from
+      // inside a call, and the gate owns the one-tap route to Settings.
+      notifyCallPermissionNeeded('microphone');
+      return null;
+    }
     streamRef.current = got;
     setCameraAvailable(got.getVideoTracks().length > 0);
     return { stream: got, hasVideo };
