@@ -156,14 +156,28 @@ services:
       - key: SMTP_PORT
         value: '587'
       - key: SMTP_USER
-        # The email the Brevo account was CREATED with — not a sender address.
-        value: jimoh0004@gmail.com
+        # Brevo's SMTP login is NOT the account email. It is the generated
+        # address shown as "Login" on Settings -> SMTP & API -> SMTP, in the
+        # form xxxxxxx@smtp-brevo.com. Using the account email instead makes
+        # the relay answer "535 5.7.8 Authentication failed" no matter how
+        # correct the key is. Find yours in the dashboard and put it here.
+        value: bb648e001@smtp-brevo.com
       - key: SMTP_PASS
+        sync: false
         # Brevo → SMTP & API → SMTP → "Generate a new SMTP key". Shown once.
         # Secret: set it in the Render dashboard, never commit it here.
+        # If the relay answers "525 5.7.1 Unauthorized IP address" the
+        # credentials are fine but the account blocks unknown IPs: turn that
+        # off at Settings -> Security -> Authorized IPs -> Deactivate blocking.
+        # Render's free tier has no static egress IP, so whitelisting breaks
+        # again on the next redeploy.
         value: ''
       - key: SMTP_FROM
-        # Must be a sender verified in Brevo (Senders & Domains → Add a sender).
+        # The account owner's own address is accepted by the free relay; a
+        # different From needs validating first (Senders & Domains → Add a
+        # sender → click the link in Brevo's confirmation email). If Brevo ever
+        # rejects this, fall back to 'SkillSwap <bb648e001@smtp-brevo.com>',
+        # which is always accepted because it is the SMTP login itself.
         value: 'SkillSwap <jimoh0004@gmail.com>'
       - key: RESEND_API_KEY
         value: ''
