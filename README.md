@@ -115,8 +115,12 @@ GOOGLE_PLAY_SERVICE_ACCOUNT_JSON='{…service account key…}'
 ANDROID_PACKAGE_NAME=app.skillswap.client
 ```
 
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` takes the key's **contents** (above) or a path to
+a key file — both work, and a double-escaped `private_key` is repaired on load.
 Outside production both paths stay permissive so the paywall UI can be exercised.
-The boot log prints the effective billing configuration on every start.
+The boot log prints the effective billing configuration on every start, and an admin
+can call `GET /api/subscription/android/self-test` to confirm the key parses and
+authenticates before the first real purchase.
 
 ---
 

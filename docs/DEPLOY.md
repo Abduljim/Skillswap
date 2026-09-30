@@ -248,9 +248,17 @@ Not enabled in this deploy. To turn it on:
 2. Generate a Google Play service-account JSON key
 3. In Render, add these env vars to `skillswap-api`:
    - `PLAY_BILLING_VERIFY=true`
-   - `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=/etc/secrets/play-sa.json` (use Render's Secret Files feature)
-4. Upload the AAB (`app-release.aab`) to Play Console internal testing
-5. The APK will then be able to charge real money
+   - `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` — paste the **contents** of the
+     service-account JSON. That is the recommended form here because Render's
+     filesystem is ephemeral, so a path only works if you mount the key with
+     Render's Secret Files feature; both forms are accepted.
+4. Prove the key works before the first real purchase: sign in as an admin on the
+   web build and open
+   `https://skillswap-api-dcg8.onrender.com/api/subscription/android/self-test`.
+   Expect `accessToken: "ok"` and `endpoints.subscriptionsv2: true`. A `403` from
+   Google means the service account lacks **View financial data** in Play Console.
+5. Upload the AAB (`app-release.aab`) to Play Console internal testing
+6. The APK will then be able to charge real money
 
 **Until those variables are set, Android purchases are rejected.** The verifier
 fails closed in production: with `PLAY_BILLING_VERIFY` unset or `false` it returns

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../utils/asyncHandler';
-import { requireAuth } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import * as subscriptionService from '../services/subscription.service';
 import * as entitlementsService from '../services/entitlements.service';
@@ -56,6 +56,18 @@ router.post(
       ...req.body,
     });
     ok(res, sub);
+  })
+);
+
+// Admin-only: proves the service-account key parses and can authenticate, so a
+// bad paste is found before the first real customer tries to buy Pro. Read-only.
+router.get(
+  '/subscription/android/self-test',
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const { selfTestPlayBilling } = await import('../services/playBillingVerifier');
+    ok(res, await selfTestPlayBilling());
   })
 );
 

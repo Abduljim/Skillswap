@@ -78,15 +78,35 @@ The SkillSwap backend can verify purchase tokens with the Google Play Developer 
 1. In Google Cloud Console → **IAM & Admin → Service Accounts** → create a service account
 2. Grant it the **Android Publisher** role (or use the Play Console's API access to grant the role)
 3. Create a JSON key, download it as `play-service-account.json`
-4. Put it somewhere on your server (e.g. `/etc/skillswap/play-service-account.json`)
+4. Hand the key to the server in either form — both are accepted:
+   - **Paste the file's contents** into `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. This is
+     the right choice on a PaaS (Render, Fly, Railway): the filesystem is
+     ephemeral, so a path would point at nothing after the next deploy, and the
+     key must never be committed to the repo.
+   - **Or set the variable to a path** (e.g.
+     `/etc/skillswap/play-service-account.json`) on a server you control, or with
+     Render's Secret Files feature.
 
 Then add to your server `.env`:
 
 ```bash
+# either the key's contents…
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"…"}'
+# …or a path to the key file
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=/etc/skillswap/play-service-account.json
 ANDROID_PACKAGE_NAME=app.skillswap.client
 PLAY_BILLING_VERIFY=true
 ```
+
+A double-escaped `private_key` (literal `\n` instead of newlines, which some
+dashboard pastes produce) is repaired automatically.
+
+**Check the wiring without waiting for a purchase.** Sign in as an admin on the web
+build, then open `GET /api/subscription/android/self-test`. It reports whether the
+key parsed, whether the service account can mint an access token, and which Play
+endpoints the installed `googleapis` exposes. Pro is a subscription, so purchases
+verify against `purchases.subscriptionsv2` first and fall back to
+`purchases.products` for one-time SKUs.
 
 When `PLAY_BILLING_VERIFY=true`, the server will reject any purchase token that doesn't verify against Google Play. **Never set this to true in development** — Google rejects tokens generated outside a real Android purchase.
 

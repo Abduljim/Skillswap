@@ -66,6 +66,12 @@ services:
       - key: PLAY_BILLING_VERIFY
         value: 'false'
       - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+        sync: false
+        # Either the service-account key's JSON CONTENTS (recommended: Render's
+        # filesystem is ephemeral, so a path points at nothing after a deploy) or
+        # a path to a mounted key file. Both are accepted; a double-escaped
+        # private_key is repaired on load. Secret: dashboard only, never commit.
+        # Check it with GET /api/subscription/android/self-test as an admin.
         value: ''
       # Grants PRO from POST /api/subscription/web with NO payment provider.
       # Keep 'false' in production: 'true' makes Pro free for anyone with a cookie.
