@@ -299,6 +299,26 @@ describe('1:1 call signalling', () => {
     expect(log.type).toBe('VOICE');
   });
 
+  it('tells the caller why when the callee could not open their microphone', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+
+    a.emit('call:request', { exchangeId, video: false });
+    await once(b, 'call:ringing');
+
+    // What the app now sends when getUserMedia is denied. Before, the callee
+    // showed an error and emitted nothing at all, so the caller rang out the
+    // timeout with no explanation.
+    b.emit('call:reject', { exchangeId, reason: 'media-denied' });
+    const rejected = await once<{ rejectorId: string; reason?: string }>(a, 'call:rejected');
+    expect(rejected.rejectorId).toBe(callee.userId);
+    expect(rejected.reason).toBe('media-denied');
+
+    const log = await waitForCallLog(exchangeId);
+    expect(log.outcome).toBe('DECLINED');
+  });
+
   it('refuses a call from someone who is not a member of the exchange', async () => {
     const { callee, exchangeId } = await pairWithExchange();
     const intruder = await signup('intruder@skillswap.test', 'Mallory');

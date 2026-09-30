@@ -92,6 +92,15 @@ export interface CallSummary {
   video: boolean;
 }
 
+/**
+ * Shown when the OS refuses the microphone or camera.
+ *
+ * Names the fix. "Access was denied" on a phone the user is holding reads like a
+ * broken app, and the toggle is three taps away in Android's own settings.
+ */
+const MEDIA_DENIED =
+  'SkillSwap cannot open the microphone, so this call could not go ahead. Allow it under Settings → Apps → SkillSwap → Permissions → Microphone (and Camera for video), then call again.';
+
 export type GroupStatus = 'none' | 'outgoing' | 'incoming' | 'active';
 export type GroupPeerState = { mic?: boolean; camera?: boolean };
 
@@ -808,9 +817,20 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       startPeer(false).catch(() => {});
     };
 
-    const onRejected = (p: { exchangeId: string }) => {
+    const onRejected = (p: { exchangeId: string; reason?: string }) => {
       if (p.exchangeId !== exchangeIdRef.current || status !== 'outgoing') return;
       cleanup(true);
+      // A phone that could not open its microphone says so. Without this the
+      // call just vanishes for the caller, which reads as a broken app rather
+      // than "their mic is off".
+      if (p.reason === 'media-denied') {
+        update({
+          status: 'error',
+          incoming: false,
+          error: `${peer.displayName || 'They'} could not answer — microphone access is off on their phone.`,
+        });
+        return;
+      }
       update({ status: 'none', incoming: false });
     };
 
@@ -1087,7 +1107,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         const got = await acquireLocalStream(targetVideo);
         if (!got) {
           update({ status: 'error' });
-          setError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+          setError(MEDIA_DENIED);
           return;
         }
         if (!got.hasVideo) {
@@ -1097,7 +1117,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.error('[CALL] media denied', e);
         update({ status: 'error' });
-        setError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+        setError(MEDIA_DENIED);
         return;
       }
       sock.emit('call:request', { exchangeId, video: videoEnabledRef.current });
@@ -1111,15 +1131,21 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     try {
       const got = await acquireLocalStream(videoEnabledRef.current);
       if (!got) {
-        update({ status: 'error' });
-        setError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+        // Reject, exactly as the catch below does. Returning silently left the
+        // caller on "Ringing…" until the server's ring timeout, with no way to
+        // tell a dead microphone from being ignored — which is what made this
+        // look like calls simply did not work in either direction.
+        sock.emit('call:reject', {
+          exchangeId: exchangeIdRef.current,
+          reason: 'media-denied',
+        });
+        update({ status: 'error', error: MEDIA_DENIED });
         return;
       }
       if (!got.hasVideo) videoEnabledRef.current = false;
     } catch {
-      sock.emit('call:reject', { exchangeId: exchangeIdRef.current });
-      update({ status: 'error' });
-      setError('Microphone or camera access was denied. Allow access in your device settings, then try again.');
+      sock.emit('call:reject', { exchangeId: exchangeIdRef.current, reason: 'media-denied' });
+      update({ status: 'error', error: MEDIA_DENIED });
       return;
     }
     update({ status: 'active', incoming: false, video: videoEnabledRef.current, error: undefined });

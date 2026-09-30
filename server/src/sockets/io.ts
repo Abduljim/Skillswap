@@ -474,8 +474,14 @@ export function initSocket(httpServer: HTTPServer) {
       socket.to(peerRooms(data.exchangeId, caller, userId)).emit('call:accepted', payload);
     });
 
-    socket.on('call:reject', async (data: { exchangeId: string }) => {
-      const payload = { exchangeId: data.exchangeId, rejectorId: userId };
+    socket.on('call:reject', async (data: { exchangeId: string; reason?: string }) => {
+      // 'media-denied' means their phone could not open the microphone. Passed
+      // on so the caller is told instead of ringing out the timeout.
+      const payload = {
+        exchangeId: data.exchangeId,
+        rejectorId: userId,
+        ...(data.reason ? { reason: data.reason } : {}),
+      };
       // Resolve the counterpart before persistCallLog() clears the call map.
       const other = await counterpartOfCall(data.exchangeId, userId);
       const rejected = activeCalls.get(data.exchangeId);
