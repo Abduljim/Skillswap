@@ -385,6 +385,22 @@ export function initSocket(httpServer: HTTPServer) {
           select: { id: true, userAId: true, userBId: true, status: true },
         });
         if (!exchange || (exchange.userAId !== userId && exchange.userBId !== userId) || exchange.status !== 'ACTIVE') {
+          // Name the reason. This returns before the ring timer is armed, so a
+          // silent refusal left the caller on "Ringing…" forever with no
+          // `call:ended` to follow — and their client then refused every later
+          // attempt, because startCall() only fires from status 'none'.
+          const reason = !exchange
+            ? 'unknown-exchange'
+            : exchange.userAId !== userId && exchange.userBId !== userId
+              ? 'not-a-participant'
+              : 'exchange-not-active';
+          const message =
+            reason === 'unknown-exchange'
+              ? 'That conversation no longer exists.'
+              : reason === 'not-a-participant'
+                ? 'You are not part of that conversation.'
+                : 'You can only call someone once your exchange has been accepted.';
+          socket.emit('call:error', { exchangeId: data.exchangeId, reason, message });
           return socket.emit('error', { message: 'Cannot place call' });
         }
         const targetUserId = exchange.userAId === userId ? exchange.userBId : exchange.userAId;
@@ -438,6 +454,11 @@ export function initSocket(httpServer: HTTPServer) {
         const ringing = activeCalls.get(data.exchangeId);
         if (ringing) ringing.ringTimer = ringTimer;
       } catch (e) {
+        socket.emit('call:error', {
+          exchangeId: data.exchangeId,
+          reason: 'server-error',
+          message: 'That call could not be placed. Check your connection and try again.',
+        });
         socket.emit('error', { message: 'Failed to initiate call' });
       }
     });
@@ -501,6 +522,10 @@ export function initSocket(httpServer: HTTPServer) {
         for (const ex of exchanges) partners.add(ex.userAId === userId ? ex.userBId : ex.userAId);
         const eligible = requested.filter((id) => partners.has(id));
         if (eligible.length < 1) {
+          socket.emit('group:call:error', {
+            reason: 'no-eligible-invitees',
+            message: 'You can only group-call people you have an accepted exchange with.',
+          });
           socket.emit('error', { message: 'No valid participants for this group call' });
           return;
         }
@@ -551,6 +576,10 @@ export function initSocket(httpServer: HTTPServer) {
         }
       } catch (e) {
         console.error('[group-call] start failed', e);
+        socket.emit('group:call:error', {
+          reason: 'server-error',
+          message: 'That group call could not be started. Check your connection and try again.',
+        });
         socket.emit('error', { message: 'Failed to start group call' });
       }
     });

@@ -743,8 +743,16 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       endGroupCall();
     };
 
+    // A group call the server will not start. Same shape as `group:call:full`:
+    // say why, then tear the host out of "Ringing…".
+    const onGroupCallError = (p: { message?: string; reason?: string }) => {
+      setGroupError(p?.message || 'That group call could not be started.');
+      endGroupCall();
+    };
+
     socket.on('group:signal', onSignaled);
     socket.on('group:call:full', onGroupFull);
+    socket.on('group:call:error', onGroupCallError);
     socket.on('group:call:ringing', onGroupRinging);
     socket.on('group:call:started', onGroupStarted);
     socket.on('group:call:joined', onGroupJoined);
@@ -757,6 +765,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     return () => {
       socket.off('group:signal', onSignaled);
       socket.off('group:call:full', onGroupFull);
+      socket.off('group:call:error', onGroupCallError);
       socket.off('group:call:ringing', onGroupRinging);
       socket.off('group:call:started', onGroupStarted);
       socket.off('group:call:joined', onGroupJoined);
@@ -818,11 +827,53 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       else pendingSignalsRef.current.push(p.signal);
     };
 
+    // The server refuses a call on `call:error`. Before this existed the caller
+    // watched "Ringing…" forever — the refusal happens before the ring timer is
+    // armed, so no `call:ended` follows — and startCall() then refused every
+    // later attempt because status was no longer 'none'. Resetting here is what
+    // makes the next call possible.
+    const onCallError = (p: { exchangeId?: string; message?: string; reason?: string }) => {
+      // Only the socket that asked is told, but guard anyway: an error about
+      // some other conversation must not tear down a live ring.
+      if (p?.exchangeId && exchangeIdRef.current && p.exchangeId !== exchangeIdRef.current) {
+        return;
+      }
+      cleanup(true);
+      update({
+        status: 'error',
+        incoming: false,
+        error: p?.message || 'That call could not be placed.',
+      });
+    };
+
+    // Older servers report refusals on the generic event only. Ignored while no
+    // call is in progress, so a failed message send does not raise a call sheet.
+    const onSocketError = (p: { message?: string }) => {
+      const s = statusRef.current;
+      if (s !== 'outgoing' && s !== 'incoming') return;
+      onCallError({ message: p?.message });
+    };
+
+    // A socket that cannot connect makes every call impossible. Say so instead
+    // of leaving the caller watching a ring that will never be answered.
+    const onConnectError = () => {
+      if (statusRef.current !== 'outgoing' && statusRef.current !== 'incoming') return;
+      cleanup(true);
+      update({
+        status: 'error',
+        incoming: false,
+        error: 'Cannot reach SkillSwap right now. Check your connection, then try again.',
+      });
+    };
+
     socket.on('call:ringing', onRinging);
     socket.on('call:accepted', onAccepted);
     socket.on('call:rejected', onRejected);
     socket.on('call:ended', onEnded);
     socket.on('webrtc:signal', onSignal);
+    socket.on('call:error', onCallError);
+    socket.on('error', onSocketError);
+    socket.on('connect_error', onConnectError);
 
     return () => {
       socket.off('call:ringing', onRinging);
@@ -830,6 +881,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       socket.off('call:rejected', onRejected);
       socket.off('call:ended', onEnded);
       socket.off('webrtc:signal', onSignal);
+      socket.off('call:error', onCallError);
+      socket.off('error', onSocketError);
+      socket.off('connect_error', onConnectError);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, user?.id, status]);

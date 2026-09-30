@@ -667,8 +667,14 @@ describe('Group call signalling', () => {
     const host = await connect(caller.token);
 
     const errorPromise = once<{ message: string }>(host, 'error');
+    const typedPromise = once<{ reason: string; message: string }>(host, 'group:call:error');
     host.emit('group:call:start', { memberIds: [stranger.userId], video: false });
     expect((await errorPromise).message).toMatch(/no valid participants/i);
+    // The typed event is what the host UI listens for; the generic one is only
+    // kept for clients that predate it.
+    const typed = await typedPromise;
+    expect(typed.reason).toBe('no-eligible-invitees');
+    expect(typed.message).toMatch(/accepted exchange/i);
   });
 });
 
@@ -794,5 +800,54 @@ describe('Group call cap (mesh)', () => {
     const errorPromise = once<{ message: string }>(host, 'error');
     host.emit('group:call:start', { memberIds: [stranger.userId], video: false });
     expect((await errorPromise).message).toMatch(/no valid participants/i);
+  });
+});
+
+describe('A call the server refuses', () => {
+  // The refusal used to be emitted only on the generic `error` event, which no
+  // client listened for: the caller sat on "Ringing…" forever (the return happens
+  // before the ring timer is armed) and then could not place another call,
+  // because startCall() only fires from status 'none'.
+  it('names the reason when the exchange is no longer active, and rings nobody', async () => {
+    const { caller, callee, exchangeId } = await pairWithExchange();
+    await prisma.exchange.update({ where: { id: exchangeId }, data: { status: 'COMPLETED' } });
+
+    const a = await connect(caller.token);
+    const b = await connect(callee.token);
+    const refused = once<{ exchangeId: string; reason: string; message: string }>(a, 'call:error');
+
+    a.emit('call:request', { exchangeId, video: false });
+
+    const err = await refused;
+    expect(err.exchangeId).toBe(exchangeId);
+    expect(err.reason).toBe('exchange-not-active');
+    expect(err.message).toMatch(/accepted/i);
+    // The callee must not be rung for a call that was never placed.
+    await expect(once(b, 'call:ringing', 700)).rejects.toThrow(/Timed out/);
+  });
+
+  it('names the reason when the exchange does not exist', async () => {
+    const { caller } = await pairWithExchange();
+    const a = await connect(caller.token);
+    const refused = once<{ reason: string; message: string }>(a, 'call:error');
+
+    a.emit('call:request', { exchangeId: 'a3f1c2d4-0000-4000-8000-000000000000', video: false });
+
+    const err = await refused;
+    expect(err.reason).toBe('unknown-exchange');
+    expect(err.message.length).toBeGreaterThan(10);
+  });
+
+  it('names the reason when the caller is not in that exchange', async () => {
+    const { callee, exchangeId } = await pairWithExchange();
+    const outsider = await signup('outsider@skillswap.test', 'Outsider');
+    const s = await connect(outsider.token);
+    const refused = once<{ reason: string }>(s, 'call:error');
+
+    // Someone else's conversation id: a valid exchange, wrong socket.
+    s.emit('call:request', { exchangeId, video: false });
+
+    expect((await refused).reason).toBe('not-a-participant');
+    expect(callee.userId).toBeTruthy();
   });
 });
