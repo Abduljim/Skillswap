@@ -22,8 +22,17 @@ resetting it by hand. Empty SMTP vars are not a cosmetic gap.
 3. neither → logs `[email] no delivery provider configured` and returns
    `{ delivered: false }`
 
-Port handling: `secure: env.SMTP_PORT === 465`. So **587 → STARTTLS** (correct for
-Gmail and Brevo), 465 → implicit TLS.
+Port handling: `secure: env.SMTP_PORT === 465`. So **587 and 2525 → STARTTLS**,
+465 → implicit TLS.
+
+**⚠️ Render's free tier blocks outbound SMTP on ports 25, 465 and 587** (policy
+live since 2025-09-26; paid instances may use 465/587, port 25 stays blocked for
+everyone because Render runs on EC2). The block is a firewall *drop*, not a
+refusal, so nodemailer waits out its `connectionTimeout` of 10 s and the reset
+endpoint still answers `200` — the only visible symptom is a request that takes
+~10 s and an inbox that stays empty. **Use port 2525**, which Brevo serves and
+Render does not filter. Gmail has no 2525 listener, so on a free Render instance
+Brevo is the only working SMTP option.
 
 ---
 
@@ -56,7 +65,7 @@ card, no domain and no code change.
 | Key | Value |
 | --- | --- |
 | `SMTP_HOST` | `smtp.gmail.com` |
-| `SMTP_PORT` | `587` |
+| `SMTP_PORT` | `587` — **blocked on Render's free tier**, so this option needs a paid instance |
 | `SMTP_USER` | `jimoh0004@gmail.com` (already `ADMIN_EMAIL`) |
 | `SMTP_PASS` | the 16-character **App Password** — *not* your Gmail password |
 | `SMTP_FROM` | `SkillSwap <jimoh0004@gmail.com>` |
@@ -92,8 +101,8 @@ card, no domain and no code change.
 | Key | Value |
 | --- | --- |
 | `SMTP_HOST` | `smtp-relay.brevo.com` |
-| `SMTP_PORT` | `587` |
-| `SMTP_USER` | your Brevo login email |
+| `SMTP_PORT` | `2525` (or `587` off Render's free tier — free instances block 25/465/587) |
+| `SMTP_USER` | the generated SMTP login, `xxxxxxxxx@smtp-brevo.com`, shown as *Login* on **Settings → SMTP & API** — *not* your account email |
 | `SMTP_PASS` | the SMTP key from **SMTP & API** in the Brevo dashboard |
 | `SMTP_FROM` | `SkillSwap <jimoh0004@gmail.com>` |
 
@@ -160,6 +169,7 @@ code change and no APK rebuild, ever: email is entirely server-side.
 | `550-5.4.5` | Daily quota reached — waits up to 24 h |
 | `421-4.7.0` | Too many concurrent SMTP sessions; the code closes the transporter after every send, so this is unlikely |
 | `Email delivery timed out` | 15 s socket timeout — often a Render free-tier cold start. Retry once before investigating |
+| Reset endpoint answers `200` in **~10 s** and nothing arrives | Outbound SMTP is blocked: Render's free tier drops 25/465/587, so nodemailer burns its 10 s `connectionTimeout`. Set `SMTP_PORT=2525`. Confirm the instance is warm first (`/health` in ~0.1 s) — a cold start also costs seconds, but not a repeatable 10.1 s |
 | `[email] Resend rejected 403` | The Resend trap above: unverified domain, recipient is not your own address |
 
 ---

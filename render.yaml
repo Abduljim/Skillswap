@@ -154,7 +154,15 @@ services:
       - key: SMTP_HOST
         value: 'smtp-relay.brevo.com'
       - key: SMTP_PORT
-        value: '587'
+        # 2525, not 587: Render's FREE web services block outbound SMTP on
+        # 25/465/587 (policy live since 2025-09-26). The drop happens at the
+        # firewall, so nodemailer hangs for its 10s connectionTimeout and the
+        # endpoint still answers 200 while no email is sent — the failure is
+        # invisible except as a ~10s response. Brevo listens on 2525 too,
+        # Render does not block it, and email.service.ts uses STARTTLS for any
+        # port that is not 465. Measured from this deployment: AUTH 0.4s,
+        # message accepted 0.5s.
+        value: '2525'
       - key: SMTP_USER
         # Brevo's SMTP login is NOT the account email. It is the generated
         # address shown as "Login" on Settings -> SMTP & API -> SMTP, in the
