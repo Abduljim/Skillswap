@@ -75,6 +75,20 @@ export const env = {
   TURN_USERNAME: process.env.TURN_USERNAME || '',
   TURN_CREDENTIAL: process.env.TURN_CREDENTIAL || '',
 
+  /**
+   * Cloudflare Realtime TURN — 1,000 GB/month free, no card, no domain.
+   * When both are set they take priority over TURN_URLS/TURN_SECRET: the
+   * credentials come back from Cloudflare's API already shaped as
+   * RTCIceServer[], and the relay is anycast-global rather than one box.
+   * Create the key at Dashboard → Realtime → TURN (NOT Calls/SFU — an App ID
+   * from there answers "cannot find specified key"). The token is a secret:
+   * dashboard only, never committed. See docs/TURN.md.
+   */
+  CLOUDFLARE_TURN_KEY_ID: process.env.CLOUDFLARE_TURN_KEY_ID || '',
+  CLOUDFLARE_TURN_API_TOKEN: process.env.CLOUDFLARE_TURN_API_TOKEN || '',
+  /** Must outlive the longest call you expect; Cloudflare caps it at 24 h. */
+  CLOUDFLARE_TURN_TTL_SECONDS: parseInt(process.env.CLOUDFLARE_TURN_TTL_SECONDS || '3600', 10),
+
   // ── Group calls ─────────────────────────────────────────────────────────
   // Mesh: every participant uploads one stream per other participant, so cost
   // and CPU grow with n*(n-1). Capped, and groups start audio-only.

@@ -12,6 +12,7 @@ import { createApp } from './app';
 import { initSocket } from './sockets/io';
 import { SKILLS } from './catalogue';
 import { describeTurnConfig } from './services/turn.service';
+import { fcmDiagnostics } from './services/fcm.service';
 import { describeEmailConfig } from './services/email.service';
 
 const app = createApp();
@@ -72,6 +73,21 @@ function logConfigSummary() {
   // Password reset is the only thing email does and it fails silently by
   // design, so the deploy log is where a missing provider has to show up.
   console.log(`📧 [email] ${describeEmailConfig()}`);
+  // A missing FCM key is indistinguishable from "the other phone never rang"
+  // from the user's seat: the socket path still works, so foreground calls ring
+  // and only closed/backgrounded ones silently do not. Prove it at boot.
+  void fcmDiagnostics()
+    .then((d) => {
+      if (d.configured) {
+        console.log(`📱 [push] FCM ready (project ${d.projectId}, oauth ${d.oauth})`);
+      } else {
+        console.log(
+          `⚠️  [push] FCM NOT configured (${d.error}) — a closed or backgrounded app will NOT ring for incoming calls. ` +
+            'Firebase console → Project settings → Service accounts → Generate new private key, then paste the WHOLE JSON into FCM_SERVICE_ACCOUNT_JSON.'
+        );
+      }
+    })
+    .catch((e: any) => console.error('⚠️  [push] FCM diagnostics failed:', e?.message || e));
   if (env.CLIENT_URL === '*') {
     console.log('ℹ️  CLIENT_URL="*" is treated as "not configured" — only the allowlist above is permitted.');
   }

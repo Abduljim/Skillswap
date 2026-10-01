@@ -93,6 +93,19 @@ services:
       # Hosted relay with no VPS at all (Metered free tier): docs/RELAY-HOSTED.md.
       # Comma-separated turn:/turns: URLs — include one of each, because
       # restrictive networks block UDP and 3478.
+      # Preferred relay: Cloudflare Realtime TURN (1,000 GB/month free, no card,
+      # no domain). Create the key at Dashboard → Realtime → TURN, then paste the
+      # key id and its API token here. When both are set they take priority over
+      # TURN_URLS/TURN_SECRET below. Metered's free Open Relay — what this file
+      # used to point at — stopped answering entirely, which left calls ringing,
+      # "connecting", and carrying no audio or video.
+      - key: CLOUDFLARE_TURN_KEY_ID
+        value: ''
+      - key: CLOUDFLARE_TURN_API_TOKEN
+        sync: false
+        value: ''
+      - key: CLOUDFLARE_TURN_TTL_SECONDS
+        value: '3600'
       - key: TURN_URLS
         value: ''
       # = coturn's static-auth-secret. Generate with `openssl rand -hex 32`.

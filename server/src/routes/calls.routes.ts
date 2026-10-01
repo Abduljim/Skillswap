@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth } from '../middleware/auth';
-import { buildIceConfig } from '../services/turn.service';
+import { resolveIceConfig } from '../services/turn.service';
 import { MAX_GROUP_CALL_PARTICIPANTS, GROUP_CALLS_AUDIO_FIRST } from '../config/calls';
 import { ok } from '../utils/responses';
 
@@ -22,7 +22,7 @@ router.get(
   '/ice-servers',
   requireAuth,
   asyncHandler(async (_req, res) => {
-    ok(res, buildIceConfig());
+    ok(res, await resolveIceConfig());
   })
 );
 
