@@ -1,5 +1,34 @@
 # Relay without a VPS — no card, no domain, no code change
 
+> ## ⚠️ Status: the provider below is dead
+>
+> This page was written around **Metered's free Open Relay**
+> (`staticauth.openrelay.metered.ca`). It stopped answering. Measured from a clean
+> machine, with a control in the same run:
+>
+> | Endpoint | Result |
+> | --- | --- |
+> | `stun.l.google.com:19302`, `stun.cloudflare.com:3478` (controls) | ✅ binding response `0x0101` |
+> | `staticauth.openrelay.metered.ca` :80 / :443, UDP **and** TCP | ❌ no response at all |
+> | `openrelay.metered.ca:80` (the copy compiled into the old APK) | ❌ no response at all |
+>
+> DNS still resolves, so it does not look dead from the outside. The failure it
+> produced in the app was: **the call rings, the overlay says connected, and
+> neither side hears anything.** That is why the compiled fallback was removed
+> rather than left in place "just in case".
+>
+> **Use [`docs/TURN.md`](TURN.md) §0 — Cloudflare Realtime TURN.** Free
+> (≈1,000 GB/month), no card, no domain, two environment variables, and it was
+> verified end to end with a relay-only ICE test: two peers, both `connected`,
+> data crossing the relay in under a second.
+>
+> What is still worth keeping from this page is the **method**: how to check
+> whether a hosted relay actually works before you trust it with a call. Note the
+> trap we hit — a hand-rolled TURN allocator is *not* a valid test of Cloudflare,
+> which ignores an unauthenticated Allocate request, so a healthy relay looks
+> exactly like a dead one. Use a real ICE stack (`node-datachannel` with
+> `iceTransportPolicy: 'relay'`) and require both peers to reach `connected`.
+
 `docs/TURN.md` covers running your own coturn on an Oracle VPS. That is the best
 long-term answer (10 TB/month of egress) but it needs a server, a card for the
 sign-up hold, and an afternoon.

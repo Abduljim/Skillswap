@@ -38,6 +38,8 @@ router.get(
       maxVideoBytes: storage.MAX_VIDEO_BYTES,
       maxImageBytes: storage.MAX_IMAGE_BYTES,
       maxVideoMs: storage.MAX_VIDEO_MS,
+      maxAudioBytes: storage.MAX_AUDIO_BYTES,
+      maxAudioMs: storage.MAX_AUDIO_MS,
     });
   })
 );
@@ -58,7 +60,9 @@ router.post(
       throw new BadRequestError(
         kind === 'video'
           ? 'That video format is not supported. MP4 and WebM work best.'
-          : 'That image format is not supported. JPEG, PNG, WebP and GIF work best.',
+          : kind === 'audio'
+            ? 'That audio format is not supported. WebM/Opus, M4A/AAC and MP3 work best.'
+            : 'That image format is not supported. JPEG, PNG, WebP and GIF work best.',
         { contentType }
       );
     }

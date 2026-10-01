@@ -132,9 +132,19 @@ export const createSessionSchema = z.object({
 export const updateSessionSchema = createSessionSchema.partial();
 
 // ============ Messages ============
+
+/**
+ * Duration ceilings per media kind, in milliseconds. The message table has ONE
+ * duration column shared by video and voice notes, so the limit cannot live on
+ * the field: it has to know which kind of message it is checking. These mirror
+ * MAX_VIDEO_MS / MAX_AUDIO_MS in services/supabase.service.ts.
+ */
+const MAX_VIDEO_DURATION_MS = 65_000;
+const MAX_AUDIO_DURATION_MS = 305_000;
+
 export const createMessageSchema = z.object({
   body: z.string().min(1).max(2_000_000),
-  type: z.enum(['TEXT', 'IMAGE', 'STICKER', 'VIDEO']).default('TEXT'),
+  type: z.enum(['TEXT', 'IMAGE', 'STICKER', 'VIDEO', 'AUDIO']).default('TEXT'),
   caption: z
     .string()
     .trim()
@@ -150,7 +160,24 @@ export const createMessageSchema = z.object({
   mediaBytes: z.number().int().positive().max(64 * 1024 * 1024).optional().nullable(),
   mediaWidth: z.number().int().positive().max(8000).optional().nullable(),
   mediaHeight: z.number().int().positive().max(8000).optional().nullable(),
-  mediaDurationMs: z.number().int().positive().max(65_000).optional().nullable(),
+  // Absolute bound only. The per-type ceiling is the refinement below: a video
+  // is still 60s even though a voice note may be five minutes.
+  mediaDurationMs: z.number().int().positive().max(MAX_AUDIO_DURATION_MS).optional().nullable(),
+}).superRefine((message, ctx) => {
+  if (typeof message.mediaDurationMs !== 'number') return;
+  const limit = message.type === 'AUDIO' ? MAX_AUDIO_DURATION_MS : MAX_VIDEO_DURATION_MS;
+  if (message.mediaDurationMs > limit) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_big,
+      type: 'number',
+      maximum: limit,
+      inclusive: true,
+      message:
+        message.type === 'AUDIO'
+          ? `A voice note cannot be ${Math.round(message.mediaDurationMs / 1000)} seconds long. The limit is 5 minutes.`
+          : `A video cannot be ${Math.round(message.mediaDurationMs / 1000)} seconds long. The limit is 60 seconds.`,
+    });
+  }
 });
 
 // ============ Chat media uploads ============
@@ -161,10 +188,10 @@ export const createMessageSchema = z.object({
  * keeps `../../` and absolute URLs out of the storage key.
  */
 const MEDIA_PATH =
-  /^(video|image)\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov|3gp|m4v|mpg|jpg|jpeg|png|webp|gif)$/;
+  /^(video|image|audio)\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov|3gp|m4v|mpg|jpg|jpeg|png|webp|gif|m4a|ogg|mp3|aac|wav|amr)$/;
 
 export const mediaSignSchema = z.object({
-  kind: z.enum(['video', 'image']),
+  kind: z.enum(['video', 'image', 'audio']),
   contentType: z.string().trim().min(3).max(80),
   // An absolute sanity ceiling, deliberately looser than the real per-kind cap:
   // media.routes enforces 64 MB video / 12 MB image so the rejection carries a
@@ -174,11 +201,33 @@ export const mediaSignSchema = z.object({
 });
 
 export const mediaConfirmSchema = z.object({
-  kind: z.enum(['video', 'image']),
+  kind: z.enum(['video', 'image', 'audio']),
   path: z.string().regex(MEDIA_PATH, 'Unknown media path'),
   width: z.number().int().positive().max(8000).optional().nullable(),
   height: z.number().int().positive().max(8000).optional().nullable(),
-  durationMs: z.number().int().positive().max(65_000).optional().nullable(),
+  durationMs: z.number().int().positive().max(MAX_AUDIO_DURATION_MS).optional().nullable(),
+}).superRefine((payload, ctx) => {
+  // /sign always builds the path from the kind, so a mismatch means the caller
+  // is confirming an object it was never given a URL for.
+  if (!payload.path.startsWith(`${payload.kind}/`)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['path'],
+      message: 'That path does not belong to this kind of media',
+    });
+  }
+  if (typeof payload.durationMs !== 'number') return;
+  const limit = payload.kind === 'audio' ? MAX_AUDIO_DURATION_MS : MAX_VIDEO_DURATION_MS;
+  if (payload.durationMs > limit) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_big,
+      type: 'number',
+      maximum: limit,
+      inclusive: true,
+      path: ['durationMs'],
+      message: `That ${payload.kind} is too long. The limit is ${Math.round(limit / 1000)} seconds.`,
+    });
+  }
 });
 
 // ============ Reviews ============

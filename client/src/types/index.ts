@@ -4,7 +4,7 @@ export type TimeOfDay = 'MORNING' | 'AFTERNOON' | 'EVENING';
 export type Proficiency = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
 export type SkillType = 'TEACH' | 'WANT';
 export type SessionFormat = 'ONLINE' | 'IN_PERSON';
-export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER' | 'VIDEO';
+export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER' | 'VIDEO' | 'AUDIO';
 export type Tier = 'FREE' | 'PRO';
 
 export interface Badge {

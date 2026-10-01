@@ -20,6 +20,7 @@ function timeAgo(dateStr: string): string {
 function preview(m: Conversation['lastMessage']): string {
   if (!m) return 'Say hi to start the conversation';
   if (m.type === 'IMAGE') return 'Sent an image';
+  if (m.type === 'AUDIO') return 'Voice note';
   if (m.type === 'STICKER') return 'Sent a sticker';
   return m.body;
 }

@@ -176,9 +176,22 @@ when it cannot. Two phones on mobile data are usually both behind carrier-grade 
 way through. Without one, a call rings, both sides answer, and nobody hears
 anything.
 
-**Full setup guide: [`docs/TURN.md`](TURN.md)** — free coturn on an Oracle Always
-Free VPS, the two firewalls you have to open, TLS, testing, capacity maths and
-troubleshooting. The short version:
+**Production uses Cloudflare Realtime TURN** — free (≈1,000 GB/month), no VPS, no
+card, no domain. Two variables, then redeploy:
+
+| Key | Example | Notes |
+| --- | --- | --- |
+| `CLOUDFLARE_TURN_KEY_ID` | `bd339a7d6a59cc14b916fb0ebe1b21f1` | Cloudflare dashboard → **Realtime → TURN** (not *Calls*) |
+| `CLOUDFLARE_TURN_API_TOKEN` | *(secret)* | **Server-side only.** `sync: false` in `render.yaml` so a blueprint redeploy cannot wipe it |
+| `CLOUDFLARE_TURN_TTL_SECONDS` | `3600` | Optional; must outlive a whole call |
+
+The boot log then reads `📞 [turn] TURN Cloudflare Realtime (key bd339a7d…, ttl
+3600s)`. Full details, including why port-53 URLs are filtered and how to verify
+a relay properly: [`docs/TURN.md`](TURN.md) §0.
+
+**Prefer your own server?** The self-hosted path is free coturn on an Oracle
+Always Free VPS — the two firewalls you have to open, TLS, testing, capacity
+maths and troubleshooting are all in [`docs/TURN.md`](TURN.md). The short version:
 
 1. Run coturn somewhere with a public IP and free egress (Oracle Always Free gives
    10 TB/month outbound).
@@ -202,9 +215,15 @@ Credentials are minted per request by the API
 
 - rotating the relay secret does **not** require rebuilding the web app or the APK;
 - a leaked credential expires within `TURN_TTL_SECONDS` instead of working forever;
-- the fallback order is minted → `VITE_TURN_*` → Metered's legacy Open Relay →
-  STUN only, and the last one is reported to the UI so the call overlay can explain
-  why a call may not connect.
+- the server resolves its relay in this order: **Cloudflare TURN** (if the two
+  variables above are set) → coturn HMAC (`TURN_URLS` + `TURN_SECRET`) → static
+  (`TURN_USERNAME` + `TURN_CREDENTIAL`) → STUN only, and which one it chose is
+  reported to the UI so the call overlay can explain why a call may not connect;
+- the client has **no** hardcoded relay. Metered's free Open Relay used to be
+  compiled in as a last resort and stopped answering in 2026 — a reminder that a
+  free third-party relay fails silently, so the server owns that choice now;
+- a call that is accepted but never gets a media path is given up on after 25s
+  with a message that says so, instead of sitting silent forever.
 
 `VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` remain as an
 optional escape hatch for providers that only issue static credentials (Xirsys,

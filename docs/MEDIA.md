@@ -1,7 +1,8 @@
-# Chat media storage (video + photos)
+# Chat media storage (video, photos and voice notes)
 
 SkillSwap v1.6 can **record and send video** in a chat, with a Standard/HD choice
-and a 60-second cap. Video needs somewhere to live that is not your database.
+and a 60-second cap. v1.11 adds **voice notes**. Both need somewhere to live that
+is not your database.
 
 **Why not the database?** Photos are currently base64 text inside the Postgres
 row. That survives a 300 KB JPEG, but it cannot survive video — and it has a
@@ -228,10 +229,55 @@ sends clips up to 1:05."* rather than after a long upload.
 HD is offered in the UI with the words **"uses more data"** next to it, because
 on a student's mobile plan that is the part that matters.
 
+Voice notes have their own ceiling — see [Voice notes](#voice-notes) below. They
+are an order of magnitude smaller than video, so in practice they are free.
+
 **How much fits in 1 GB free:** roughly 50 HD clips or 150 Standard clips. Free
 egress is 5 GB/month, i.e. about 250 HD plays or 700 Standard plays. Supabase
 shows both numbers under **Settings → Usage**, and it emails you before you hit
 a limit rather than cutting you off.
+
+## Voice notes
+
+v1.11 adds voice notes to chat. They ride exactly the same pipeline as video —
+record, sign, upload straight to Supabase, confirm, then a message row carrying a
+URL — so **there is nothing new to configure**. If video works, voice notes work.
+
+| | Voice note |
+|---|---|
+| Codec | Opus in WebM (Android WebView); AAC in MP4 (iOS) |
+| Bitrate | 32 kbps |
+| Max length | 5 minutes (the recorder stops itself) |
+| Typical size | ~240 KB per minute, so a full 5-minute note is ~1.2 MB |
+| Max file | 12 MB |
+
+Worth knowing:
+
+- **No thumbnail step.** A note has no frame to grab, so sending is one upload
+  instead of two, and the bubble draws without fetching anything until Play is
+  pressed (`preload="none"`). A chat full of notes still opens instantly on
+  mobile data.
+- **`MessageType` gained `AUDIO`**, which is a database enum change:
+  `server/prisma/migrations/20261001000000_audio_messages`. `prisma migrate
+  deploy` runs during the Render build, so there is nothing to do by hand.
+- **An older APK still works.** It does not know the `AUDIO` type, so its bubble
+  falls through to the text branch and shows the note's URL. Nothing crashes and
+  no message is lost — which is the compatibility rule every new message type has
+  to satisfy.
+- **Duration ceilings are per type.** One column (`mediaDurationMs`) serves both
+  video and audio, so the validator checks the type as well as the number: 60s
+  for a clip, 5 minutes for a note. Claiming `VIDEO` is not a way to smuggle a
+  long file past the cap the recorder promises.
+- **Listen before sending.** The recorder has a review step (play it back,
+  re-record, or send), because a voice note cannot be re-shot as cheaply as a
+  photo can be re-picked.
+- **A failed upload is retryable.** If the note cannot be sent, the composer keeps
+  it with *Send again* / *Discard* rather than making a two-minute explanation be
+  recorded twice because one request dropped.
+- **Storage paths** are `audio/<8 hex>/<date>/<uuid>.<ext>`, minted server-side
+  like every other kind. `/media/confirm` rejects a path whose prefix does not
+  match the kind it is confirmed as, so an audio confirm cannot be pointed at
+  somebody's video object.
 
 ## Photos changed too
 

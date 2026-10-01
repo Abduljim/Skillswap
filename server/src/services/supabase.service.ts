@@ -20,7 +20,7 @@ import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 import { HttpError } from '../utils/errors';
 
-export type MediaKind = 'video' | 'image';
+export type MediaKind = 'video' | 'image' | 'audio';
 
 /**
  * WhatsApp-style ceilings. The in-app recorder stops itself at 60s; these caps
@@ -32,6 +32,16 @@ export const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 /** 60s as chosen for the recorder, plus slack for container duration rounding. */
 export const MAX_VIDEO_MS = 65_000;
 
+/**
+ * Voice notes. Opus in a webm/m4a container runs at roughly 8-16 kB/s, so even
+ * five minutes is well under a megabyte. The byte cap is here to stop a
+ * hand-crafted request smuggling a large file in as "audio", not to constrain
+ * real notes.
+ */
+export const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
+/** 5 minutes in the recorder, plus slack for container duration rounding. */
+export const MAX_AUDIO_MS = 305_000;
+
 const VIDEO_TYPES = new Set([
   'video/mp4',
   'video/webm',
@@ -41,6 +51,23 @@ const VIDEO_TYPES = new Set([
   'video/mpeg',
 ]);
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+/**
+ * What a MediaRecorder actually produces, plus what a phone's file picker
+ * offers: Android WebView records audio/webm (Opus), iOS Safari records
+ * audio/mp4 (AAC), and a gallery pick can be any of the common containers.
+ */
+const AUDIO_TYPES = new Set([
+  'audio/webm',
+  'audio/ogg',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/mpeg',
+  'audio/aac',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/amr',
+  'audio/3gpp',
+]);
 
 const EXT_BY_TYPE: Record<string, string> = {
   'video/mp4': 'mp4',
@@ -53,6 +80,16 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
   'image/gif': 'gif',
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/aac': 'aac',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/amr': 'amr',
+  'audio/3gpp': '3gp',
 };
 
 /**
@@ -120,12 +157,15 @@ export function bucketName(): string {
 }
 
 export function maxBytesFor(kind: MediaKind): number {
-  return kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (kind === 'video') return MAX_VIDEO_BYTES;
+  if (kind === 'audio') return MAX_AUDIO_BYTES;
+  return MAX_IMAGE_BYTES;
 }
 
 export function isAllowedType(kind: MediaKind, contentType: string): boolean {
   const type = contentType.split(';')[0].trim().toLowerCase();
-  return (kind === 'video' ? VIDEO_TYPES : IMAGE_TYPES).has(type);
+  const allowed = kind === 'video' ? VIDEO_TYPES : kind === 'audio' ? AUDIO_TYPES : IMAGE_TYPES;
+  return allowed.has(type);
 }
 
 function storageBase(): string {
@@ -193,7 +233,7 @@ export function assertStorageReady(): void {
  */
 export function buildMediaPath(kind: MediaKind, contentType: string, userId: string): string {
   const type = contentType.split(';')[0].trim().toLowerCase();
-  const ext = EXT_BY_TYPE[type] || (kind === 'video' ? 'mp4' : 'jpg');
+  const ext = EXT_BY_TYPE[type] || (kind === 'video' ? 'mp4' : kind === 'audio' ? 'webm' : 'jpg');
   const day = new Date().toISOString().slice(0, 10);
   return `${kind}/${userId.replace(/-/g, '').slice(0, 8)}/${day}/${randomUUID()}.${ext}`;
 }

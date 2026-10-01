@@ -127,10 +127,13 @@ for free.
 
 Calls still need a relay to work on mobile data. Two phones behind carrier-grade
 NAT (the norm on MTN/Airtel/Glo) have no route to each other, and without TURN the
-call rings, connects, and is silent. Until a relay is configured the app falls back
-to public STUN plus the legacy Metered Open Relay hosts — fine on one Wi-Fi
-network, unreliable in the field — and the call overlay now says so out loud
-instead of leaving you guessing.
+call rings, connects, and is silent. The relay is chosen **server-side**
+(Cloudflare Realtime TURN in production), so nothing about it is baked into the
+APK: fixing or rotating a relay is a Render environment change, not a new build.
+Until one is configured the app falls back to public STUN — fine on one Wi-Fi
+network, unreliable in the field — and the call overlay says so out loud instead
+of leaving you guessing. A call that never gets a media path is given up on after
+25 seconds with a message that names the problem.
 
 `VITE_TURN_URLS` / `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` remain available
 as an escape hatch for providers that only issue static credentials. They *are*

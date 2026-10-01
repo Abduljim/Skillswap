@@ -16,9 +16,12 @@ import {
   Pencil,
   Keyboard,
   AlertTriangle,
+  Mic,
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import VideoRecorder, { MAX_VIDEO_MS, type RecordedClip } from './VideoRecorder';
+import VoiceRecorder, { type RecordedVoiceNote } from './VoiceRecorder';
+import AudioBubble from './AudioBubble';
 import { Socket } from 'socket.io-client';
 import { showAndroidKeyboard } from '../lib/keyboard-bridge';
 import {
@@ -76,6 +79,11 @@ export default function ChatTab({
   const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [recorderOpen, setRecorderOpen] = useState(false);
+  // Voice notes send straight from the recorder, so the only thing staged here is
+  // a note whose upload failed — kept so the user can retry instead of
+  // re-recording a two-minute explanation because of one dropped request.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [pendingVoice, setPendingVoice] = useState<RecordedVoiceNote | null>(null);
   const [mediaBusy, setMediaBusy] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
@@ -400,6 +408,76 @@ export default function ChatTab({
   };
 
   /**
+   * Checked before the microphone opens, exactly like the video path: recording
+   * a five-minute note only to be told the server cannot store it wastes the
+   * user's time and their data.
+   */
+  const openVoiceRecorder = () => {
+    void (async () => {
+      setEmojiOpen(false);
+      setAttachOpen(false);
+      setMediaError(null);
+      const status = await mediaStatus().catch(() => null);
+      if (status && !status.configured) {
+        setMediaError(
+          'Voice notes are not switched on for this server yet. Add the Supabase keys (docs/MEDIA.md) to enable them.'
+        );
+        return;
+      }
+      setVoiceOpen(true);
+    })();
+  };
+
+  const sendVoiceNote = async (note: RecordedVoiceNote) => {
+    if (sending) return;
+    setSending(true);
+    setMediaError(null);
+    try {
+      setMediaBusy('Uploading voice note…');
+      const uploaded = await uploadMedia(note.blob, 'audio');
+
+      setMediaBusy('Sending…');
+      await api.post(`/exchanges/${exchangeId}/messages`, {
+        // body is NOT NULL and every list/preview path reads it, so the URL goes
+        // in both places — the same shape a video message uses.
+        body: uploaded.url,
+        type: 'AUDIO',
+        caption: null,
+        mediaUrl: uploaded.url,
+        mediaBytes: uploaded.bytes,
+        mediaDurationMs: Math.max(1, Math.round(note.durationMs)),
+      });
+
+      URL.revokeObjectURL(note.url);
+      setPendingVoice(null);
+      void qc.invalidateQueries({ queryKey: ['conversations'] });
+      refetch();
+    } catch (error) {
+      setPendingVoice(note);
+      setMediaError(
+        error instanceof ApiError ? error.message : 'Could not send that voice note. Please try again.'
+      );
+    } finally {
+      setSending(false);
+      setMediaBusy(null);
+    }
+  };
+
+  const handleVoiceNote = (note: RecordedVoiceNote) => {
+    setVoiceOpen(false);
+    setPendingVoice(note);
+    void sendVoiceNote(note);
+  };
+
+  const discardVoiceNote = () => {
+    setPendingVoice((note) => {
+      if (note) URL.revokeObjectURL(note.url);
+      return null;
+    });
+    setMediaError(null);
+  };
+
+  /**
    * A video from the gallery (or the system camera app). Checked against the
    * same ceilings as a recording *before* anything uploads, so the user gets
    * "that clip is 2:14 long" instead of a spinner followed by a failure.
@@ -525,7 +603,7 @@ export default function ChatTab({
                   bubble. Text keeps its padding; photos get a 4px mat instead. */}
               <div
                 className={
-                  message.type === 'IMAGE' || message.type === 'VIDEO'
+                  message.type === 'IMAGE' || message.type === 'VIDEO' || message.type === 'AUDIO'
                     ? `w-[min(78%,320px)] min-w-0 rounded-2xl p-1 shadow-sm overflow-hidden ${
                         mine ? m.bubbleMine : m.bubbleTheirs
                       }`
@@ -572,6 +650,17 @@ export default function ChatTab({
                       <div className="text-sm whitespace-pre-wrap break-words px-2.5 pt-2">{message.caption}</div>
                     )}
                   </div>
+                ) : message.type === 'AUDIO' ? (
+                  <div>
+                    <AudioBubble
+                      src={message.mediaUrl || message.body}
+                      durationMs={message.mediaDurationMs}
+                      bytes={message.mediaBytes}
+                    />
+                    {message.caption && (
+                      <div className="text-sm whitespace-pre-wrap break-words px-2.5 pb-1">{message.caption}</div>
+                    )}
+                  </div>
                 ) : message.type === 'STICKER' ? (
                   <div className="text-5xl leading-none py-1">{message.body}</div>
                 ) : (
@@ -579,7 +668,7 @@ export default function ChatTab({
                 )}
                 <div
                   className={`text-[10px] flex items-center justify-end gap-1 ${
-                    message.type === 'IMAGE' || message.type === 'VIDEO' ? 'mt-1 px-2 pb-1' : 'mt-1'
+                    message.type === 'IMAGE' || message.type === 'VIDEO' || message.type === 'AUDIO' ? 'mt-1 px-2 pb-1' : 'mt-1'
                   } ${mine ? m.infoMine : m.infoTheirs}`}
                 >
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -612,6 +701,36 @@ export default function ChatTab({
               title="Dismiss"
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {pendingVoice && (
+          <div
+            className={`mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${
+              dark ? 'bg-[#1a1e29] text-[#eef0f4] ring-1 ring-[#2a2f3d]' : 'bg-[#f5f2ec] text-[#12131a]'
+            }`}
+          >
+            <Mic className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 min-w-0 truncate">
+              {mediaBusy || `Voice note · ${formatDuration(pendingVoice.durationMs)}`}
+            </span>
+            {mediaError && !sending && (
+              <button
+                type="button"
+                onClick={() => void sendVoiceNote(pendingVoice)}
+                className="shrink-0 font-semibold underline"
+              >
+                Send again
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={discardVoiceNote}
+              disabled={sending}
+              className="shrink-0 opacity-70 disabled:opacity-40"
+            >
+              Discard
             </button>
           </div>
         )}
@@ -844,9 +963,21 @@ export default function ChatTab({
                 }
               }}
             />
-            <button onClick={() => sendMessage(text)} className="btn-coral shrink-0">
-              <Send className="w-4 h-4" />
-            </button>
+            {text.trim().length > 0 ? (
+              <button onClick={() => sendMessage(text)} className="btn-coral shrink-0" aria-label="Send message">
+                <Send className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openVoiceRecorder}
+                className="btn-coral shrink-0"
+                aria-label="Record a voice note"
+                title="Record a voice note"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -861,6 +992,8 @@ export default function ChatTab({
         onRecorded={handleRecorded}
         onFallbackToGallery={() => videoInputRef.current?.click()}
       />
+
+      <VoiceRecorder open={voiceOpen} onClose={() => setVoiceOpen(false)} onRecorded={handleVoiceNote} />
 
       {reviewOpen && (pendingImage || pendingVideo) && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">

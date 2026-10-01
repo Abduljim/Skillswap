@@ -308,6 +308,7 @@ enum MessageType {
   IMAGE
   STICKER
   VIDEO
+  AUDIO
 }
 
 model Message {

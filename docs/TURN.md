@@ -15,11 +15,16 @@ Without it the failure looks like this: the call rings, both sides answer, the U
 shows "connected", and nobody hears anything. This guide removes that failure for
 £0/$0 a month.
 
-> **Don't want to run a server?** See [`RELAY-HOSTED.md`](RELAY-HOSTED.md): a
-> *hosted* relay on Metered's free tier. About ten minutes, no VPS, no credit
-> card, no domain, and no code change — 500 MB/month, which covers audio calls
-> and enough video to test with real people. This guide is the unlimited path
-> (10 TB/month) and costs an afternoon plus an Oracle Always Free instance.
+> **Don't want to run a server?** Use
+> [Cloudflare Realtime TURN](#0-cloudflare-realtime-turn-what-production-uses):
+> free (≈1,000 GB/month), no VPS, no credit card, no domain, ten minutes in a
+> dashboard and two environment variables. That is what SkillSwap production runs
+> today. The rest of this guide is the self-hosted, unlimited path (10 TB/month)
+> and costs an afternoon plus an Oracle Always Free instance.
+>
+> Metered's free Open Relay, which an earlier revision of this document
+> recommended, **stopped answering in 2026**. See §10 for the measurements — and
+> for the method, which applies to any hosted relay you are considering.
 
 ```
    Phone A ──┐                          ┌── Phone B
@@ -27,6 +32,65 @@ shows "connected", and nobody hears anything. This guide removes that failure fo
    Phone A ──┼──► TURN relay (your VPS) ◄┼── Phone B
              │      forwards media)     │
 ```
+
+---
+
+## 0. Cloudflare Realtime TURN (what production uses)
+
+Free, no VPS, no credit card, no domain: roughly **1,000 GB/month** on the free
+tier, anycast relays in ~300 cities, and nothing to patch or reboot. SkillSwap
+production runs this.
+
+**1. Create the key.** Cloudflare dashboard → **Realtime → TURN** → *Create
+application*. Copy the **Key ID** and the **API token**.
+
+> The key lives under **Realtime → TURN**, not under *Calls*. A Calls/SFU
+> application ID is a different product, and the credentials endpoint answers
+> `{"error":"cannot find specified key"}` for one — which reads like a typo and
+> is not.
+
+**2. Add the variables in Render** (Dashboard → your web service → Environment):
+
+| Key | Value |
+| --- | --- |
+| `CLOUDFLARE_TURN_KEY_ID` | the Key ID |
+| `CLOUDFLARE_TURN_API_TOKEN` | the API token. **Secret** — `sync: false` in `render.yaml`, so a redeploy from the blueprint can never wipe it |
+| `CLOUDFLARE_TURN_TTL_SECONDS` | optional, default `3600`. Must outlive a whole call |
+
+**3. Check it.** The boot log names the resolved relay:
+
+```
+📞 [turn] TURN Cloudflare Realtime (key bd339a7d…, ttl 3600s)
+```
+
+and `GET /api/calls/ice-servers` (authenticated) returns Cloudflare's own
+`iceServers` list. If the token is wrong you get a log line with the HTTP status
+and the first 200 characters of Cloudflare's reply — enough to tell a revoked
+token from a Calls-app ID mistake without guessing.
+
+What the server does with it (`server/src/services/turn.service.ts`):
+
+- `POST https://rtc.live.cloudflare.com/v1/turn/keys/<key id>/credentials/generate-ice-servers`
+  with `Authorization: Bearer <token>` and `{"ttl":3600}` → `201 { iceServers }`;
+- **port 53 URLs are dropped.** Cloudflare publishes `turn:…:53` entries for
+  DNS-port traversal and browsers refuse to touch port 53, so leaving them in
+  only makes ICE spend time on candidates that can never succeed;
+- the answer is cached until 90% of its TTL, so a call does not have to wait on
+  Cloudflare before it waits on ICE;
+- any failure — HTTP error, 8s timeout, or a response containing no `turn:` URL
+  at all — is logged and the server falls through to coturn, then static, then
+  STUN. **The token is never logged**, and never reaches a client: the app only
+  ever receives the minted list.
+
+Rotating the token is a dashboard change plus a redeploy. **No new APK**, because
+nothing about the relay is compiled into the app.
+
+Verifying a relay from a machine that is not a phone: see
+[`RELAY-HOSTED.md`](RELAY-HOSTED.md) §Testing. A hand-rolled TURN allocator will
+*not* do — Cloudflare ignores an unauthenticated Allocate request entirely, so a
+working relay looks identical to a dead one. Use a real ICE stack
+(`node-datachannel` with `iceTransportPolicy: 'relay'`) and check that two peers
+reach `connected`.
 
 ---
 
@@ -67,8 +131,24 @@ Three modes, chosen automatically by what you configure:
 
 The client caches a minted credential and refreshes it at 80% of its lifetime, so a
 long call is not cut off by an expiring credential (`client/src/lib/ice.ts`). If the
-API is slow or unreachable it falls back to `VITE_TURN_*`, then to Metered's legacy
-Open Relay, then to STUN alone — a call is always *attempted*.
+API is slow or unreachable it falls back to `VITE_TURN_*`, then to STUN alone — a
+call is always *attempted*.
+
+The **server** resolves its own list in this order and reports which one it used
+(`mode` in the response, and the boot log line above):
+
+| Priority | Needs | Result |
+| --- | --- | --- |
+| 1 | `CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN` | Cloudflare-minted credentials (§0), cached to 90% of their TTL |
+| 2 | `TURN_URLS` + `TURN_SECRET` | coturn HMAC credentials (`ephemeral`) |
+| 3 | `TURN_URLS` + `TURN_USERNAME` + `TURN_CREDENTIAL` | shared static credentials (`static`) |
+| 4 | nothing usable | STUN only (`none`) — and the UI says so out loud |
+
+There is deliberately **no hardcoded third-party relay in the client** any more.
+The Metered Open Relay hosts used to be compiled in as a last resort; when that
+service stopped answering, the compiled fallback could only add candidates that
+time out, and it made a server-side configuration problem look like a media bug
+on the phone. §10 records the measurements.
 
 ---
 
@@ -442,11 +522,23 @@ relay on a new instance in about ten minutes.
 
 | Option | Cost | Fits this setup? |
 | --- | --- | --- |
+| **Cloudflare Realtime TURN** | **free ≈1,000 GB/month**, then $0.05/GB | **Yes — this is what production uses** (§0), native support, no card, no domain |
 | **Self-hosted coturn** (this guide) | $0 + 10 TB egress | Yes — `ephemeral` mode, secret stays on your server |
-| **Cloudflare TURN** | $0.05/GB, anycast, no ports to manage | Yes — supports the same REST scheme, so `TURN_SECRET` works unchanged |
-| **Metered / Twilio / AWS** | per GB, free tiers small | Yes, via `static` mode (`TURN_USERNAME` + `TURN_CREDENTIAL`) |
-| **Xirsys, ExpressTURN** | free tiers | Yes, `static` mode |
-| **Metered Open Relay** (`openrelayproject`) | free, rate-limited, deprecated | Last-resort fallback only; already wired in as the final client fallback |
+| **Metered / Twilio / AWS** (paid accounts) | per GB, free tiers small | Yes, via `static` mode (`TURN_USERNAME` + `TURN_CREDENTIAL`) |
+| **Xirsys, ExpressTURN, OpenRelay Project** | small free tiers | Yes, `static` mode |
+| ~~**Metered Open Relay**~~ (`openrelayproject` / `staticauth.openrelay.metered.ca`) | was free, deprecated | **Dead — do not use.** Measured 2026-09: DNS still resolves, and nothing answers on :80 or :443 over UDP *or* TCP, while a STUN binding to `stun.cloudflare.com:3478` from the same machine succeeds. Removed from the client in v1.11 |
+
+The lesson from the last row is worth more than the table: **a free relay will
+eventually stop, and it will stop silently.** DNS keeps resolving, TCP connects
+sometimes, and the only symptom is a call that rings, shows "connected", and
+carries no audio either way. So:
+
+1. prefer a relay whose credentials your *own server* mints, so switching
+   providers is an environment change and not an app release;
+2. probe it, and fail loudly in the log when the probe fails (this is what
+   `📞 [turn] …` and the Cloudflare error lines are for);
+3. never trust a hand-rolled allocator as the probe — see §0's note on Cloudflare
+   ignoring unauthenticated Allocate requests.
 
 Managed providers that only issue static credentials are the weaker option: those
 credentials ship inside the APK. If you use one, prefer a provider with per-key

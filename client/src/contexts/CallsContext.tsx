@@ -46,37 +46,43 @@ interface RTCSignal {
  * secret never leaves the server. See docs/TURN.md for running coturn for free.
  *
  * Order of preference:
- *   1. credentials minted by the API
+ *   1. credentials minted by the API — Cloudflare TURN when it is configured,
+ *      otherwise coturn HMAC, otherwise static credentials
  *   2. VITE_TURN_* static credentials, for providers without HMAC support
- *   3. Metered's legacy Open Relay — deprecated and rate-limited, kept only so an
- *      unconfigured deploy can still connect sometimes rather than never
+ *   3. public STUN only
  *
  * With none of them usable, calls still work on a LAN or a permissive NAT via
  * public STUN. `turnConfigured` is what lets the UI say that out loud instead of
  * showing an endless "connecting…".
+ *
+ * There is deliberately no hardcoded third-party relay here any more. Metered's
+ * free Open Relay used to be the fallback for an unconfigured deploy and it
+ * stopped answering: DNS still resolved, nothing replied on UDP or TCP, and the
+ * resulting call looked exactly like a client media bug (ringing, "connected",
+ * no audio either way). A free relay nobody monitors is worse than none, because
+ * it hides the real diagnosis — so the server now owns the relay choice and
+ * probes it, and the client just uses what it is given.
  */
-const OPEN_RELAY: RTCIceServer = {
-  urls: [
-    'stun:openrelay.metered.ca:80',
-    'turn:openrelay.metered.ca:80',
-    'turn:openrelay.metered.ca:443',
-    'turn:openrelay.metered.ca:443?transport=tcp',
-  ],
-  username: 'openrelayproject',
-  credential: 'openrelayproject',
-};
-
 async function rtcConfig(): Promise<RTCConfiguration> {
   const cfg = await getIceConfig();
   return {
-    iceServers: cfg.turnConfigured
-      ? (cfg.iceServers as RTCIceServer[])
-      : [...cfg.iceServers, OPEN_RELAY],
+    iceServers: cfg.iceServers as RTCIceServer[],
     // Start gathering before setLocalDescription so the first offer/answer already
     // carries candidates — noticeably faster call setup on mobile.
     iceCandidatePoolSize: 4,
   };
 }
+
+/**
+ * How long an accepted call may sit without a media path before we say so.
+ *
+ * Over a working relay, ICE completes in well under two seconds (measured:
+ * ~0.7s relay-only between two peers). WebRTC's own timeout is ~30s and some
+ * Android WebView builds never surface it, which is how a dead relay turned into
+ * an endless silent call. 25s is generous for a bad network and still short
+ * enough that the user learns something is wrong.
+ */
+const ICE_WATCHDOG_MS = 25_000;
 
 export interface CallState {
   status: CallStatus;
@@ -184,6 +190,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
   const statusRef = useRef<CallStatus>('none');
   statusRef.current = status;
+
+  /** Pending ICE watchdog for a 1:1 call; see armIceWatchdog. */
+  const iceWatchdogRef = useRef<number | null>(null);
 
   /**
    * Whether the socket is really connected, as state. Presence has to be
@@ -316,6 +325,33 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const clearIceWatchdog = useCallback(() => {
+    if (iceWatchdogRef.current !== null) {
+      clearTimeout(iceWatchdogRef.current);
+      iceWatchdogRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Arm the watchdog for an accepted call. `onGiveUp` fires only if the call is
+   * still 'active' with no media path when the timer expires — a connected call,
+   * a declined one and a normally ended one all disarm it first.
+   */
+  const armIceWatchdog = useCallback(
+    (onGiveUp: () => void) => {
+      clearIceWatchdog();
+      iceWatchdogRef.current = window.setTimeout(() => {
+        iceWatchdogRef.current = null;
+        const pc = pcRef.current;
+        if (!pc) return;
+        if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected') return;
+        if (statusRef.current !== 'active') return;
+        onGiveUp();
+      }, ICE_WATCHDOG_MS);
+    },
+    [clearIceWatchdog]
+  );
+
   // ── Media acquisition (with native grant, retry, and voice fallback) ──────
   const acquireLocalStream = useCallback(async (wantVideo: boolean) => {
     if (streamRef.current) {
@@ -421,6 +457,11 @@ export function CallsProvider({ children }: { children: ReactNode }) {
           if (ev.streams[0]) attachRemote(ev.streams[0]);
         };
         pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'connected') {
+            // Media is flowing: the watchdog has nothing left to say.
+            clearIceWatchdog();
+            return;
+          }
           if (
             (pc.connectionState === 'failed' || pc.connectionState === 'closed') &&
             statusRef.current === 'active'
@@ -430,10 +471,34 @@ export function CallsProvider({ children }: { children: ReactNode }) {
             if (pc.connectionState === 'failed' && exchangeIdRef.current) {
               sock.emit('call:hangup', { exchangeId: exchangeIdRef.current });
             }
+            clearIceWatchdog();
             cleanup(true);
             update({ status: 'none', incoming: false });
           }
         };
+        // Some WebView builds report ICE before the aggregate connection state,
+        // so either signal is enough to stand the watchdog down.
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            clearIceWatchdog();
+          }
+        };
+
+        // Armed for caller and callee alike: whichever side ends up without a
+        // media path is the side that has to say so, rather than both sitting in
+        // silence until one of them hangs up.
+        armIceWatchdog(() => {
+          if (exchangeIdRef.current) {
+            sock.emit('call:hangup', { exchangeId: exchangeIdRef.current });
+          }
+          cleanup(true);
+          update({
+            status: 'error',
+            incoming: false,
+            error:
+              'Could not open a media path to the other phone. Something on this network is blocking the call relay — try switching between Wi-Fi and mobile data, then call again.',
+          });
+        });
 
         stream.getTracks().forEach((t) => pc.addTrack(t, stream));
         attachLocal(stream);
@@ -467,11 +532,18 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   );
 
   const cleanup = useCallback((stopStream: boolean) => {
+    // Inlined rather than calling clearIceWatchdog so this callback keeps an
+    // empty dependency list.
+    if (iceWatchdogRef.current !== null) {
+      clearTimeout(iceWatchdogRef.current);
+      iceWatchdogRef.current = null;
+    }
     const pc = pcRef.current;
     if (pc) {
       pc.onicecandidate = null;
       pc.ontrack = null;
       pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
       pc.close();
       pcRef.current = null;
     }

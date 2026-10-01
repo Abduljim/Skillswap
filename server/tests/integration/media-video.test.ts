@@ -497,10 +497,122 @@ describe('Video messages', () => {
 
   it('still rejects unknown message types', async () => {
     const { a, exchangeId } = await pairWithExchange();
+    // 'AUDIO' used to be this test's example of an unknown type. It is a real
+    // message type now (voice notes), so the check uses a name that will never
+    // be one.
     await api()
       .post(`/api/exchanges/${exchangeId}/messages`)
       .set('Cookie', a.cookie)
-      .send({ body: 'audio bytes', type: 'AUDIO' })
+      .send({ body: 'audio bytes', type: 'VOICE' })
       .expect(400);
+  });
+});
+
+describe('Voice notes', () => {
+  /** A URL that looks like ours: accepted only because the host matches. */
+  const OWN_AUDIO_URL = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/audio/1a2b3c4d/2026-10-01/11111111-2222-4333-8444-555555555555.webm`;
+  const MAX_AUDIO_MS = 305_000;
+
+  it('stores an AUDIO message with its duration and returns it to both sides', async () => {
+    const { a, b, exchangeId } = await pairWithExchange();
+
+    const sent = await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({
+        body: 'https://storage.example/note.webm',
+        type: 'AUDIO',
+        mediaBytes: 480_000,
+        mediaDurationMs: 94_000,
+      })
+      .expect(200);
+
+    expect(sent.body.data.type).toBe('AUDIO');
+    expect(sent.body.data.mediaDurationMs).toBe(94_000);
+    // A note has no frame size. The row must say so instead of inheriting the
+    // video columns' shape.
+    expect(sent.body.data.mediaWidth ?? null).toBeNull();
+
+    const list = await api()
+      .get(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', b.cookie)
+      .expect(200);
+    const received = list.body.data.find((msg: any) => msg.type === 'AUDIO');
+    expect(received).toBeDefined();
+    expect(received.mediaBytes).toBe(480_000);
+    expect(received.mediaDurationMs).toBe(94_000);
+  });
+
+  it('accepts a five-minute note', async () => {
+    const { a, exchangeId } = await pairWithExchange();
+    await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({ body: 'note', type: 'AUDIO', mediaDurationMs: 300_000 })
+      .expect(200);
+  });
+
+  it('enforces the five-minute ceiling for audio', async () => {
+    const { a, exchangeId } = await pairWithExchange();
+    const res = await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({ body: 'note', type: 'AUDIO', mediaDurationMs: MAX_AUDIO_MS + 1 })
+      .expect(400);
+    expect(res.body.error.message).toMatch(/Invalid request/);
+  });
+
+  it('still holds a video to 60 seconds now that audio may be longer', async () => {
+    // The shared duration column is the trap here: widening it for voice notes
+    // must not quietly widen it for clips.
+    const { a, exchangeId } = await pairWithExchange();
+    await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({ body: 'clip', type: 'VIDEO', mediaDurationMs: 120_000 })
+      .expect(400);
+  });
+
+  it('accepts an audio URL from our own bucket', async () => {
+    const restore = stubFetch(() => ({ status: 200, body: {} }));
+    try {
+      const { a, exchangeId } = await pairWithExchange();
+      const res = await request(configuredApp())
+        .post(`/api/exchanges/${exchangeId}/messages`)
+        .set('Cookie', a.cookie)
+        .send({ body: OWN_AUDIO_URL, type: 'AUDIO', mediaUrl: OWN_AUDIO_URL, mediaBytes: 1024 })
+        .expect(200);
+      expect(res.body.data.mediaUrl).toBe(OWN_AUDIO_URL);
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses to attach a third-party URL to a voice note', async () => {
+    const { a, exchangeId } = await pairWithExchange();
+    const res = await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({ body: FOREIGN_URL, type: 'AUDIO', mediaUrl: FOREIGN_URL })
+      .expect(400);
+    expect(res.body.error.message).toMatch(/not from SkillSwap storage/);
+
+    const stored = await prisma.message.findMany({ where: { exchangeId } });
+    expect(stored.some((m) => m.type === 'AUDIO')).toBe(false);
+  });
+
+  it('refuses an audio confirm whose path belongs to another kind', async () => {
+    const restore = stubFetch(() => ({ status: 200, headers: { 'content-length': '1000', 'content-type': 'audio/webm' } }));
+    try {
+      const session = await signup('audiopath@skillswap.test', 'Audio Path');
+      // A real video path, claimed as audio. /sign could never have produced it.
+      await request(configuredApp())
+        .post('/api/media/confirm')
+        .set('Cookie', session.cookie)
+        .send({ kind: 'audio', path: 'video/1a2b3c4d/2026-09-27/11111111-2222-4333-8444-555555555555.mp4' })
+        .expect(400);
+    } finally {
+      restore();
+    }
   });
 });
