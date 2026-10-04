@@ -23,6 +23,7 @@ import {
   getCallLimits,
   invalidateIceConfig,
   DEFAULT_CALL_LIMITS,
+  iceFetchFailed,
 } from '../lib/ice';
 import type { CallLog } from '../types';
 
@@ -283,17 +284,24 @@ export function CallsProvider({ children }: { children: ReactNode }) {
    * set up instead of leaving "Ringing…" on screen.
    */
   const [relayHint, setRelayHint] = useState<string | null>(null);
+  /** Whether an offline callee's phone is actually being rung right now. */
+  const [reachNote, setReachNote] = useState<string | null>(null);
   useEffect(() => {
     if (status === 'none' && groupStatus === 'none') {
       setRelayHint(null);
+      setReachNote(null);
       return;
     }
     let live = true;
     void getIceConfig().then((cfg) => {
       if (!live) return;
+      if (cfg.turnConfigured) {
+        setRelayHint(null);
+        return;
+      }
       setRelayHint(
-        cfg.turnConfigured
-          ? null
+        iceFetchFailed()
+          ? 'Still reaching the call server for relay settings. If this stays on screen, this network is blocking the API.'
           : 'No relay server is configured, so this call only connects when both phones can reach each other directly (usually the same Wi-Fi).'
       );
     });
@@ -362,21 +370,35 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     }
     await ensureMediaPermissions();
     await new Promise((r) => setTimeout(r, 250));
-    let got = await navigator.mediaDevices.getUserMedia({ audio: true, video: wantVideo }).catch(() => null);
+    let failure: string | null = null;
+    const capture = (error: unknown) => {
+      failure = error instanceof Error ? error.name : 'UnknownError';
+      return null;
+    };
+    let got = await navigator.mediaDevices.getUserMedia({ audio: true, video: wantVideo }).catch(capture);
     if (!got) {
       await ensureMediaPermissions();
       await new Promise((r) => setTimeout(r, 400));
-      got = await navigator.mediaDevices.getUserMedia({ audio: true, video: wantVideo }).catch(() => null);
+      got = await navigator.mediaDevices.getUserMedia({ audio: true, video: wantVideo }).catch(capture);
     }
     let hasVideo = wantVideo && !!got;
     if (!got) {
-      got = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }).catch(() => null);
+      got = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }).catch(capture);
       hasVideo = false;
     }
     if (!got) {
-      // Bring the fix on screen. A denied microphone cannot be solved from
-      // inside a call, and the gate owns the one-tap route to Settings.
-      notifyCallPermissionNeeded('microphone');
+      // Name the real cause. "Cannot use your microphone" on a phone whose
+      // settings show the permission granted reads as a broken app, when the
+      // truth is usually the recorder or another call holding the device.
+      const reason =
+        failure === 'NotReadableError' || failure === 'AbortError'
+          ? 'Android allows the microphone but something is holding it. Close the recorder, phone call or WhatsApp call that is using it, then retry.'
+          : failure === 'NotFoundError' || failure === 'OverconstrainedError'
+            ? 'No usable microphone was found on this device.'
+            : failure === 'NotAllowedError' || failure === 'SecurityError'
+              ? undefined // the gate's own permission wording is the right one
+              : 'The microphone could not be opened. Restart the app and try again.';
+      notifyCallPermissionNeeded('microphone', reason);
       return null;
     }
     streamRef.current = got;
@@ -388,9 +410,20 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const attachRemote = useCallback((stream: MediaStream) => {
     remoteStreamRef.current = stream;
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      (remoteVideoRef.current as any).playsInline = true;
-      (remoteVideoRef.current as any).play?.().catch(() => {});
+      const el = remoteVideoRef.current;
+      el.srcObject = stream;
+      (el as any).playsInline = true;
+      el.muted = false; // remote audio is the entire point of the call
+      el.play?.().catch(() => {});
+      // If a WebView defers autoplay until the next gesture, the caller would
+      // sit in a "connected" call hearing nothing with no way to know why.
+      el.addEventListener(
+        'pause',
+        () => {
+          el.play?.().catch(() => {});
+        },
+        { once: true }
+      );
     }
   }, []);
 
@@ -964,6 +997,17 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       });
     };
 
+    const onReachability = (d: { exchangeId: string; present: boolean; pushed: number; pushSkipped: boolean }) => {
+      if (d.exchangeId !== exchangeIdRef.current || d.present) return;
+      setReachNote(
+        d.pushSkipped
+          ? 'Their app is closed and push is not configured on the server, so their phone cannot ring. They will see a missed call when they open the app.'
+          : d.pushed > 0
+            ? 'Their app is closed — their phone is ringing from a push notification now.'
+            : 'They appear offline: the app is closed and no device is registered for push, so this call cannot reach them. They will see a missed call.'
+      );
+    };
+    socket.on('call:callee-reachability', onReachability);
     socket.on('call:ringing', onRinging);
     socket.on('call:accepted', onAccepted);
     socket.on('call:rejected', onRejected);
@@ -1613,6 +1657,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onClearSummary={clearSummary}
         onRedial={(p, ex, v) => void startCall(p, ex, v)}
         relayHint={relayHint}
+        reachNote={reachNote}
         onMessage={(ex) => {
           setSummary(null);
           nav(`/messages/${ex}`);

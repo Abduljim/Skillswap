@@ -23,8 +23,13 @@ export default function PublicLayout() {
           </nav>
           <div className="flex items-center gap-2">
             {user ? (
-              <button onClick={() => nav('/dashboard')} className="btn-primary">
-                Dashboard
+              <button
+                onClick={() => nav('/dashboard')}
+                aria-label="Open your dashboard"
+                title="Open your dashboard"
+                className="shrink-0 active:scale-95"
+              >
+                <img src="/favicon.svg" alt="SkillSwap" className="w-9 h-9 rounded-xl" />
               </button>
             ) : (
               <>

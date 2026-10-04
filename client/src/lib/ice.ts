@@ -63,8 +63,26 @@ export const DEFAULT_CALL_LIMITS: CallLimits = {
   groupCallsAudioFirst: true,
 };
 
-/** How long call setup will wait for the API before falling back. */
-const FETCH_TIMEOUT_MS = 1500;
+/**
+ * How long call setup will wait for the API before falling back.
+ *
+ * This used to be 1500 ms, and that small number was the quiet cause of "No
+ * relay server is configured" on real phones: a free Render instance sleeps
+ * after inactivity and the request that wakes it can take tens of seconds, so
+ * the first call of a session always fell back to STUN-only and then went
+ * silent on mobile data. The list is warmed in the background when the socket
+ * connects (see warmIceConfig), so a call only pays this when the cache is
+ * empty — and then waiting beats a silent call.
+ */
+const FETCH_TIMEOUT_MS = 6000;
+
+/** Outcome of the most recent fetch, so the UI can tell "still trying" from
+ *  "the server really has no relay". */
+let lastFetch: { ok: boolean; at: number } | null = null;
+
+export function iceFetchFailed(): boolean {
+  return !!lastFetch && !lastFetch.ok;
+}
 
 function envConfig(): IceConfig | null {
   const raw = String(import.meta.env.VITE_TURN_URLS || '');
@@ -129,17 +147,27 @@ export async function getIceConfig(options?: { force?: boolean; timeoutMs?: numb
   if (!options?.force && iceCache && isFresh(iceCache)) return iceCache.cfg;
   if (!options?.force && inflight) return inflight;
 
-  inflight = withTimeout(fetchIce(), timeoutMs)
-    .then((cfg) => {
+  const attempt = () =>
+    withTimeout(fetchIce(), timeoutMs).then((cfg) => {
       iceCache = { at: Date.now(), cfg };
+      lastFetch = { ok: true, at: Date.now() };
       return cfg;
-    })
-    .catch(() => {
-      // Keep a stale-but-valid config over falling back to STUN: an expired
-      // credential can still work for the allocation already in progress, and a
-      // momentary API blip should not silently downgrade every call.
+    });
+
+  inflight = attempt()
+    .catch(async () => {
+      // A stale-but-valid credential beats STUN for a call already in progress,
+      // so do not retry in that case — just reuse it.
       if (iceCache && iceCache.cfg.turnConfigured) return iceCache.cfg;
-      return envConfig() ?? STUN_ONLY_CONFIG;
+      // One retry: the request that wakes a sleeping server is the slow one,
+      // and the one after it is fast. A silent STUN-only call costs a whole
+      // conversation; two more seconds of setup costs nothing.
+      try {
+        return await attempt();
+      } catch {
+        lastFetch = { ok: false, at: Date.now() };
+        return envConfig() ?? STUN_ONLY_CONFIG;
+      }
     })
     .finally(() => {
       inflight = null;
@@ -157,6 +185,17 @@ export function getIceConfigSync(): IceConfig {
   if (iceCache && isFresh(iceCache)) return iceCache.cfg;
   void getIceConfig().catch(() => {});
   return iceCache?.cfg ?? envConfig() ?? STUN_ONLY_CONFIG;
+}
+
+/**
+ * Fetch the relay list in the background so a call never has to wait for it.
+ * Called when the socket connects (i.e. when the user is signed in and the app
+ * is live) — that request is usually the one that wakes a sleeping server.
+ */
+export function warmIceConfig(): void {
+  void getIceConfig({ timeoutMs: 15_000 }).catch(() => {
+    // Deliberately silent: the call path reports reachability itself.
+  });
 }
 
 /** Drop the cache on sign-out, so the next user does not reuse a credential. */

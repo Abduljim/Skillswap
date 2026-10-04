@@ -12,6 +12,22 @@ import { ensureMediaPermissions } from '../lib/media-permissions';
 import { subscribeCallPermission } from '../lib/permission-gate';
 import { useCalls } from '../contexts/CallsContext';
 
+/**
+ * The honest check: can this WebView actually open a microphone right now?
+ * Android's permission state and the WebView's ability to capture are two
+ * different facts, and calls only care about the second.
+ */
+async function probeMicrophone(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return false;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** One primer per install. The banner keeps going until the microphone works. */
 const PRIMER_KEY = 'skillswap_call_primer_v1';
 
@@ -33,6 +49,9 @@ export default function CallPermissionGate() {
   const [showPrimer, setShowPrimer] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [asking, setAsking] = useState(false);
+  /** A named cause from a failed call (busy mic, missing hardware) — shown
+   *  instead of the permission wording when the permission is not the problem. */
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<CallPermissions | null> => {
     if (!isAndroid) return null;
@@ -50,7 +69,33 @@ export default function CallPermissionGate() {
     let alive = true;
     void (async () => {
       const next = await refresh();
-      if (!alive || !next || next.microphone === 'granted') return;
+      if (!alive || !next) return;
+      // Everything a call needs, asked for the moment the app opens: Android
+      // shows each OS dialog once and then remembers. Waiting until the first
+      // call to ask is how a surprised "no" becomes a broken-looking call.
+      if (next.microphone !== 'granted' || next.camera !== 'granted' || next.notifications !== 'granted') {
+        try {
+          await requestCallMediaPermissions();
+          await requestCallNotificationPermission();
+        } catch {
+          // Native bridge absent (plain web build) — the probe below applies.
+        }
+        const after = await refresh();
+        if (!alive) return;
+        if (after && after.microphone === 'granted') {
+          setShowPrimer(false);
+          return;
+        }
+        // Android says denied, but the WebView is what a call actually uses.
+        // If a live probe opens the microphone, calls work and a banner
+        // claiming otherwise would be a lie.
+        if (await probeMicrophone()) {
+          setPerms({ ...(after ?? next), microphone: 'granted' });
+          setShowPrimer(false);
+          return;
+        }
+      }
+      if (next.microphone === 'granted') return;
       let seen = false;
       try {
         seen = localStorage.getItem(PRIMER_KEY) === '1';
@@ -84,8 +129,9 @@ export default function CallPermissionGate() {
   // even if it was dismissed earlier in this session.
   useEffect(
     () =>
-      subscribeCallPermission(() => {
+      subscribeCallPermission((notice) => {
         setDismissed(false);
+        setNoticeMessage(notice.message ?? null);
         void refresh();
       }),
     [refresh]
@@ -180,7 +226,7 @@ export default function CallPermissionGate() {
           <Wrench className="h-5 w-5 shrink-0 text-coral-500" />
           <p className="flex-1 text-xs leading-snug">
             {micMissing
-              ? 'Calls cannot work until SkillSwap can use your microphone.'
+              ? noticeMessage ?? 'Calls cannot work until SkillSwap can use your microphone.'
               : 'Calls will not ring when the app is closed until notifications are allowed.'}
           </p>
           <button

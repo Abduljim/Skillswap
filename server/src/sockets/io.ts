@@ -436,13 +436,31 @@ export function initSocket(httpServer: HTTPServer) {
         // closed), or every socket they hold has reported the app backgrounded
         // (locked screen, home screen). The socket stays alive for minutes in
         // that state, so connectivity alone used to mean the call was missed.
-        if (!calleeIsPresent(targetUserId)) {
-          void sendIncomingCallPush(targetUserId, {
+        const present = calleeIsPresent(targetUserId);
+        let pushed = 0;
+        let pushSkipped = false;
+        if (!present) {
+          const result = await sendIncomingCallPush(targetUserId, {
             exchangeId: data.exchangeId,
             video: !!data.video,
             caller: callerPayload,
           });
+          pushed = result.sent;
+          pushSkipped = result.skipped;
         }
+        // "Ringing…" must never mean "nobody can hear this". No socket and zero
+        // pushes means the callee has no device registered for push (never
+        // opened the app since FCM was wired up, or no Play services); skipped
+        // means the server has no FCM key. The caller shows each case plainly.
+        socket.emit('call:callee-reachability', {
+          exchangeId: data.exchangeId,
+          present,
+          pushed,
+          pushSkipped,
+        });
+        console.log(
+          `📞 [call] ${data.exchangeId.slice(0, 8)} request: callee present=${present} push sent=${pushed} skipped=${pushSkipped}`
+        );
 
         // Nobody answers → end it. Otherwise the caller stays on "Ringing…"
         // forever and a callee ringing from a push keeps an insistent

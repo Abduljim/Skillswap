@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
+import { warmIceConfig } from '../lib/ice';
 import { createSocket } from '../lib/socket';
 import { useAuth } from './AuthContext';
 
@@ -24,7 +25,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     let s: Socket;
     let cancelled = false;
     let socketOut: Socket | null = null;
-    const onConnect = () => setReady(true);
+    const onConnect = () => {
+      setReady(true);
+      // Wake the relay list now, not mid-call: the request that lifts a
+      // sleeping server is the slow one, and a call must never pay for it.
+      warmIceConfig();
+    };
     const onDisconnect = () => setReady(false);
 
     (async () => {

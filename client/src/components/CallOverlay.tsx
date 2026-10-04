@@ -96,6 +96,7 @@ export function CallOverlay({
   onRedial,
   onMessage,
   relayHint = null,
+  reachNote = null,
   minimized = false,
   onMinimize,
   onRestore,
@@ -119,6 +120,8 @@ export function CallOverlay({
   onMessage?: (exchangeId: string) => void;
   /** Explains a missing TURN relay while the call is not yet connected. */
   relayHint?: string | null;
+  /** Whether an offline callee's phone is really being rung (push). */
+  reachNote?: string | null;
   /** Collapse the in-call sheet to a floating bar so the app stays usable. */
   minimized?: boolean;
   onMinimize?: () => void;
@@ -338,6 +341,9 @@ export function CallOverlay({
               <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
                 {relayHint}
               </p>
+            )}
+            {reachNote && !inCall && !ended && (
+              <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">{reachNote}</p>
             )}
           </div>
 
