@@ -19,7 +19,7 @@
  *     long note can never be recorded and then rejected at send time.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Mic, RotateCcw, Send, Square, X } from 'lucide-react';
+import { AlertTriangle, Flame, Mic, RotateCcw, Send, Square, X } from 'lucide-react';
 import { ensureMediaPermissions } from '../lib/media-permissions';
 import { formatBytes, formatDuration } from '../lib/media-upload';
 import AudioBubble from './AudioBubble';
@@ -69,10 +69,14 @@ export default function VoiceRecorder({
   open,
   onClose,
   onRecorded,
+  viewOnce = false,
+  onViewOnceChange,
 }: {
   open: boolean;
   onClose: () => void;
   onRecorded: (note: RecordedVoiceNote) => void;
+  viewOnce?: boolean;
+  onViewOnceChange?: (value: boolean) => void;
 }) {
   const [phase, setPhase] = useState<Phase>('starting');
   const [error, setError] = useState<string | null>(null);
@@ -333,7 +337,6 @@ export default function VoiceRecorder({
     close();
   };
 
-  const reachedCap = elapsedMs >= MAX_VOICE_MS - 1000;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0d0f14] text-white animate-fade-in">
@@ -374,7 +377,7 @@ export default function VoiceRecorder({
         {phase === 'ready' && (
           <>
             <p className="text-sm text-white/70 text-center">
-              Tap to start recording. Notes stop themselves at {formatDuration(MAX_VOICE_MS)}.
+              Tap the microphone and start talking.
             </p>
             <button
               type="button"
@@ -415,20 +418,31 @@ export default function VoiceRecorder({
             >
               <Square className="w-7 h-7" fill="currentColor" />
             </button>
-            <p className={`text-xs text-center ${reachedCap ? 'text-[#ffb020]' : 'text-white/60'}`}>
-              {reachedCap ? 'Reached the five-minute limit — stopping now.' : 'Tap the square when you are done.'}
-            </p>
+            <p className="text-xs text-center text-white/60">Tap the square when you are done.</p>
           </>
         )}
 
         {phase === 'review' && clip && (
           <div className="w-full max-w-sm space-y-5">
-            <p className="text-sm text-white/70 text-center">Listen back before you send it.</p>
             {/* currentColor inside AudioBubble resolves to white here, which is
                 exactly the contrast this dark sheet needs. */}
             <div className="rounded-2xl bg-white/10 ring-1 ring-white/15">
               <AudioBubble src={clip.url} durationMs={clip.durationMs} bytes={clip.bytes} label="Preview" />
             </div>
+            {onViewOnceChange && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => onViewOnceChange(!viewOnce)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 active:scale-95 ${
+                    viewOnce ? 'bg-[#fb4f1d] text-white ring-[#fb4f1d]' : 'bg-white/10 text-white ring-white/25'
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5" />
+                  View once
+                </button>
+              </div>
+            )}
             <div className="flex items-center justify-center gap-3">
               <button
                 type="button"

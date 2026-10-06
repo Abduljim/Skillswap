@@ -17,6 +17,8 @@ import {
   Keyboard,
   AlertTriangle,
   Mic,
+  Flame,
+  EyeOff,
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import VideoRecorder, { MAX_VIDEO_MS, type RecordedClip } from './VideoRecorder';
@@ -65,6 +67,19 @@ export default function ChatTab({
       return messages;
     },
   });
+  // When a view-once message is opened (by us or on another device of ours) the
+  // thread is re-pulled so "View once" flips to "Viewed" without a manual pull.
+  useEffect(() => {
+    if (!socket) return;
+    const onViewed = (d: { exchangeId: string }) => {
+      if (d.exchangeId === exchangeId) void refetch();
+    };
+    socket.on('message:viewed', onViewed);
+    return () => {
+      socket.off('message:viewed', onViewed);
+    };
+  }, [socket, exchangeId, refetch]);
+
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -84,6 +99,13 @@ export default function ChatTab({
   // re-recording a two-minute explanation because of one dropped request.
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [pendingVoice, setPendingVoice] = useState<RecordedVoiceNote | null>(null);
+  const [pendingViewOnce, setPendingViewOnce] = useState(false);
+  const [viewOnceOpen, setViewOnceOpen] = useState<{
+    url: string;
+    type: string;
+    durationMs: number | null;
+    bytes: number | null;
+  } | null>(null);
   const [mediaBusy, setMediaBusy] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
@@ -261,7 +283,8 @@ export default function ChatTab({
     body: string,
     type: string = 'TEXT',
     caption?: string | null,
-    media?: MessageMediaFields
+    media?: MessageMediaFields,
+    viewOnce = false
   ) => {
     if (!body.trim() || sending) return;
     setSending(true);
@@ -271,6 +294,7 @@ export default function ChatTab({
         type,
         caption: caption || null,
         ...(media || {}),
+        viewOnce,
       });
       setText('');
       void qc.invalidateQueries({ queryKey: ['conversations'] });
@@ -282,8 +306,13 @@ export default function ChatTab({
     }
   };
 
-  const sendImage = async (body: string, caption?: string | null, media?: MessageMediaFields) => {
-    await sendMessage(body, 'IMAGE', caption, media);
+  const sendImage = async (
+    body: string,
+    caption?: string | null,
+    media?: MessageMediaFields,
+    viewOnce?: boolean
+  ) => {
+    await sendMessage(body, 'IMAGE', caption, media, viewOnce === true);
   };
 
   // Compress to a ~1600px JPEG so phone camera photos (often 3–8MB) never hit
@@ -370,11 +399,12 @@ export default function ChatTab({
     }
 
     setMediaBusy('Sending…');
-    await sendImage(body, caption, media);
+    await sendImage(body, caption, media, pendingViewOnce);
     setSending(false);
     setMediaBusy(null);
     setPendingImage(null);
     setPendingImageBlob(null);
+    setPendingViewOnce(false);
     setPendingImageSize(null);
     setPendingCaption('');
     setReviewOpen(false);
@@ -383,6 +413,7 @@ export default function ChatTab({
   const discardPending = () => {
     setPendingImage(null);
     setPendingImageBlob(null);
+    setPendingViewOnce(false);
     setPendingImageSize(null);
     setPendingCaption('');
     setReviewOpen(false);
@@ -442,6 +473,7 @@ export default function ChatTab({
         // in both places — the same shape a video message uses.
         body: uploaded.url,
         type: 'AUDIO',
+        viewOnce: pendingViewOnce,
         caption: null,
         mediaUrl: uploaded.url,
         mediaBytes: uploaded.bytes,
@@ -450,6 +482,7 @@ export default function ChatTab({
 
       URL.revokeObjectURL(note.url);
       setPendingVoice(null);
+      setPendingViewOnce(false);
       void qc.invalidateQueries({ queryKey: ['conversations'] });
       refetch();
     } catch (error) {
@@ -460,6 +493,24 @@ export default function ChatTab({
     } finally {
       setSending(false);
       setMediaBusy(null);
+    }
+  };
+
+  const openViewOnce = async (message: Message) => {
+    try {
+      const res = await api.post<{ url: string | null; viewedAt: string | null }>(
+        `/exchanges/${exchangeId}/messages/${message.id}/view`,
+        {}
+      );
+      if (!res.url) throw new ApiError('VIEW_ONCE_GONE', 'That media is no longer available.', 410);
+      setViewOnceOpen({
+        url: res.url,
+        type: message.type || 'IMAGE',
+        durationMs: message.mediaDurationMs ?? null,
+        bytes: message.mediaBytes ?? null,
+      });
+    } catch (error) {
+      setMediaError(error instanceof ApiError ? error.message : 'That view-once media could not be opened.');
     }
   };
 
@@ -554,6 +605,7 @@ export default function ChatTab({
       await api.post(`/exchanges/${exchangeId}/messages`, {
         body: uploaded.url,
         type: 'VIDEO',
+        viewOnce: pendingViewOnce,
         caption: caption || null,
         mediaUrl: uploaded.url,
         thumbUrl,
@@ -565,6 +617,7 @@ export default function ChatTab({
 
       URL.revokeObjectURL(clip.url);
       setPendingVideo(null);
+      setPendingViewOnce(false);
       setPendingCaption('');
       setReviewOpen(false);
       void qc.invalidateQueries({ queryKey: ['conversations'] });
@@ -580,6 +633,7 @@ export default function ChatTab({
   const discardPendingVideo = () => {
     if (pendingVideo) URL.revokeObjectURL(pendingVideo.url);
     setPendingVideo(null);
+    setPendingViewOnce(false);
     setPendingCaption('');
     setReviewOpen(false);
   };
@@ -648,6 +702,32 @@ export default function ChatTab({
                     </div>
                     {message.caption && (
                       <div className="text-sm whitespace-pre-wrap break-words px-2.5 pt-2">{message.caption}</div>
+                    )}
+                  </div>
+                ) : message.viewOnce ? (
+                  <div>
+                    {message.mediaViewedAt ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm opacity-75">
+                        <EyeOff className="w-4 h-4 shrink-0" />
+                        Viewed once
+                      </div>
+                    ) : mine ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm opacity-75">
+                        <Flame className="w-4 h-4 shrink-0" />
+                        View once · not opened yet
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void openViewOnce(message)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm font-semibold active:scale-95"
+                      >
+                        <Flame className="w-4 h-4 shrink-0" />
+                        View once
+                      </button>
+                    )}
+                    {message.caption && (
+                      <div className="text-sm whitespace-pre-wrap break-words px-2.5 pb-1">{message.caption}</div>
                     )}
                   </div>
                 ) : message.type === 'AUDIO' ? (
@@ -993,7 +1073,56 @@ export default function ChatTab({
         onFallbackToGallery={() => videoInputRef.current?.click()}
       />
 
-      <VoiceRecorder open={voiceOpen} onClose={() => setVoiceOpen(false)} onRecorded={handleVoiceNote} />
+      {viewOnceOpen && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between px-3 pt-3">
+            <span className="text-xs text-white/70 flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5" />
+              View once — it will not be available again
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setViewOnceOpen(null);
+                refetch();
+              }}
+              aria-label="Close"
+              className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4 min-h-0">
+            {viewOnceOpen.type === 'VIDEO' ? (
+              <video
+                src={viewOnceOpen.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-full max-w-full rounded-xl"
+              />
+            ) : viewOnceOpen.type === 'AUDIO' ? (
+              <div className="w-full max-w-sm text-white">
+                <AudioBubble
+                  src={viewOnceOpen.url}
+                  durationMs={viewOnceOpen.durationMs}
+                  bytes={viewOnceOpen.bytes}
+                />
+              </div>
+            ) : (
+              <img src={viewOnceOpen.url} alt="View-once photo" className="max-h-full max-w-full object-contain" />
+            )}
+          </div>
+        </div>
+      )}
+
+      <VoiceRecorder
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        onRecorded={handleVoiceNote}
+        viewOnce={pendingViewOnce}
+        onViewOnceChange={setPendingViewOnce}
+      />
 
       {reviewOpen && (pendingImage || pendingVideo) && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
@@ -1005,6 +1134,17 @@ export default function ChatTab({
               title="Back"
             >
               <X className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingViewOnce((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 active:scale-95 ${
+                pendingViewOnce ? 'bg-[#fb4f1d] text-white ring-[#fb4f1d]' : 'bg-white/10 text-white ring-white/25'
+              }`}
+              title="View once: the media disappears after it is opened once"
+            >
+              <Flame className="w-3.5 h-3.5" />
+              View once
             </button>
             <button
               type="button"

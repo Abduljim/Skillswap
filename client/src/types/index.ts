@@ -124,6 +124,10 @@ export interface MessageMediaFields {
   mediaWidth?: number | null;
   mediaHeight?: number | null;
   mediaDurationMs?: number | null;
+  /** View-once media: the recipient can open it exactly once. */
+  viewOnce?: boolean;
+  mediaViewedAt?: string | null;
+  mediaViewedBy?: string | null;
 }
 
 export interface Message extends MessageMediaFields {

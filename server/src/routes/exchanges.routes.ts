@@ -113,9 +113,25 @@ router.post(
         mediaWidth: req.body.mediaWidth ?? null,
         mediaHeight: req.body.mediaHeight ?? null,
         mediaDurationMs: req.body.mediaDurationMs ?? null,
+        viewOnce: req.body.viewOnce === true,
       }
     );
     ok(res, msg);
+  })
+);
+
+// View-once media: the ONLY way a recipient gets the URL. It stamps the
+// message viewed, and every later attempt answers 410.
+router.post(
+  '/:id/messages/:messageId/view',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const result = await messageService.viewOnceMedia(
+      req.user!.userId,
+      req.params.id,
+      req.params.messageId
+    );
+    ok(res, result);
   })
 );
 

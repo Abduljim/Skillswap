@@ -381,4 +381,42 @@ public class CallNotifier extends Plugin {
             call.resolve();
         });
     }
+
+    /**
+     * Route in-call audio to the loudspeaker (or back to the normal path).
+     *
+     * WebView WebRTC audio can land on the earpiece route at call volume,
+     * which reads as "the call has no sound" while it is in fact playing
+     * quietly into the wrong place. The in-call speaker button calls this.
+     */
+    @PluginMethod
+    public void setAudioRoute(PluginCall call) {
+        final boolean speaker = call.getBoolean("speaker", false);
+        getActivity().runOnUiThread(() -> {
+            try {
+                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+                audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    android.media.AudioDeviceInfo target = null;
+                    for (android.media.AudioDeviceInfo d : audio.getAvailableCommunicationDevices()) {
+                        int type = d.getType();
+                        if (speaker && type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                            target = d;
+                        }
+                        if (!speaker && type == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                            target = d;
+                        }
+                    }
+                    if (target != null) {
+                        audio.setCommunicationDevice(target);
+                    }
+                } else {
+                    audio.setSpeakerphoneOn(speaker);
+                }
+            } catch (Throwable ignored) {
+                // Older/odd devices: keep whatever route the WebView chose.
+            }
+            call.resolve();
+        });
+    }
 }

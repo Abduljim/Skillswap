@@ -162,9 +162,19 @@ export async function requestPasswordReset(email: string, originHint?: string): 
     },
   });
 
+  // Link targets, best first:
+  //  1. an explicit RESET_URL,
+  //  2. the web app's own reset page when a real CLIENT_URL is configured,
+  //  3. the page the API itself serves (GET /api/auth/reset-password) — this is
+  //     the production path (CLIENT_URL unset behind Render) and it works from
+  //     any phone browser with no frontend and no domain.
+  const client = (env.CLIENT_URL || '').trim();
+  const hasClient = client !== '' && !client.includes('*');
   const resetUrl = env.RESET_URL
     ? `${env.RESET_URL.replace(/\/$/, '')}?token=${raw}`
-    : `${resetLinkBase(originHint).replace(/\/$/, '')}/reset-password?token=${raw}`;
+    : hasClient
+      ? `${client.replace(/\/$/, '')}/reset-password?token=${raw}`
+      : `${resetLinkBase(originHint).replace(/\/$/, '')}/api/auth/reset-password?token=${raw}`;
 
   await sendPasswordResetEmail(user.email, resetUrl).catch(() => undefined);
 }

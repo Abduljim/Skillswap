@@ -12,6 +12,7 @@ import {
   setCallUiActive,
   getCallSoundSource,
   openCallSettings,
+  setAudioRoute,
 } from '../lib/call-notifier';
 import { startRingtone, stopRingtone } from '../lib/ringtone';
 import { getLaunchedCall, clearLaunchedCall, getLaunchAction, type LaunchedCall } from '../lib/push';
@@ -286,10 +287,20 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const [relayHint, setRelayHint] = useState<string | null>(null);
   /** Whether an offline callee's phone is actually being rung right now. */
   const [reachNote, setReachNote] = useState<string | null>(null);
+  /** False once the server says the callee has no live socket: "Calling…". */
+  const [calleeOnline, setCalleeOnline] = useState<boolean | null>(null);
+  /** Real track state, so video panels hide when there is no video to show. */
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  const [localHasVideo, setLocalHasVideo] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
   useEffect(() => {
     if (status === 'none' && groupStatus === 'none') {
       setRelayHint(null);
       setReachNote(null);
+      setCalleeOnline(null);
+      setRemoteHasVideo(false);
+      setLocalHasVideo(false);
+      setSpeakerOn(false);
       return;
     }
     let live = true;
@@ -332,6 +343,14 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const toggleSpeaker = useCallback(() => {
+    setSpeakerOn((on) => {
+      const next = !on;
+      void setAudioRoute(next);
+      return next;
+    });
+  }, []);
 
   const clearIceWatchdog = useCallback(() => {
     if (iceWatchdogRef.current !== null) {
@@ -412,6 +431,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     if (remoteVideoRef.current) {
       const el = remoteVideoRef.current;
       el.srcObject = stream;
+      setRemoteHasVideo(stream.getVideoTracks().length > 0);
       (el as any).playsInline = true;
       el.muted = false; // remote audio is the entire point of the call
       el.play?.().catch(() => {});
@@ -428,6 +448,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const attachLocal = useCallback((stream: MediaStream) => {
+    setLocalHasVideo(stream.getVideoTracks().length > 0);
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
       (localVideoRef.current as any).playsInline = true;
@@ -494,6 +515,16 @@ export function CallsProvider({ children }: { children: ReactNode }) {
             // Media is flowing: the watchdog has nothing left to say.
             clearIceWatchdog();
             return;
+          }
+          if (pc.connectionState === 'disconnected') {
+            // A network switch (Wi-Fi to mobile data, or a new CGNAT binding)
+            // shows up here first. Asking ICE to restart recovers most of them
+            // without the user hearing a dropped call.
+            try {
+              pc.restartIce();
+            } catch {
+              // Not supported on this engine; the watchdog still covers us.
+            }
           }
           if (
             (pc.connectionState === 'failed' || pc.connectionState === 'closed') &&
@@ -998,7 +1029,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     };
 
     const onReachability = (d: { exchangeId: string; present: boolean; pushed: number; pushSkipped: boolean }) => {
-      if (d.exchangeId !== exchangeIdRef.current || d.present) return;
+      if (d.exchangeId !== exchangeIdRef.current) return;
+      setCalleeOnline(d.present);
+      if (d.present) return;
       setReachNote(
         d.pushSkipped
           ? 'Their app is closed and push is not configured on the server, so their phone cannot ring. They will see a missed call when they open the app.'
@@ -1658,6 +1691,11 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onRedial={(p, ex, v) => void startCall(p, ex, v)}
         relayHint={relayHint}
         reachNote={reachNote}
+        calleeOnline={calleeOnline}
+        remoteHasVideo={remoteHasVideo}
+        localHasVideo={localHasVideo}
+        speakerOn={speakerOn}
+        onToggleSpeaker={toggleSpeaker}
         onMessage={(ex) => {
           setSummary(null);
           nav(`/messages/${ex}`);

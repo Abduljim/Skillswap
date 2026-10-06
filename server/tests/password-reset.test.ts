@@ -316,19 +316,19 @@ describe('reset link base', () => {
     await withEnv({ CLIENT_URL: '*', SERVER_URL: 'http://localhost:4000', RESET_URL: '' }, async () => {
       await requestPasswordReset(email, 'https://skillswap-api-dcg8.onrender.com');
       const link = sentLink();
-      expect(link).toContain('https://skillswap-api-dcg8.onrender.com/reset-password?token=');
+      expect(link).toContain('https://skillswap-api-dcg8.onrender.com/api/auth/reset-password?token=');
       // A wildcard is not a clickable base — this was the bug.
       expect(link).not.toContain('*');
       expect(link).not.toContain('localhost');
       const html = sendMail.mock.calls.at(-1)?.[0].html as string;
-      expect(html).toContain('https://skillswap-api-dcg8.onrender.com/reset-password?token=');
+      expect(html).toContain('https://skillswap-api-dcg8.onrender.com/api/auth/reset-password?token=');
     });
   });
 
   it('falls back to SERVER_URL when there is no request origin either', async () => {
     await withEnv({ CLIENT_URL: '*', SERVER_URL: 'https://api.example.test', RESET_URL: '' }, async () => {
       await requestPasswordReset(email);
-      expect(sentLink()).toContain('https://api.example.test/reset-password?token=');
+      expect(sentLink()).toContain('https://api.example.test/api/auth/reset-password?token=');
     });
   });
 
@@ -457,5 +457,33 @@ describe('email provider summary (boot log)', () => {
         expect(line).toContain('fallback');
       }
     );
+  });
+});
+
+describe('The emailed link lands on a page that actually exists', () => {
+  it('points at the API-served reset page when no client URL is configured', async () => {
+    env.CLIENT_URL = '';
+    await requestPasswordReset(email, 'https://api.example.test');
+    const mail = sendMail.mock.calls[0]?.[0];
+    expect(mail.html).toMatch(
+      /https:\/\/api\.example\.test\/api\/auth\/reset-password\?token=[a-f0-9]{64}/
+    );
+  });
+
+  it('points at the web app reset page when CLIENT_URL is configured', async () => {
+    env.CLIENT_URL = 'https://app.example.test';
+    await requestPasswordReset(email, 'https://api.example.test');
+    const mail = sendMail.mock.calls[0]?.[0];
+    expect(mail.html).toMatch(/https:\/\/app\.example\.test\/reset-password\?token=[a-f0-9]{64}/);
+  });
+
+  it('serves the reset page itself, with a same-origin form', async () => {
+    const page = await request(app).get('/auth/reset-password?token=deadbeefdeadbeef');
+    expect(page.status).toBe(200);
+    expect(page.headers['content-type']).toMatch(/text\/html/);
+    expect(page.text).toContain('Choose a new password');
+    expect(page.text).toContain('<form');
+    // The form posts to location.pathname: same origin, no CORS, no frontend.
+    expect(page.text).toContain('location.pathname');
   });
 });

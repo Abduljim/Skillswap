@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { ForbiddenError, NotFoundError, BadRequestError } from '../utils/errors';
+import { ForbiddenError, NotFoundError, BadRequestError , HttpError} from '../utils/errors';
 import { emitToExchange } from '../sockets/io';
 import { isOwnMediaUrl } from './supabase.service';
 
@@ -29,7 +29,67 @@ export async function listMessages(userId: string, exchangeId: string) {
     data: { status: 'DELIVERED' },
   });
   if (delivered.count > 0) emitToExchange(exchangeId, 'message:delivered', { exchangeId });
-  return messages;
+  return sanitizeViewOnce(messages, userId);
+}
+
+/**
+ * Strip view-once media URLs from anything a recipient receives as a list.
+ *
+ * The recipient's only way to the bytes is POST .../messages/:id/view, which
+ * stamps the message viewed exactly once. Handing the URL out in the thread
+ * would let the bubble (or a curious devtools) fetch it without ever marking
+ * it, and "view once" would be a label rather than a behaviour. The sender
+ * keeps the URL: it is their file, and they also get mediaViewedAt so the
+ * bubble can say whether it was opened.
+ */
+export function sanitizeConversations<T extends { lastMessage?: { viewOnce?: boolean; senderId: string; mediaUrl?: string | null; thumbUrl?: string | null } | null }>(
+  rows: T[],
+  userId: string
+): T[] {
+  return rows.map((row) => {
+    const last = row.lastMessage;
+    if (!last || !last.viewOnce || last.senderId === userId) return row;
+    return { ...row, lastMessage: { ...last, mediaUrl: null, thumbUrl: null } };
+  });
+}
+
+export function sanitizeViewOnce<T extends { viewOnce?: boolean; senderId: string; mediaUrl?: string | null; thumbUrl?: string | null }>(
+  rows: T[],
+  userId: string
+): T[] {
+  return rows.map((row) => {
+    if (!row.viewOnce || row.senderId === userId) return row;
+    return { ...row, mediaUrl: null, thumbUrl: null };
+  });
+}
+
+/**
+ * Hand out a view-once media URL exactly once, to the recipient, and stamp the
+ * message viewed. Returns the URL; throws 410 afterwards.
+ */
+export async function viewOnceMedia(userId: string, exchangeId: string, messageId: string) {
+  await assertActiveParticipant(userId, exchangeId);
+  const message = await prisma.message.findFirst({
+    where: { id: messageId, exchangeId },
+  });
+  if (!message) throw new HttpError(404, 'NOT_FOUND', 'That message does not exist.');
+  if (!message.viewOnce) {
+    // A normal media message: the list already carried the URL, but answering
+    // here too keeps the client path single.
+    return { url: message.mediaUrl, viewedAt: null };
+  }
+  if (message.senderId === userId) {
+    return { url: message.mediaUrl, viewedAt: message.mediaViewedAt };
+  }
+  if (message.mediaViewedAt) {
+    throw new HttpError(410, 'VIEW_ONCE_ALREADY_VIEWED', 'That photo or clip was view-once and has already been opened.');
+  }
+  const stamped = await prisma.message.update({
+    where: { id: messageId },
+    data: { mediaViewedAt: new Date(), mediaViewedBy: userId },
+  });
+  emitToExchange(exchangeId, 'message:viewed', { exchangeId, messageId });
+  return { url: stamped.mediaUrl, viewedAt: stamped.mediaViewedAt };
 }
 
 export async function listConversations(userId: string) {
@@ -64,7 +124,7 @@ export async function listConversations(userId: string) {
     },
   });
 
-  return exchanges
+  return sanitizeConversations(exchanges
     .map((ex) => {
       const partner = ex.userAId === userId ? ex.userB : ex.userA;
       return {
@@ -75,8 +135,9 @@ export async function listConversations(userId: string) {
         updatedAt: ex.messages[0]?.createdAt ?? ex.updatedAt,
       };
     })
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), userId);
 }
+
 
 /** Pointers + metadata for a stored photo/video (see services/supabase.service). */
 export interface MessageMedia {
@@ -86,6 +147,7 @@ export interface MessageMedia {
   mediaWidth?: number | null;
   mediaHeight?: number | null;
   mediaDurationMs?: number | null;
+  viewOnce?: boolean | null;
 }
 
 export async function createMessage(
@@ -122,9 +184,17 @@ export async function createMessage(
       mediaWidth: media?.mediaWidth ?? null,
       mediaHeight: media?.mediaHeight ?? null,
       mediaDurationMs: media?.mediaDurationMs ?? null,
+      viewOnce: media?.viewOnce ?? false,
     },
     include: { sender: { select: { id: true, displayName: true } } },
   });
-  emitToExchange(exchangeId, 'message:new', message);
+  // The room event must not carry a view-once URL either — the recipient's
+  // only way to the bytes is the /view endpoint that stamps it opened. The
+  // sender's bubble never renders view-once media, so it loses nothing.
+  emitToExchange(
+    exchangeId,
+    'message:new',
+    message.viewOnce ? { ...message, mediaUrl: null, thumbUrl: null } : message
+  );
   return message;
 }

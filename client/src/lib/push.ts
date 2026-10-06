@@ -23,6 +23,7 @@ interface PushPlugin {
 const Push = registerPlugin<PushPlugin>('Push');
 
 let registered = false;
+let inflight: Promise<void> | null = null;
 
 /**
  * Register this device with Firebase Cloud Messaging and hand the token to the
@@ -31,16 +32,31 @@ let registered = false;
  * whoever signs in on this device).
  */
 export async function registerPushToken(): Promise<void> {
-  try {
-    if (Capacitor.getPlatform() !== 'android') return;
-    const { token } = await Push.getToken();
-    if (!token) return;
-    if (registered) return;
-    registered = true;
-    await api.post('/notifications/push-token', { token, platform: 'android' });
-  } catch {
-    registered = false;
-  }
+  if (registered) return;
+  if (inflight) return inflight;
+  inflight = (async () => {
+    // Retries matter: this runs at boot, which is exactly when a free-tier
+    // server may still be asleep. One failed POST here used to leave the
+    // device with no FCM token forever - i.e. "never rings when closed".
+    const delays = [0, 4000, 15_000, 45_000];
+    for (const delay of delays) {
+      if (delay) await new Promise((r) => setTimeout(r, delay));
+      if (registered) return;
+      try {
+        if (Capacitor.getPlatform() !== 'android') return;
+        const { token } = await Push.getToken();
+        if (!token) return;
+        await api.post('/notifications/push-token', { token, platform: 'android' });
+        registered = true;
+        return;
+      } catch {
+        registered = false;
+      }
+    }
+  })().finally(() => {
+    inflight = null;
+  });
+  return inflight;
 }
 
 /**

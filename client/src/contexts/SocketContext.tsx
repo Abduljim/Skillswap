@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
 import { warmIceConfig } from '../lib/ice';
+import { registerPushToken } from '../lib/push';
 import { createSocket } from '../lib/socket';
 import { useAuth } from './AuthContext';
 
@@ -30,6 +31,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // Wake the relay list now, not mid-call: the request that lifts a
       // sleeping server is the slow one, and a call must never pay for it.
       warmIceConfig();
+      // A connected socket means the server is awake: the right moment to make
+      // sure this device has a push token for closed-app ringing.
+      void registerPushToken();
     };
     const onDisconnect = () => setReady(false);
 

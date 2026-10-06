@@ -16,6 +16,10 @@ public class MainActivity extends BridgeActivity {
         registerPushPluginIfPresent();
         super.onCreate(savedInstanceState);
 
+        // Volume keys must move call/media volume, not the ringtone stream,
+        // or "turn it up" during a call appears to do nothing.
+        setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
+
         // Disable pinch-zoom system-wide on the WebView so the app feels native.
         WebView webView = this.bridge.getWebView();
         if (webView != null) {

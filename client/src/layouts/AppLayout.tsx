@@ -130,9 +130,7 @@ export default function AppLayout() {
       {!isFullScreenChat && (
       <header className="hidden md:flex glass-nav border-b border-ink-100 sticky top-0 z-30 h-16 items-center px-6">
         <Link to="/dashboard" className="flex items-center gap-2 mr-8">
-          <div className="w-8 h-8 rounded-lg bg-ink-900 flex items-center justify-center">
-            <div className="w-3 h-3 rounded-full bg-coral-500" />
-          </div>
+<img src="/app-logo.png" alt="SkillSwap" className="w-9 h-9 rounded-xl" />
           <span className="font-display font-bold text-lg text-ink-900">SkillSwap</span>
         </Link>
         <nav className="flex items-center gap-1 text-sm">
@@ -231,9 +229,7 @@ export default function AppLayout() {
       {!isFullScreenChat && (
       <header className="md:hidden glass-nav border-b border-ink-100 sticky top-0 z-30 h-14 flex items-center justify-between px-4">
         <Link to="/dashboard" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-ink-900 flex items-center justify-center">
-            <div className="w-2.5 h-2.5 rounded-full bg-coral-500" />
-          </div>
+<img src="/app-logo.png" alt="SkillSwap" className="w-8 h-8 rounded-xl" />
           <span className="font-display font-bold text-base text-ink-900">SkillSwap</span>
         </Link>
         <div className="flex items-center gap-1">

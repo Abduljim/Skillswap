@@ -24,6 +24,7 @@ interface CallNotifierPlugin {
   stop(): Promise<void>;
   openSettings(): Promise<void>;
   getPermissionState(): Promise<Partial<CallPermissions>>;
+  setAudioRoute(opts: { speaker: boolean }): Promise<void>;
 }
 
 /** What Android currently allows, from CallNotifier.getPermissionState(). */
@@ -150,5 +151,21 @@ export async function openCallSettings(): Promise<void> {
     if (Capacitor.getPlatform() === 'android') await CallNotifier.openSettings();
   } catch {
     // Web Preview / non-native builds have no native plugin.
+  }
+}
+/**
+ * Route call audio to the loudspeaker, or back to the normal path.
+ *
+ * WebView WebRTC audio can land in the earpiece route at call volume, which
+ * reads as "the call has no sound" when it is in fact playing quietly into the
+ * wrong place. The in-call speaker button calls this; the native side also
+ * binds the volume keys to the media stream.
+ */
+export async function setAudioRoute(speaker: boolean): Promise<void> {
+  try {
+    if (Capacitor.getPlatform() !== 'android') return;
+    await CallNotifier.setAudioRoute({ speaker });
+  } catch {
+    // Web build or an older native shell: the WebView keeps its default route.
   }
 }

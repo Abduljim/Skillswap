@@ -11,6 +11,8 @@ import {
   RotateCw,
   Settings,
   ChevronDown,
+  Volume1,
+  Volume2,
 } from 'lucide-react';
 
 export type CallStatus = 'none' | 'outgoing' | 'incoming' | 'active' | 'error';
@@ -97,6 +99,11 @@ export function CallOverlay({
   onMessage,
   relayHint = null,
   reachNote = null,
+  calleeOnline = null,
+  remoteHasVideo = true,
+  localHasVideo = true,
+  speakerOn = false,
+  onToggleSpeaker,
   minimized = false,
   onMinimize,
   onRestore,
@@ -122,6 +129,12 @@ export function CallOverlay({
   relayHint?: string | null;
   /** Whether an offline callee's phone is really being rung (push). */
   reachNote?: string | null;
+  /** False when the server knows the callee has no live socket. */
+  calleeOnline?: boolean | null;
+  remoteHasVideo?: boolean;
+  localHasVideo?: boolean;
+  speakerOn?: boolean;
+  onToggleSpeaker?: () => void;
   /** Collapse the in-call sheet to a floating bar so the app stays usable. */
   minimized?: boolean;
   onMinimize?: () => void;
@@ -144,7 +157,9 @@ export function CallOverlay({
     call.status === 'error'
       ? call.error || 'Something went wrong'
       : call.status === 'outgoing'
-        ? 'Ringing…'
+        ? calleeOnline === false
+          ? 'Calling…'
+          : 'Ringing…'
         : ringing
           ? 'Incoming call'
           : inCall
@@ -250,7 +265,7 @@ export function CallOverlay({
           ref={remoteVideoRef as React.RefObject<HTMLVideoElement>}
           autoPlay
           playsInline
-          className={`h-full w-full object-cover ${videoOn ? '' : 'invisible'}`}
+          className={`h-full w-full object-cover ${videoOn && remoteHasVideo ? '' : 'invisible'}`}
         />
         {mini && !videoOn && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -273,7 +288,7 @@ export function CallOverlay({
           mini
             ? 'hidden'
             : `absolute top-4 right-4 w-28 h-40 rounded-2xl object-cover bg-ink-900 ring-1 ring-white/20 z-10 ${
-                videoOn ? '' : 'invisible'
+                videoOn && localHasVideo ? '' : 'invisible'
               }`
         }
       />
@@ -344,6 +359,11 @@ export function CallOverlay({
             )}
             {reachNote && !inCall && !ended && (
               <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">{reachNote}</p>
+            )}
+            {inCall && call.video && !localHasVideo && (
+              <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
+                Camera unavailable on this device — continuing as an audio call.
+              </p>
             )}
           </div>
 
@@ -416,6 +436,15 @@ export function CallOverlay({
                     label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
                   >
                     {micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </DockButton>
+                )}
+                {inCall && onToggleSpeaker && (
+                  <DockButton
+                    onClick={onToggleSpeaker}
+                    active={speakerOn}
+                    label={speakerOn ? 'Back to normal volume' : 'Speakerphone (louder)'}
+                  >
+                    {speakerOn ? <Volume2 className="w-5 h-5" /> : <Volume1 className="w-5 h-5" />}
                   </DockButton>
                 )}
                 {inCall && cameraAvailable && (

@@ -163,6 +163,8 @@ export const createMessageSchema = z.object({
   // Absolute bound only. The per-type ceiling is the refinement below: a video
   // is still 60s even though a voice note may be five minutes.
   mediaDurationMs: z.number().int().positive().max(MAX_AUDIO_DURATION_MS).optional().nullable(),
+  /** Telegram-style: the media may be opened once, then it is gone. */
+  viewOnce: z.boolean().default(false),
 }).superRefine((message, ctx) => {
   if (typeof message.mediaDurationMs !== 'number') return;
   const limit = message.type === 'AUDIO' ? MAX_AUDIO_DURATION_MS : MAX_VIDEO_DURATION_MS;
