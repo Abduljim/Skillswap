@@ -41,6 +41,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       seedPresence();
     };
     const onDisconnect = () => setReady(false);
+    // Keep-warm: the free-tier host sleeps when idle, and a cold start is what
+    // made opening the app feel slow. A tiny ping every 4 minutes while the
+    // app is open keeps it awake between sessions.
+    const warm = () => {
+      // Any request wakes a sleeping free-tier host; /health is the cheapest.
+      api.get('/health').catch(() => {});
+    };
+    warm();
+    const warmTimer = window.setInterval(warm, 240_000);
     // Live presence for the message-list dots: the server announces every
     // online/offline flip to all connected clients.
     const onPresenceUpdate = (d: { userId: string; online: boolean }) =>
@@ -76,6 +85,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      window.clearInterval(warmTimer);
       if (socketOut) {
         socketOut.off('connect', onConnect);
         socketOut.off('disconnect', onDisconnect);

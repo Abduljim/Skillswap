@@ -8,10 +8,16 @@ export default function PublicLayout() {
     <div className="min-h-screen flex flex-col">
       <header className="glass-nav border-b border-ink-100 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <img src="/app-logo.png" alt="SkillSwap" className="w-9 h-9 rounded-xl" />
-            <span className="font-display font-bold text-lg text-ink-900">SkillSwap</span>
-          </Link>
+          {/* One logo per bar: signed-in users already get the dashboard logo
+              at the right, so the left brand would double it. */}
+          {user ? (
+            <span aria-hidden="true" />
+          ) : (
+            <Link to="/" className="flex items-center gap-2">
+              <img src="/app-logo.png" alt="SkillSwap" className="w-9 h-9 rounded-xl" />
+              <span className="font-display font-bold text-lg text-ink-900">SkillSwap</span>
+            </Link>
+          )}
           <nav className="hidden sm:flex items-center gap-6 text-sm">
             <NavLink to="/" className={({ isActive }) => isActive ? 'text-ink-900 font-semibold' : 'text-ink-600 hover:text-ink-900'}>
               Home

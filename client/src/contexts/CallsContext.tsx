@@ -174,6 +174,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<CallStatus>('none');
   const [peer, setPeer] = useState<Peer>({ id: '', displayName: '' });
   const [video, setVideo] = useState(false);
+  /** MY camera only. Never the call type — hiding my preview must not hide
+      the other side's video (that conflation was the reported bug). */
+  const [camOn, setCamOn] = useState(true);
   const [incoming, setIncoming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [micMuted, setMicMuted] = useState(false);
@@ -298,6 +301,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       setCalleeOnline(null);
       setRemoteHasVideo(false);
       setLocalHasVideo(false);
+      setCamOn(true);
       setSpeakerOn(false);
       return;
     }
@@ -507,6 +511,14 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         };
         pc.ontrack = (ev) => {
           if (ev.streams[0]) attachRemote(ev.streams[0]);
+          // Live remote-camera detection: a track the far end disables fires
+          // 'mute' here, so their avatar replaces the black rectangle — and
+          // 'unmute' brings their video back. Independent of MY camera.
+          const t = ev.track;
+          if (t.kind === 'video') {
+            t.addEventListener('mute', () => setRemoteHasVideo(false));
+            t.addEventListener('unmute', () => setRemoteHasVideo(true));
+          }
         };
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === 'connected') {
@@ -976,7 +988,10 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
     const onEnded = (p: { exchangeId: string }) => {
       if (p.exchangeId !== exchangeIdRef.current) return;
-      if (status === 'none') return;
+      // No status guard: when the other side ends, THIS side ends — even if
+      // our local state already looks idle (rings and services still die).
+      stopRingtone();
+      void stopIncomingCallRing();
       cleanup(true);
       update({ status: 'none', incoming: false });
     };
@@ -1309,6 +1324,8 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     const sock = socketRef.current;
     if (!sock) return;
     sock.emit('call:reject', { exchangeId: exchangeIdRef.current });
+    stopRingtone();
+    void stopIncomingCallRing();
     cleanup(true);
     update({ status: 'none', incoming: false });
   }, [cleanup, update]);
@@ -1316,6 +1333,10 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const hangup = useCallback(() => {
     const sock = socketRef.current;
     if (sock && status !== 'none') sock.emit('call:hangup', { exchangeId: exchangeIdRef.current });
+    // Belt & braces: silence web + native ringing right now instead of only
+    // when the status effect next runs, so "cut it on my side" is instant.
+    stopRingtone();
+    void stopIncomingCallRing();
     cleanup(true);
     update({ status: 'none', incoming: false });
   }, [status, cleanup, update]);
@@ -1400,7 +1421,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     if (!stream || stream.getVideoTracks().length === 0) return;
     const on = !stream.getVideoTracks()[0].enabled;
     stream.getVideoTracks().forEach((t) => (t.enabled = on));
-    setVideo(on);
+    // Only MY side changes: the remote video element keeps showing THEM.
+    setCamOn(on);
+    setLocalHasVideo(on);
   }, []);
 
   // ── Public actions (group) ─────────────────────────────────────────────────
@@ -1691,6 +1714,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         calleeOnline={calleeOnline}
         remoteHasVideo={remoteHasVideo}
         localHasVideo={localHasVideo}
+        localCamOn={camOn}
         speakerOn={speakerOn}
         onToggleSpeaker={toggleSpeaker}
         onMessage={(ex) => {

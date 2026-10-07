@@ -101,6 +101,7 @@ export function CallOverlay({
   calleeOnline = null,
   remoteHasVideo = true,
   localHasVideo = true,
+  localCamOn = true,
   speakerOn = false,
   onToggleSpeaker,
   minimized = false,
@@ -130,6 +131,8 @@ export function CallOverlay({
   calleeOnline?: boolean | null;
   remoteHasVideo?: boolean;
   localHasVideo?: boolean;
+  /** False while MY camera is switched off — never affects the remote video. */
+  localCamOn?: boolean;
   speakerOn?: boolean;
   onToggleSpeaker?: () => void;
   /** Collapse the in-call sheet to a floating bar so the app stays usable. */
@@ -274,6 +277,17 @@ export function CallOverlay({
             />
           </div>
         )}
+        {!mini && videoOn && !remoteHasVideo && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <FrameAvatar
+              frame={partner.avatarFrame || 'default'}
+              src={partner.avatarUrl}
+              alt={partner.displayName}
+              size={96}
+            />
+            <span className="text-xs text-white/70">{partner.displayName}&apos;s camera is off</span>
+          </div>
+        )}
       </div>
 
       <video
@@ -356,7 +370,9 @@ export function CallOverlay({
             )}
             {inCall && call.video && !localHasVideo && (
               <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
-                Camera unavailable on this device — continuing as an audio call.
+                {localCamOn
+                  ? 'Camera unavailable on this device — continuing as an audio call.'
+                  : 'Your camera is off — you can still see and hear them.'}
               </p>
             )}
           </div>

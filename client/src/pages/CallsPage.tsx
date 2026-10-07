@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useCalls } from '../contexts/CallsContext';
+import { useGlobalSocket } from '../contexts/SocketContext';
 import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
 import { allLogs, deleteLog } from '../lib/call-logs';
 import type { CallLog, Conversation } from '../types';
@@ -286,7 +287,31 @@ export default function CallsPage() {
     queryKey: ['conversations'],
     queryFn: () => api.get<Conversation[]>('/messages/conversations'),
   });
-  const contacts = data || [];
+  const { data: exData } = useQuery({
+    queryKey: ['exchanges'],
+    queryFn: () => api.get<any[]>('/exchanges'),
+  });
+  const { presence } = useGlobalSocket();
+  // WhatsApp-style: an ACCEPTED exchange is callable the moment it exists —
+  // conversations alone would hide partners until somebody messages first.
+  const contacts = useMemo<Conversation[]>(() => {
+    const convs = data || [];
+    const seen = new Set(convs.map((c) => c.exchangeId));
+    const fromExchanges: Conversation[] = [];
+    for (const ex of exData || []) {
+      if (ex.status !== 'ACTIVE' || seen.has(ex.id)) continue;
+      const partner = ex.userA?.id === user?.id ? ex.userB : ex.userB?.id === user?.id ? ex.userA : null;
+      if (!partner) continue;
+      fromExchanges.push({
+        exchangeId: ex.id,
+        partner,
+        lastMessage: null,
+        unreadCount: 0,
+        updatedAt: ex.updatedAt,
+      });
+    }
+    return [...convs, ...fromExchanges];
+  }, [data, exData, user?.id]);
   const byExchange = useMemo(() => {
     const map = new Map<string, Conversation>();
     for (const c of contacts) map.set(c.exchangeId, c);
@@ -360,6 +385,67 @@ export default function CallsPage() {
           <Plus className="w-4 h-4" /> New call
         </button>
       </div>
+
+      {/* Every accepted exchange, callable in one tap — like the contacts
+          list in Messages, but for calls. */}
+      {contacts.length > 0 && (
+        <div className="mb-4 card p-2">
+          <h2 className="px-2 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">
+            Contacts
+          </h2>
+          {contacts.map((c) => {
+            const online = presence[c.partner.id] ?? c.partnerOnline ?? false;
+            return (
+              <div
+                key={c.exchangeId}
+                className="flex items-center gap-3 px-2 py-2.5 border-b border-cream-100 last:border-0"
+              >
+                <FrameAvatar
+                  frame={c.partner.profile?.avatarFrame ?? undefined}
+                  src={c.partner.profile?.avatarUrl ?? undefined}
+                  alt={c.partner.displayName}
+                  size={40}
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : 'bg-red-500'}`}
+                      title={online ? 'Online' : 'Offline'}
+                    />
+                    <span className="font-semibold text-sm text-ink-900 truncate">
+                      {c.partner.displayName}
+                    </span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => beginCall(c, false)}
+                  className="w-9 h-9 rounded-full bg-[#00a884]/10 text-[#00a884] flex items-center justify-center active:scale-95"
+                  aria-label={`Voice call ${c.partner.displayName}`}
+                  title="Voice call"
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => beginCall(c, true)}
+                  className="w-9 h-9 rounded-full bg-[#00a884]/10 text-[#00a884] flex items-center justify-center active:scale-95"
+                  aria-label={`Video call ${c.partner.displayName}`}
+                  title="Video call"
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => openConversation(c.exchangeId)}
+                  className="w-9 h-9 rounded-full bg-cream-100 text-ink-600 flex items-center justify-center active:scale-95"
+                  aria-label={`Message ${c.partner.displayName}`}
+                  title="Message"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="relative mb-4">
         <Search className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />

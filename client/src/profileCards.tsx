@@ -1,21 +1,15 @@
 /**
- * Profile cards — the ring + gradient treatment around a user's avatar.
+ * Profile Rings & Profile Cards catalogue — v1.16 "Peak" set.
  *
- * Replaces the old 12 PNG frames (client/public/frames/frame_*.png). Everything
- * here is inline SVG/CSS: no binary assets, crisp at any size, animatable, and
- * it works offline inside the APK.
+ * Six families, exactly as designed: ONE free (Basic Ring / Default Card) and
+ * FIVE Pro (Frost, Shadow, Golden, Void, Cosmic). Each family drives both the
+ * avatar RING (CardArt, inline SVG in the outer band of a 100-unit viewBox)
+ * and the profile CARD surface (cardCls gradient in index.css).
  *
- * A card is the RING only. The colour field behind the profile header is a
- * separate choice — a profile look, see client/src/profileThemes.ts. They were
- * one setting until that split, which is why the profile and the profile card
- * used to look identical.
- *
- * The card family is metallic and faceted: pearl, gold, crystal, neon, ember,
- * chrome. Wallpapers are soft and matte; profile looks are bold and solid.
- *
- * Tiering: exactly ONE free card ("Pearl", deliberately understated) and FIVE
- * Pro cards. The server enforces the same list — see
- * server/src/services/profileCards.ts and updateProfile() in profile.service.ts.
+ * Ids are stable on purpose (linen/aurum/diamond/nova/inferno/sovereign) so
+ * profiles saved by older builds keep their look — only the art and names
+ * changed. The server mirror (services/profileCards.ts) is id-only, so it
+ * needs no change.
  */
 import { useId } from 'react';
 
@@ -23,7 +17,10 @@ export type CardTier = 'FREE' | 'PRO';
 
 export interface ProfileCard {
   id: string;
+  /** Ring name (avatar frame picker). */
   label: string;
+  /** Card name (profile card picker); falls back to the ring name. */
+  cardLabel?: string;
   tagline: string;
   tier: CardTier;
   /** Gradient applied behind the profile header. */
@@ -35,48 +32,54 @@ export interface ProfileCard {
 export const PROFILE_CARDS: ProfileCard[] = [
   {
     id: 'linen',
-    label: 'Pearl',
-    tagline: 'Iridescent silver ring',
+    label: 'Basic Ring',
+    cardLabel: 'Default Card',
+    tagline: 'Clean. Simple. Standard.',
     tier: 'FREE',
     cardCls: 'profile-card-linen',
     cardDark: false,
   },
   {
-    id: 'aurum',
-    label: 'Aurum',
-    tagline: 'Molten gold, gem studs',
-    tier: 'PRO',
-    cardCls: 'profile-card-aurum',
-    cardDark: true,
-  },
-  {
     id: 'diamond',
-    label: 'Diamond',
-    tagline: 'Faceted crystal ring',
+    label: 'Frost Crown',
+    cardLabel: 'Frost Monarch',
+    tagline: 'Cold. Sharp. Elite.',
     tier: 'PRO',
     cardCls: 'profile-card-diamond',
     cardDark: true,
   },
   {
-    id: 'nova',
-    label: 'Nova',
-    tagline: 'Rotating neon halo',
-    tier: 'PRO',
-    cardCls: 'profile-card-nova',
-    cardDark: true,
-  },
-  {
     id: 'inferno',
-    label: 'Inferno',
-    tagline: 'Ember ring, rising sparks',
+    label: 'Shadow Flame',
+    cardLabel: 'Shadow Reign',
+    tagline: 'Dark. Powerful. Fearless.',
     tier: 'PRO',
     cardCls: 'profile-card-inferno',
     cardDark: true,
   },
   {
+    id: 'aurum',
+    label: 'Golden Apex',
+    cardLabel: 'Golden Sovereign',
+    tagline: 'Rare. Bold. Supreme.',
+    tier: 'PRO',
+    cardCls: 'profile-card-aurum',
+    cardDark: true,
+  },
+  {
+    id: 'nova',
+    label: 'Void Serpent',
+    cardLabel: 'Void Dragon',
+    tagline: 'Silent. Deadly. Infinite.',
+    tier: 'PRO',
+    cardCls: 'profile-card-nova',
+    cardDark: true,
+  },
+  {
     id: 'sovereign',
-    label: 'Sovereign',
-    tagline: 'Dark chrome + crown',
+    label: 'Cosmic Zenith',
+    cardLabel: 'Cosmic Legend',
+    tagline: 'Beyond. Unmatched. Peak.',
     tier: 'PRO',
     cardCls: 'profile-card-sovereign',
     cardDark: true,
@@ -91,7 +94,11 @@ export const CARD_BY_ID: Record<string, ProfileCard> = Object.fromEntries(
   PROFILE_CARDS.map((c) => [c.id, c])
 );
 
-/** Legacy PNG frame values still stored on profiles and sent by older APKs. */
+/**
+ * Values written by older builds (the retired PNG frames). They are accepted
+ * on the way in and normalised to the free card, so an outdated APK does not
+ * start failing profile saves with a 400.
+ */
 export const LEGACY_CARD_IDS = [
   'default',
   'frame_0', 'frame_1', 'frame_2', 'frame_3', 'frame_4', 'frame_5',
@@ -120,10 +127,18 @@ const polar = (cx: number, cy: number, r: number, deg: number) => {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 };
 
+const pt = (p: { x: number; y: number }) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+
+/** Four-point sparkle star centred at (x, y). */
+const star = (x: number, y: number, s: number) =>
+  `M ${x} ${y - s} L ${x + s * 0.28} ${y - s * 0.28} L ${x + s} ${y} L ${x + s * 0.28} ${y + s * 0.28} ` +
+  `L ${x} ${y + s} L ${x - s * 0.28} ${y + s * 0.28} L ${x - s} ${y} L ${x - s * 0.28} ${y - s * 0.28} Z`;
+
 // ---------------------------------------------------------------------------
-// Individual card artworks
+// Individual ring artworks
 // ---------------------------------------------------------------------------
 
+/** Free: one clean silver band, one hairline inside. Nothing louder. */
 function LinenArt({ uid }: { uid: string }) {
   return (
     <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
@@ -140,270 +155,198 @@ function LinenArt({ uid }: { uid: string }) {
   );
 }
 
-function AurumArt({ uid }: { uid: string }) {
-  const studs = [0, 90, 180, 270];
-  const laurels = Array.from({ length: 16 }, (_, i) => i * 22.5);
-  return (
-    <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
-      <defs>
-        <linearGradient id={`${uid}-gold`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#fff6cf" />
-          <stop offset="28%" stopColor="#f3c14b" />
-          <stop offset="55%" stopColor="#a86d09" />
-          <stop offset="78%" stopColor="#ffe9a3" />
-          <stop offset="100%" stopColor="#c98f16" />
-        </linearGradient>
-        <radialGradient id={`${uid}-gem`} cx="35%" cy="30%">
-          <stop offset="0%" stopColor="#fffdf3" />
-          <stop offset="60%" stopColor="#ffd76a" />
-          <stop offset="100%" stopColor="#b57b0c" />
-        </radialGradient>
-      </defs>
-
-      {/* laurel ticks */}
-      {laurels.map((deg) => {
-        const a = polar(50, 50, 46.5, deg);
-        const b = polar(50, 50, 43.5, deg);
-        return (
-          <line
-            key={deg}
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
-            stroke={`url(#${uid}-gold)`}
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            opacity="0.85"
-          />
-        );
-      })}
-
-      <circle cx="50" cy="50" r="42" fill="none" stroke={`url(#${uid}-gold)`} strokeWidth="5" />
-      <circle cx="50" cy="50" r="38.8" fill="none" stroke="#fff8dc" strokeWidth="1.1" opacity="0.85" />
-
-      {/* shimmer sweep */}
-      <circle
-        cx="50"
-        cy="50"
-        r="42"
-        fill="none"
-        stroke="#fffef6"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeDasharray="10 254"
-        opacity="0.75"
-        className="pc-spin"
-        style={{ transformOrigin: '50% 50%' }}
-      />
-
-      {/* gem studs */}
-      {studs.map((deg) => {
-        const p = polar(50, 50, 42, deg);
-        return (
-          <g key={deg}>
-            <circle cx={p.x} cy={p.y} r="3.4" fill={`url(#${uid}-gem)`} stroke="#7c5206" strokeWidth="0.5" />
-            <circle cx={p.x - 1} cy={p.y - 1.2} r="0.9" fill="#fffdf2" opacity="0.9" />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
+/** Pro 1: faceted ice band crowned with crystal shards. */
 function DiamondArt({ uid }: { uid: string }) {
-  const facets = Array.from({ length: 24 }, (_, i) => i * 15);
-  const tones = ['#ffffff', '#dff1ff', '#a9d9f5', '#eaf7ff'];
-  const sparkles = [
-    { deg: 30, r: 44, s: 1, delay: '0s' },
-    { deg: 165, r: 46, s: 0.75, delay: '0.9s' },
-    { deg: 255, r: 43, s: 0.9, delay: '1.7s' },
-  ];
+  const shards = [-64, -32, 0, 32, 64].map((a) => {
+    const tip = polar(50, 50, a === 0 ? 55 : Math.abs(a) === 32 ? 52 : 49, a);
+    return { a, tip };
+  });
   return (
     <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <circle cx="50" cy="50" r="40.5" fill="none" stroke={`url(#${uid}-ice)`} strokeWidth="3" />
+      <circle cx="50" cy="50" r="38.4" fill="none" stroke="#e0f2fe" strokeWidth="0.9" opacity="0.65" />
+      {shards.map(({ a, tip }) => (
+        <polygon
+          key={a}
+          points={`${pt(polar(50, 50, 39.5, a - 5))} ${pt(tip)} ${pt(polar(50, 50, 39.5, a + 5))}`}
+          fill={`url(#${uid}-ice)`}
+          opacity="0.95"
+        />
+      ))}
+      {[-90, 90, 180].map((a) => (
+        <polygon
+          key={a}
+          points={`${pt(polar(50, 50, 39, a - 4))} ${pt(polar(50, 50, 45, a))} ${pt(polar(50, 50, 39, a + 4))} ${pt(polar(50, 50, 36, a))}`}
+          fill="#7dd3fc"
+          opacity="0.8"
+        />
+      ))}
+      <path d={star(20, 26, 2.6)} fill="#ffffff" opacity="0.9" />
+      <path d={star(81, 68, 2)} fill="#e0f2fe" opacity="0.8" />
       <defs>
         <linearGradient id={`${uid}-ice`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="45%" stopColor="#bfe6ff" />
-          <stop offset="100%" stopColor="#6fb4de" />
+          <stop offset="0%" stopColor="#f0f9ff" />
+          <stop offset="45%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#0369a1" />
         </linearGradient>
       </defs>
-
-      <circle cx="50" cy="50" r="42" fill="none" stroke={`url(#${uid}-ice)`} strokeWidth="6" />
-
-      {/* faceted band */}
-      {facets.map((deg, i) => {
-        const a1 = polar(50, 50, 45.2, deg);
-        const a2 = polar(50, 50, 45.2, deg + 15);
-        const b1 = polar(50, 50, 38.8, deg + 7.5);
-        return (
-          <path
-            key={deg}
-            d={`M ${a1.x} ${a1.y} L ${a2.x} ${a2.y} L ${b1.x} ${b1.y} Z`}
-            fill={tones[i % tones.length]}
-            opacity={i % 2 ? 0.55 : 0.85}
-            stroke="#8fc7e8"
-            strokeWidth="0.25"
-          />
-        );
-      })}
-
-      <circle cx="50" cy="50" r="38.6" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.9" />
-
-      {sparkles.map((s) => {
-        const p = polar(50, 50, s.r, s.deg);
-        const k = 3.2 * s.s;
-        return (
-          <path
-            key={s.deg}
-            d={`M ${p.x} ${p.y - k} L ${p.x + k * 0.32} ${p.y - k * 0.32} L ${p.x + k} ${p.y} L ${p.x + k * 0.32} ${p.y + k * 0.32} L ${p.x} ${p.y + k} L ${p.x - k * 0.32} ${p.y + k * 0.32} L ${p.x - k} ${p.y} L ${p.x - k * 0.32} ${p.y - k * 0.32} Z`}
-            fill="#ffffff"
-            className="pc-twinkle"
-            style={{ animationDelay: s.delay, transformOrigin: `${p.x}px ${p.y}px` }}
-          />
-        );
-      })}
     </svg>
   );
 }
 
+/** Pro 2: violet-magenta flame tongues licking up around a dark band. */
 function InfernoArt({ uid }: { uid: string }) {
-  const flames = Array.from({ length: 14 }, (_, i) => i * (360 / 14));
-  const sparks = [
-    { deg: 20, delay: '0s' },
-    { deg: 95, delay: '0.7s' },
-    { deg: 180, delay: '1.3s' },
-    { deg: 250, delay: '0.4s' },
-    { deg: 315, delay: '1.9s' },
-  ];
+  const tongues = Array.from({ length: 14 }, (_, i) => i * (360 / 14));
   return (
     <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
-      <defs>
-        <linearGradient id={`${uid}-ember`} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#8f1503" />
-          <stop offset="40%" stopColor="#ff6b1a" />
-          <stop offset="75%" stopColor="#ffb347" />
-          <stop offset="100%" stopColor="#ffe08a" />
-        </linearGradient>
-      </defs>
-
-      {/* flame tongues */}
-      {flames.map((deg, i) => {
-        const base = polar(50, 50, 41, deg);
-        const tip = polar(50, 50, 48.5, deg + 5);
-        const side = polar(50, 50, 41.5, deg + 9);
+      <circle cx="50" cy="50" r="40" fill="none" stroke={`url(#${uid}-flame)`} strokeWidth="3.2" />
+      <circle cx="50" cy="50" r="38.2" fill="none" stroke="#f0abfc" strokeWidth="1" opacity="0.4" />
+      {tongues.map((a, i) => {
+        const len = 47 + (i % 3) * 3.2;
         return (
           <path
-            key={deg}
-            d={`M ${base.x} ${base.y} Q ${tip.x} ${tip.y} ${side.x} ${side.y} Z`}
-            fill={`url(#${uid}-ember)`}
-            className="pc-flicker"
-            style={{ animationDelay: `${(i % 5) * 0.22}s`, transformOrigin: `${base.x}px ${base.y}px` }}
-            opacity="0.9"
+            key={a}
+            d={`M ${pt(polar(50, 50, 39.6, a - 6))} Q ${pt(polar(50, 50, len - 2, a - 2))} ${pt(polar(50, 50, len, a))} Q ${pt(polar(50, 50, len - 2, a + 2))} ${pt(polar(50, 50, 39.6, a + 6))} Z`}
+            fill={`url(#${uid}-flame)`}
+            opacity={0.55 + (i % 3) * 0.15}
           />
         );
       })}
-
-      <circle cx="50" cy="50" r="41.5" fill="none" stroke={`url(#${uid}-ember)`} strokeWidth="5" />
-      <circle cx="50" cy="50" r="38.6" fill="none" stroke="#ffd9a0" strokeWidth="1" opacity="0.7" />
-
-      {sparks.map((s) => {
-        const p = polar(50, 50, 46, s.deg);
-        return (
-          <circle
-            key={s.deg}
-            cx={p.x}
-            cy={p.y}
-            r="1.1"
-            fill="#fff1c2"
-            className="pc-rise"
-            style={{ animationDelay: s.delay, transformOrigin: `${p.x}px ${p.y}px` }}
-          />
-        );
-      })}
+      <path d={star(76, 24, 2.2)} fill="#fdf4ff" opacity="0.85" />
+      <defs>
+        <linearGradient id={`${uid}-flame`} x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#701a75" />
+          <stop offset="50%" stopColor="#c026d3" />
+          <stop offset="100%" stopColor="#f0abfc" />
+        </linearGradient>
+      </defs>
     </svg>
   );
 }
 
+/** Pro 3: molten-gold band with a crown of spikes and gem studs. */
+function AurumArt({ uid }: { uid: string }) {
+  const spikes = [-48, -24, 0, 24, 48];
+  const lower = [150, 180, 210];
+  const studs = [45, 135, 225, 315];
+  return (
+    <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <circle cx="50" cy="50" r="40.8" fill="none" stroke={`url(#${uid}-gold)`} strokeWidth="3.4" />
+      <circle cx="50" cy="50" r="38.5" fill="none" stroke="#fff7d6" strokeWidth="0.9" opacity="0.55" />
+      {spikes.map((a) => (
+        <polygon
+          key={a}
+          points={`${pt(polar(50, 50, 40, a - 6))} ${pt(polar(50, 50, a === 0 ? 54 : 50, a))} ${pt(polar(50, 50, 40, a + 6))}`}
+          fill={`url(#${uid}-gold)`}
+        />
+      ))}
+      {lower.map((a) => (
+        <polygon
+          key={a}
+          points={`${pt(polar(50, 50, 40, a - 5))} ${pt(polar(50, 50, 47, a))} ${pt(polar(50, 50, 40, a + 5))}`}
+          fill={`url(#${uid}-gold)`}
+          opacity="0.9"
+        />
+      ))}
+      {studs.map((a) => (
+        <circle key={a} cx={polar(50, 50, 40.8, a).x} cy={polar(50, 50, 40.8, a).y} r="1.7" fill="#fef3c7" />
+      ))}
+      <defs>
+        <linearGradient id={`${uid}-gold`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fde68a" />
+          <stop offset="50%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#92400e" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/** Pro 4: a serpent of swirling blue-violet arcs coiling around the avatar. */
+function NovaArt({ uid }: { uid: string }) {
+  const arcs = [0, 90, 180, 270].map((a0, i) => ({
+    a0,
+    r: 40 + (i % 2) * 2.4,
+    w: 4.2 - i * 0.55,
+    g: i % 2,
+  }));
+  const head = polar(50, 50, 40, 24);
+  return (
+    <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <circle cx="50" cy="50" r="44" fill="none" stroke="#6366f1" strokeWidth="0.8" opacity="0.3" />
+      {arcs.map(({ a0, r, w, g }) => {
+        const s = polar(50, 50, r, a0);
+        const e = polar(50, 50, r + 1.6, a0 + 74);
+        return (
+          <path
+            key={a0}
+            d={`M ${pt(s)} A ${r} ${r} 0 0 1 ${pt(e)}`}
+            fill="none"
+            stroke={g ? `url(#${uid}-void2)` : `url(#${uid}-void1)`}
+            strokeWidth={w}
+            strokeLinecap="round"
+            opacity="0.92"
+          />
+        );
+      })}
+      <circle cx={head.x} cy={head.y} r="2.4" fill="#a5f3fc" />
+      <circle cx={head.x} cy={head.y} r="0.9" fill="#0f172a" />
+      <path d={star(24, 76, 2)} fill="#c7d2fe" opacity="0.8" />
+      <defs>
+        <linearGradient id={`${uid}-void1`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#22d3ee" />
+          <stop offset="100%" stopColor="#3b82f6" />
+        </linearGradient>
+        <linearGradient id={`${uid}-void2`} x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8b5cf6" />
+          <stop offset="100%" stopColor="#4f46e5" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/** Pro 5: pink cosmic band with two crossed orbit rings and starbursts. */
 function SovereignArt({ uid }: { uid: string }) {
   return (
     <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <circle cx="50" cy="50" r="40.6" fill="none" stroke={`url(#${uid}-cosmic)`} strokeWidth="3" />
+      <ellipse
+        cx="50" cy="50" rx="48" ry="13.5"
+        fill="none" stroke="#f472b6" strokeWidth="1.5" opacity="0.85"
+        transform="rotate(24 50 50)"
+      />
+      <ellipse
+        cx="50" cy="50" rx="46" ry="11"
+        fill="none" stroke="#c084fc" strokeWidth="1.1" opacity="0.6"
+        transform="rotate(-34 50 50)"
+      />
+      <path d={star(50, 4, 4)} fill="#fdf2f8" opacity="0.95" />
+      <path d={star(12, 62, 2.4)} fill="#fbcfe8" opacity="0.85" />
+      <path d={star(88, 40, 2)} fill="#e9d5ff" opacity="0.8" />
       <defs>
-        <linearGradient id={`${uid}-chrome`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#e5e7eb" />
-          <stop offset="30%" stopColor="#6b7280" />
-          <stop offset="55%" stopColor="#111827" />
-          <stop offset="80%" stopColor="#9ca3af" />
-          <stop offset="100%" stopColor="#374151" />
+        <linearGradient id={`${uid}-cosmic`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fbcfe8" />
+          <stop offset="50%" stopColor="#ec4899" />
+          <stop offset="100%" stopColor="#86198f" />
         </linearGradient>
       </defs>
-
-      {/* rotating dashed orbit */}
-      <circle
-        cx="50"
-        cy="50"
-        r="47"
-        fill="none"
-        stroke="#9ca3af"
-        strokeWidth="0.9"
-        strokeDasharray="3 6"
-        opacity="0.75"
-        className="pc-spin-slow"
-        style={{ transformOrigin: '50% 50%' }}
-      />
-
-      <circle cx="50" cy="50" r="42" fill="none" stroke={`url(#${uid}-chrome)`} strokeWidth="5.4" />
-      <circle cx="50" cy="50" r="38.7" fill="none" stroke="#0b0d12" strokeWidth="1.2" opacity="0.9" />
-
-      {/* crown crest */}
-      <g>
-        <path
-          d="M 38 12 L 42.5 5.5 L 46.5 10.5 L 50 3.5 L 53.5 10.5 L 57.5 5.5 L 62 12 L 60 16.5 L 40 16.5 Z"
-          fill={`url(#${uid}-chrome)`}
-          stroke="#0b0d12"
-          strokeWidth="0.6"
-        />
-        <circle cx="50" cy="6.6" r="1.5" fill="#f43f5e" />
-        <circle cx="42.6" cy="9.4" r="1.15" fill="#22d3ee" />
-        <circle cx="57.4" cy="9.4" r="1.15" fill="#22d3ee" />
-      </g>
     </svg>
   );
 }
 
-/**
- * Nova is the one card that needs CSS rather than SVG: a conic gradient ring,
- * which SVG cannot express natively. Built with a masked div so it stays a
- * crisp ring at any size.
- */
-function NovaArt() {
-  return (
-    <>
-      <div
-        className="pc-nova-ring pc-spin absolute inset-0 rounded-full"
-        aria-hidden="true"
-        style={{ transformOrigin: '50% 50%' }}
-      />
-      <div className="pc-nova-glow absolute inset-0 rounded-full" aria-hidden="true" />
-      <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
-        <circle cx="50" cy="50" r="38.6" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.55" />
-      </svg>
-    </>
-  );
-}
-
-const ART: Record<string, (p: { uid: string }) => JSX.Element> = {
+const ART: Record<string, (p: { uid: string }) => JSX.Element | null> = {
   linen: LinenArt,
   aurum: AurumArt,
   diamond: DiamondArt,
-  nova: NovaArt as unknown as (p: { uid: string }) => JSX.Element,
   inferno: InfernoArt,
+  nova: NovaArt,
   sovereign: SovereignArt,
 };
 
 /**
- * Renders the card artwork for a given card id. `uid` namespaces gradient ids so
- * several cards can sit on one page without colliding.
+ * Renders the ring artwork for a given card id. `uid` namespaces gradient ids
+ * so several rings can sit on one page without colliding.
  */
 export function CardArt({ card, uid }: { card: string; uid: string }) {
   const Art = ART[resolveCard(card).id];

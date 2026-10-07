@@ -564,14 +564,14 @@ export default function ProfilePage() {
                     ? 'border-coral-500 ring-2 ring-coral-500/40 bg-cream-50'
                     : 'border-ink-200 bg-white hover:border-ink-300'
                 }`}
-                title={`${c.label} — ${c.tagline}${locked ? ' (Pro)' : ''}`}
+                title={`${c.cardLabel ?? c.label} — ${c.tagline}${locked ? ' (Pro)' : ''}`}
               >
                 <span className="flex justify-center">
                   <FrameAvatar frame={c.id} src={profile?.avatarUrl} alt="" size={44} />
                 </span>
                 <span className="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-ink-700">
                   {locked && <Lock className="w-3 h-3 text-ink-500" />}
-                  {c.label}
+                  {c.cardLabel ?? c.label}
                 </span>
                 {active && (
                   <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-coral-500 text-white">

@@ -34,7 +34,10 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => (getToken() ? cachedUser() : null));
-  const [loading, setLoading] = useState(true);
+  // A cached session renders immediately and revalidates in the background:
+  // waiting on /auth/me meant a minute-long spinner whenever the free-tier
+  // server was cold-starting.
+  const [loading, setLoading] = useState<boolean>(() => !(getToken() && cachedUser()));
 
   const setAndCache = (u: User | null) => {
     setUser(u);
