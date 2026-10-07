@@ -4,7 +4,7 @@ export type TimeOfDay = 'MORNING' | 'AFTERNOON' | 'EVENING';
 export type Proficiency = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
 export type SkillType = 'TEACH' | 'WANT';
 export type SessionFormat = 'ONLINE' | 'IN_PERSON';
-export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER' | 'VIDEO' | 'AUDIO';
+export type MessageType = 'TEXT' | 'IMAGE' | 'STICKER' | 'VIDEO' | 'AUDIO' | 'FILE';
 export type Tier = 'FREE' | 'PRO';
 
 export interface Badge {
@@ -128,6 +128,8 @@ export interface MessageMediaFields {
   viewOnce?: boolean;
   mediaViewedAt?: string | null;
   mediaViewedBy?: string | null;
+  /** Original filename, for FILE (document) messages. */
+  mediaName?: string | null;
 }
 
 export interface Message extends MessageMediaFields {

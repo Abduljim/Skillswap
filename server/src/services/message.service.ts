@@ -148,6 +148,7 @@ export interface MessageMedia {
   mediaHeight?: number | null;
   mediaDurationMs?: number | null;
   viewOnce?: boolean | null;
+  mediaName?: string | null;
 }
 
 export async function createMessage(
@@ -185,6 +186,7 @@ export async function createMessage(
       mediaHeight: media?.mediaHeight ?? null,
       mediaDurationMs: media?.mediaDurationMs ?? null,
       viewOnce: media?.viewOnce ?? false,
+      mediaName: media?.mediaName ?? null,
     },
     include: { sender: { select: { id: true, displayName: true } } },
   });

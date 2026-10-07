@@ -15,7 +15,7 @@
  */
 import { api, ApiError } from './api';
 
-export type MediaKind = 'video' | 'image' | 'audio';
+export type MediaKind = 'video' | 'image' | 'audio' | 'file';
 export type VideoQuality = 'standard' | 'hd';
 
 export interface MediaStatus {
@@ -26,6 +26,8 @@ export interface MediaStatus {
   /** Absent when talking to a server that predates voice notes, hence optional. */
   maxAudioBytes?: number;
   maxAudioMs?: number;
+  /** Absent when talking to a server that predates file messages. */
+  maxFileBytes?: number;
 }
 
 interface SignResponse {
@@ -58,6 +60,7 @@ const FALLBACK: MediaStatus = {
   maxVideoMs: 65_000,
   maxAudioBytes: 12 * 1024 * 1024,
   maxAudioMs: 305_000,
+  maxFileBytes: 32 * 1024 * 1024,
 };
 
 let statusPromise: Promise<MediaStatus> | null = null;
@@ -114,7 +117,9 @@ export async function uploadMedia(blob: Blob, kind: MediaKind): Promise<Uploaded
       ? status.maxVideoBytes
       : kind === 'audio'
         ? status.maxAudioBytes ?? FALLBACK.maxAudioBytes!
-        : status.maxImageBytes;
+        : kind === 'file'
+          ? status.maxFileBytes ?? FALLBACK.maxFileBytes!
+          : status.maxImageBytes;
   if (blob.size > max) {
     throw new ApiError(
       'MEDIA_TOO_LARGE',
@@ -123,7 +128,15 @@ export async function uploadMedia(blob: Blob, kind: MediaKind): Promise<Uploaded
     );
   }
 
-  const contentType = blob.type || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/webm' : 'image/jpeg');
+  const contentType =
+    blob.type ||
+    (kind === 'video'
+      ? 'video/mp4'
+      : kind === 'audio'
+        ? 'audio/webm'
+        : kind === 'file'
+          ? 'application/octet-stream'
+          : 'image/jpeg');
   const signed = await api.post<SignResponse>('/media/sign', { kind, contentType, bytes: blob.size });
 
   // Straight to storage. Generous timeout: 64 MB over a weak mobile connection

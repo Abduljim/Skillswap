@@ -118,6 +118,8 @@ function deliveryScenario(scenario: string) {
   if (scenario === 'delivery failure') {
     env.RESEND_API_KEY = 're_test_x';
     resendReject();
+    // SMTP is the primary now, so "failure" must fail it too.
+    sendMail.mockRejectedValue(new Error('smtp down'));
   }
 }
 
@@ -142,11 +144,13 @@ describe.each(['development', 'production'])('Password reset privacy in %s', (mo
           expect(createToken).not.toHaveBeenCalled();
         } else {
           expect(createToken).toHaveBeenCalledTimes(1);
+          const outbound = `${JSON.stringify(fetchMock.mock.calls ?? [])}${JSON.stringify(
+            sendMail.mock.calls ?? []
+          )}`;
           const raw =
             scenario === 'no provider'
               ? null
-              : (JSON.stringify(fetchMock.mock.calls[0][1].body).match(/token=([a-f0-9]{64})/) ||
-                  [])[1];
+              : (outbound.match(/token=([a-f0-9]{64})/) || [])[1];
           if (raw) {
             expect(createToken).toHaveBeenCalledWith({
               data: {
@@ -163,21 +167,25 @@ describe.each(['development', 'production'])('Password reset privacy in %s', (mo
           expect(createTransport).not.toHaveBeenCalled();
           expect(sendMail).not.toHaveBeenCalled();
         } else {
-          expect(fetchMock).toHaveBeenCalledTimes(1);
-          const [url, init] = fetchMock.mock.calls[0];
-          expect(url).toBe('https://api.resend.com/emails');
-          expect(init.method).toBe('POST');
-          expect(init.headers.Authorization).toBe('Bearer re_test_x');
-          const body = JSON.parse(init.body);
-          expect(body.to).toEqual([email]);
-          expect(body.html).toMatch(/Reset password/);
-        }
-        if (scenario === 'delivery failure') {
-          // Resend rejection falls back to SMTP (mock succeeds) and closes the transporter.
+          // A fully-configured SMTP relay goes FIRST now: Resend's free tier
+          // only delivers to the account owner, from onboarding@resend.dev,
+          // which Gmail files under spam — the reset "worked" and never arrived.
+          expect(createTransport).toHaveBeenCalledTimes(1);
           expect(sendMail).toHaveBeenCalledTimes(1);
+          const sent = sendMail.mock.calls[0][0];
+          expect(sent.to).toBe(email);
+          expect(sent.html).toMatch(/Reset password/);
           expect(close).toHaveBeenCalledTimes(1);
-        } else {
-          expect(close).not.toHaveBeenCalled();
+          if (scenario === 'delivery success') {
+            // SMTP delivered; Resend is never bothered.
+            expect(fetchMock).not.toHaveBeenCalled();
+          } else {
+            // Both providers failed; Resend was tried as the fallback.
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const [url, init] = fetchMock.mock.calls[0];
+            expect(url).toBe('https://api.resend.com/emails');
+            expect(init.headers.Authorization).toBe('Bearer re_test_x');
+          }
         }
       });
 
@@ -213,6 +221,7 @@ it.each(['lookup', 'token persistence'])(
 
 it('bounds a stalled Resend delivery at 15s and clears timers', async () => {
   jest.useFakeTimers();
+  env.SMTP_HOST = ''; // no SMTP: Resend is the provider under test
   env.RESEND_API_KEY = 're_test_x';
   resendPending();
   const result = requestPasswordReset(email);
@@ -230,49 +239,78 @@ it('bounds a stalled Resend delivery at 15s and clears timers', async () => {
 });
 
 it.each([
-  ['resend success', ['resend success']],
-  ['resend failure + smtp fallback', ['resend failure', 'smtp fallback success']],
-  ['resend failure only', ['resend failure']],
-  ['resend timeout only', ['resend timeout']],
-  ['smtp fallback success', ['smtp fallback success']],
-  ['smtp fallback failure', ['smtp fallback failure']],
-  ['no provider', ['no provider']],
+  'smtp success',
+  'smtp failure + resend fallback',
+  'smtp failure + resend failure',
+  'smtp failure only',
+  'resend-only success',
+  'resend-only failure',
+  'resend-only timeout',
+  'smtp-only success',
+  'smtp-only failure',
+  'no provider',
 ])('returns only delivery status and clears timers after %s', async (scenario) => {
   jest.useFakeTimers();
-  const resetUrl = 'https://example.test/reset-password?token=private-reset-token';
-  if (scenario === 'resend success') {
-    env.RESEND_API_KEY = 're_test_x';
-    resendOk();
-  }
-  if (scenario === 'resend failure + smtp fallback') {
-    env.RESEND_API_KEY = 're_test_x';
-    resendReject();
-  }
-  if (scenario === 'resend failure only' || scenario === 'resend timeout only') {
-    env.RESEND_API_KEY = 're_test_x';
+  const resetUrl = 'https://example.test/api/auth/reset-password?token=private-reset-token';
+
+  const smtpFails = () => sendMail.mockRejectedValue(new Error('smtp down'));
+  const noSmtp = () => {
     env.SMTP_HOST = '';
-    if (scenario === 'resend failure only') resendReject();
-    else resendPending();
+  };
+  const withResend = (mode: 'ok' | 'reject' | 'pending') => {
+    env.RESEND_API_KEY = 're_test_x';
+    if (mode === 'ok') resendOk();
+    if (mode === 'reject') resendReject();
+    if (mode === 'pending') resendPending();
+  };
+
+  if (scenario === 'smtp success') withResend('ok'); // configured but never reached
+  if (scenario === 'smtp failure + resend fallback') {
+    smtpFails();
+    withResend('ok');
   }
-  if (scenario === 'smtp fallback failure') {
-    sendMail.mockRejectedValue(new Error(resetUrl));
+  if (scenario === 'smtp failure + resend failure') {
+    smtpFails();
+    withResend('reject');
   }
-  if (scenario === 'no provider') {
-    env.SMTP_HOST = '';
+  if (scenario === 'smtp failure only') smtpFails(); // no Resend key
+  if (scenario === 'resend-only success') {
+    noSmtp();
+    withResend('ok');
   }
+  if (scenario === 'resend-only failure') {
+    noSmtp();
+    withResend('reject');
+  }
+  if (scenario === 'resend-only timeout') {
+    noSmtp();
+    withResend('pending');
+  }
+  // 'smtp-only *': beforeEach defaults (SMTP up, no Resend key)
+  if (scenario === 'smtp-only failure') smtpFails();
+  if (scenario === 'no provider') noSmtp();
 
   const expectsSuccess = [
-    'resend success',
-    'resend failure + smtp fallback',
-    'smtp fallback success',
+    'smtp success',
+    'smtp failure + resend fallback',
+    'resend-only success',
+    'smtp-only success',
   ].includes(scenario);
+
   const result = sendPasswordResetEmail(email, resetUrl);
   await jest.advanceTimersByTimeAsync(scenario.includes('timeout') ? 15_000 : 0);
 
-  await expect(result).resolves.toEqual({ delivered: expectsSuccess });
+  await expect(result).resolves.toMatchObject({ delivered: expectsSuccess });
+  if (!expectsSuccess) {
+    // The reason is reported in-band (self-test endpoint) but never a secret.
+    const outcome = await result;
+    expect(typeof outcome.error).toBe('string');
+    expect(outcome.error!.length).toBeGreaterThan(0);
+  }
   expect(jest.getTimerCount()).toBe(0);
-  const usesSmtp = ['resend failure + smtp fallback', 'smtp fallback success', 'smtp fallback failure'];
-  expect(close).toHaveBeenCalledTimes(usesSmtp.includes(scenario) ? 1 : 0);
+
+  const usesSmtp = !scenario.startsWith('resend-only') && scenario !== 'no provider';
+  expect(close).toHaveBeenCalledTimes(usesSmtp ? 1 : 0);
 });
 
 it('keeps SMTP cleanup errors out of responses and the public log', async () => {

@@ -80,7 +80,7 @@ async function pairWithExchange() {
 }
 
 /** Creates a view-once message and gives the row its stored-file URL. */
-async function sendViewOnce(a: Session, exchangeId: string, type: 'IMAGE' | 'VIDEO' | 'AUDIO') {
+async function sendViewOnce(a: Session, exchangeId: string, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE') {
   const sent = await api()
     .post(`/api/exchanges/${exchangeId}/messages`)
     .set('Cookie', a.cookie)
@@ -182,6 +182,58 @@ describe('View-once media', () => {
       .post(`/api/exchanges/${exchangeId}/messages/11111111-1111-4111-8111-111111111111/view`)
       .set('Cookie', b.cookie);
     expect(res.status).toBe(404);
+  });
+
+  it('delivers a view-once FILE the same way, keeping the filename visible', async () => {
+    const { a, b, exchangeId } = await pairWithExchange();
+    const sent = await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({
+        body: 'view-once document',
+        type: 'FILE',
+        viewOnce: true,
+        mediaName: 'Assignment 2.pdf',
+        mediaBytes: 2048,
+      })
+      .expect(200);
+    const id: string = sent.body.data.id;
+    await prisma.message.update({
+      where: { id },
+      data: { mediaUrl: `https://fake-project.supabase.co/storage/v1/object/public/skillswap-media/file/${id}.pdf` },
+    });
+
+    const forB = await api().get(`/api/exchanges/${exchangeId}/messages`).set('Cookie', b.cookie).expect(200);
+    const row = forB.body.data.find((m: any) => m.id === id);
+    expect(row.mediaUrl).toBeNull();
+    expect(row.mediaName).toBe('Assignment 2.pdf'); // the name is not secret
+
+    const view = await api()
+      .post(`/api/exchanges/${exchangeId}/messages/${id}/view`)
+      .set('Cookie', b.cookie)
+      .expect(200);
+    expect(view.body.data.url).toMatch(/\.pdf$/);
+
+    const again = await api()
+      .post(`/api/exchanges/${exchangeId}/messages/${id}/view`)
+      .set('Cookie', b.cookie);
+    expect(again.status).toBe(410);
+  });
+
+  it('stores a normal FILE message with its name for both sides', async () => {
+    const { a, b, exchangeId } = await pairWithExchange();
+    const sent = await api()
+      .post(`/api/exchanges/${exchangeId}/messages`)
+      .set('Cookie', a.cookie)
+      .send({ body: 'plain document', type: 'FILE', mediaName: 'notes.txt', mediaBytes: 512 })
+      .expect(200);
+    expect(sent.body.data.type).toBe('FILE');
+    expect(sent.body.data.mediaName).toBe('notes.txt');
+    expect(sent.body.data.viewOnce).toBe(false);
+
+    const forB = await api().get(`/api/exchanges/${exchangeId}/messages`).set('Cookie', b.cookie).expect(200);
+    const row = forB.body.data.find((m: any) => m.id === sent.body.data.id);
+    expect(row.mediaName).toBe('notes.txt');
   });
 
   it('leaves normal media messages alone', async () => {

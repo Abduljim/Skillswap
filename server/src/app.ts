@@ -83,6 +83,7 @@ export function createApp() {
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/signup', authLimiter);
   app.use('/api/auth/forgot-password', authLimiter);
+  app.use('/api/auth/email-self-test', authLimiter);
   app.use('/api/auth/reset-password', authLimiter);
 
   app.use('/api/auth', authRoutes);

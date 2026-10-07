@@ -47,17 +47,12 @@ function isSmtpConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
 }
 
-export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean }> {
-  if (env.RESEND_API_KEY) {
-    const ok = await sendViaResend(opts);
-    if (ok) return { delivered: true };
-  }
-  if (!isSmtpConfigured()) {
-    console.error(
-      '[email] no delivery provider configured. Set RESEND_API_KEY (recommended) or SMTP_HOST/SMTP_FROM.'
-    );
-    return { delivered: false };
-  }
+/** SMTP is only "ready" when AUTH can actually run: host+from AND user+pass. */
+function isSmtpReady() {
+  return isSmtpConfigured() && Boolean(env.SMTP_USER && env.SMTP_PASS);
+}
+
+async function sendViaSmtp(opts: MailOptions): Promise<{ delivered: boolean; error: string | null }> {
   let transporter: ReturnType<typeof nodemailer.createTransport> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -85,18 +80,60 @@ export async function sendEmail(opts: MailOptions): Promise<{ delivered: boolean
       }),
       timeout,
     ]);
-    return { delivered: true };
+    return { delivered: true, error: null };
   } catch (e) {
     const err = e as Error;
     const message = String(err?.message ?? e).replace(/https?:\/\/\S+/gi, '[url]').slice(0, 160);
     console.error('[email] SMTP delivery failed', err?.name || 'Error', message);
-    return { delivered: false };
+    return { delivered: false, error: `smtp: ${err?.name || 'Error'}: ${message}` };
   } finally {
     clearTimeout(timer);
     try {
       transporter?.close();
     } catch {}
   }
+}
+
+/**
+ * Deliver an email, reporting what actually happened.
+ *
+ * Provider order matters. A fully-configured SMTP relay (Brevo) goes FIRST:
+ * Resend's free tier only delivers to the account owner and sends from
+ * onboarding@resend.dev, which Gmail files under spam — the old order made the
+ * server report "delivered" while the user's inbox stayed empty. Resend is the
+ * fallback; a half-configured SMTP (no AUTH) is the last resort.
+ */
+export async function sendEmail(
+  opts: MailOptions
+): Promise<{ delivered: boolean; error: string | null }> {
+  let lastError: string | null = null;
+
+  if (isSmtpReady()) {
+    const result = await sendViaSmtp(opts);
+    if (result.delivered) return result;
+    lastError = result.error;
+  }
+
+  if (env.RESEND_API_KEY) {
+    const ok = await sendViaResend(opts);
+    if (ok) return { delivered: true, error: null };
+    lastError = lastError ?? 'resend: rejected the message (status in server log)';
+  }
+
+  if (!isSmtpReady() && isSmtpConfigured()) {
+    const result = await sendViaSmtp(opts);
+    if (result.delivered) return result;
+    lastError = result.error;
+  }
+
+  if (!isSmtpConfigured() && !env.RESEND_API_KEY) {
+    console.error(
+      '[email] no delivery provider configured. Set SMTP_HOST/SMTP_FROM/SMTP_USER/SMTP_PASS or RESEND_API_KEY.'
+    );
+    return { delivered: false, error: 'no delivery provider configured' };
+  }
+
+  return { delivered: false, error: lastError };
 }
 
 /**
@@ -127,7 +164,7 @@ export function describeEmailConfig(): string {
   const resend = env.RESEND_API_KEY
     ? 'resend (delivers only to the account owner until a domain is verified — docs/EMAIL.md)'
     : '';
-  if (smtp && resend) return `${resend} tried first; ${smtp} as fallback`;
+  if (smtp && resend) return `${smtp} tried first; ${resend} as fallback`;
   if (smtp) return smtp;
   if (resend) return resend;
   return 'NONE — password-reset emails will not be sent. Set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM (docs/EMAIL.md).';

@@ -114,6 +114,7 @@ router.post(
         mediaHeight: req.body.mediaHeight ?? null,
         mediaDurationMs: req.body.mediaDurationMs ?? null,
         viewOnce: req.body.viewOnce === true,
+        mediaName: req.body.mediaName ?? null,
       }
     );
     ok(res, msg);

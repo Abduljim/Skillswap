@@ -19,6 +19,7 @@ import {
   Mic,
   Flame,
   EyeOff,
+  FileText,
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import VideoRecorder, { MAX_VIDEO_MS, type RecordedClip } from './VideoRecorder';
@@ -105,6 +106,14 @@ export default function ChatTab({
     type: string;
     durationMs: number | null;
     bytes: number | null;
+    name: string | null;
+  } | null>(null);
+  /** Staged document: the picker's File kept as plain fields (no object URL). */
+  const [pendingFile, setPendingFile] = useState<{
+    name: string;
+    size: number;
+    type: string;
+    blob: Blob;
   } | null>(null);
   const [mediaBusy, setMediaBusy] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -115,6 +124,7 @@ export default function ChatTab({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const pendingVideoRef = useRef<PendingVideo | null>(null);
   pendingVideoRef.current = pendingVideo;
@@ -508,10 +518,84 @@ export default function ChatTab({
         type: message.type || 'IMAGE',
         durationMs: message.mediaDurationMs ?? null,
         bytes: message.mediaBytes ?? null,
+        name: message.mediaName ?? null,
       });
     } catch (error) {
       setMediaError(error instanceof ApiError ? error.message : 'That view-once media could not be opened.');
     }
+  };
+
+  /** Document picker: size-check against the server's cap, then stage. */
+  const handleDocFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setMediaError(null);
+    const status = await mediaStatus().catch(() => null);
+    if (status && !status.configured) {
+      setMediaError('File sending is not switched on for this server yet.');
+      return;
+    }
+    const maxBytes = status?.maxFileBytes ?? 32 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setMediaError(`That file is ${formatBytes(file.size)}. The limit is ${formatBytes(maxBytes)}.`);
+      return;
+    }
+    if (file.size === 0) {
+      setMediaError('That file is empty.');
+      return;
+    }
+    setPendingFile({
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      blob: file,
+    });
+    setReviewOpen(true);
+  };
+
+  const sendPendingFile = async () => {
+    if (!pendingFile || sending) return;
+    const doc = pendingFile;
+    const caption = pendingCaption;
+    setSending(true);
+    setMediaError(null);
+    try {
+      setMediaBusy('Uploading file…');
+      const uploaded = await uploadMedia(doc.blob, 'file');
+      setMediaBusy('Sending…');
+      await api.post(`/exchanges/${exchangeId}/messages`, {
+        body: uploaded.url,
+        type: 'FILE',
+        caption: caption || null,
+        mediaUrl: uploaded.url,
+        mediaBytes: uploaded.bytes,
+        mediaName: doc.name,
+        viewOnce: pendingViewOnce,
+      });
+      setPendingFile(null);
+      setPendingCaption('');
+      setPendingViewOnce(false);
+      setReviewOpen(false);
+      void qc.invalidateQueries({ queryKey: ['conversations'] });
+      refetch();
+    } catch (error) {
+      setMediaError(
+        error instanceof ApiError && error.code !== 'MEDIA_NOT_CONFIGURED'
+          ? error.message
+          : 'Could not send that file. Please try again.'
+      );
+    } finally {
+      setSending(false);
+      setMediaBusy(null);
+    }
+  };
+
+  const discardPendingFile = () => {
+    setPendingFile(null);
+    setPendingCaption('');
+    setPendingViewOnce(false);
+    setReviewOpen(false);
   };
 
   const handleVoiceNote = (note: RecordedVoiceNote) => {
@@ -730,6 +814,34 @@ export default function ChatTab({
                       <div className="text-sm whitespace-pre-wrap break-words px-2.5 pb-1">{message.caption}</div>
                     )}
                   </div>
+                ) : message.type === 'FILE' ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(message.mediaUrl || message.body, '_blank')}
+                      className="flex items-center gap-3 px-3 py-2.5 text-left active:scale-[0.98] w-full"
+                      title="Download file"
+                    >
+                      <span
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          mine ? 'bg-white/15' : 'bg-black/5'
+                        }`}
+                      >
+                        <FileText className="w-5 h-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold truncate max-w-[190px]">
+                          {message.mediaName || 'File'}
+                        </span>
+                        <span className="block text-[11px] opacity-70">
+                          {message.mediaBytes ? `${formatBytes(message.mediaBytes)} · ` : ''}Tap to download
+                        </span>
+                      </span>
+                    </button>
+                    {message.caption && (
+                      <div className="text-sm whitespace-pre-wrap break-words px-2.5 pb-1">{message.caption}</div>
+                    )}
+                  </div>
                 ) : message.type === 'AUDIO' ? (
                   <div>
                     <AudioBubble
@@ -818,7 +930,7 @@ export default function ChatTab({
         {/* Attach sheet. Floats above the composer (absolute) so opening it
             never resizes the message list — the same rule that keeps the chat
             from jumping when the emoji panel opens. */}
-        {attachOpen && !pendingImage && !pendingVideo && (
+        {attachOpen && !pendingImage && !pendingVideo && !pendingFile && (
           <>
             <button
               type="button"
@@ -873,6 +985,12 @@ export default function ChatTab({
                     icon: <Film className="w-5 h-5" />,
                     run: () => videoInputRef.current?.click(),
                   },
+                  {
+                    key: 'document',
+                    label: 'Document',
+                    icon: <FileText className="w-5 h-5" />,
+                    run: () => docInputRef.current?.click(),
+                  },
                 ].map((item) => (
                   <button
                     key={item.key}
@@ -898,7 +1016,43 @@ export default function ChatTab({
           </>
         )}
 
-        {pendingVideo ? (
+        {pendingFile ? (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border active:scale-95 ${
+                dark ? 'bg-[#1f2430] border-[#2a2f3d] text-[#eef0f4]' : 'bg-[#f5f2ec] border-[#e2dcd1] text-[#12131a]'
+              }`}
+              title="Review file"
+            >
+              <FileText className="w-5 h-5" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>
+                {pendingCaption ? 'File with caption ready' : 'File ready'}
+              </div>
+              <div className={`text-xs truncate ${m.muted}`}>
+                {pendingFile.name} · {formatBytes(pendingFile.size)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={discardPendingFile}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${m.iconBtn}`}
+              title="Remove file"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="btn-coral text-sm px-4 py-2 shrink-0 whitespace-nowrap"
+            >
+              <Pencil className="w-4 h-4" /> Review
+            </button>
+          </div>
+        ) : pendingVideo ? (
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -996,8 +1150,8 @@ export default function ChatTab({
                   setAttachOpen((open) => !open);
                 }}
                 className={`w-9 h-9 rounded-full flex items-center justify-center ${m.iconBtn}`}
-                aria-label="Attach a photo or a video"
-                title="Attach a photo or a video"
+                aria-label="Attach a photo, video or document"
+                title="Attach a photo, video or document"
                 aria-expanded={attachOpen}
               >
                 <Plus className={`w-5 h-5 transition-transform ${attachOpen ? 'rotate-45' : ''}`} />
@@ -1023,6 +1177,13 @@ export default function ChatTab({
                 accept="video/*"
                 className="hidden"
                 onChange={(e) => void handleVideoFile(e)}
+              />
+              <input
+                ref={docInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.rtf,.zip,.7z,.rar,.epub,.json"
+                className="hidden"
+                onChange={(e) => void handleDocFile(e)}
               />
             </div>
 
@@ -1101,6 +1262,20 @@ export default function ChatTab({
                 playsInline
                 className="max-h-full max-w-full rounded-xl"
               />
+            ) : viewOnceOpen.type === 'FILE' ? (
+              <div className="flex flex-col items-center gap-4 text-white text-center px-6">
+                <span className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center">
+                  <FileText className="w-9 h-9" />
+                </span>
+                <div className="text-sm font-semibold break-all">{viewOnceOpen.name || 'File'}</div>
+                <button
+                  type="button"
+                  onClick={() => window.open(viewOnceOpen.url, '_blank')}
+                  className="rounded-full bg-[#fb4f1d] text-white text-sm font-semibold px-6 py-3 active:scale-95"
+                >
+                  Download
+                </button>
+              </div>
             ) : viewOnceOpen.type === 'AUDIO' ? (
               <div className="w-full max-w-sm text-white">
                 <AudioBubble
@@ -1124,7 +1299,7 @@ export default function ChatTab({
         onViewOnceChange={setPendingViewOnce}
       />
 
-      {reviewOpen && (pendingImage || pendingVideo) && (
+      {reviewOpen && (pendingImage || pendingVideo || pendingFile) && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fade-in">
           <div className="flex items-center justify-between px-3 pt-3 pb-2 bg-gradient-to-b from-black/80 to-transparent">
             <button
@@ -1148,7 +1323,7 @@ export default function ChatTab({
             </button>
             <button
               type="button"
-              onClick={() => void (pendingVideo ? sendPendingVideo() : sendPending())}
+              onClick={() => void (pendingFile ? sendPendingFile() : pendingVideo ? sendPendingVideo() : sendPending())}
               disabled={sending}
               className="flex items-center gap-2 rounded-full bg-[#00a884] text-white text-sm font-semibold px-5 py-2.5 active:scale-95 disabled:opacity-60"
             >
@@ -1157,7 +1332,15 @@ export default function ChatTab({
           </div>
 
           <div className="flex-1 min-h-0 flex items-center justify-center px-2">
-            {pendingVideo ? (
+            {pendingFile ? (
+              <div className="flex flex-col items-center gap-3 text-white px-6 text-center">
+                <span className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center">
+                  <FileText className="w-9 h-9" />
+                </span>
+                <div className="text-sm font-semibold break-all">{pendingFile.name}</div>
+                <div className="text-xs text-white/60">{formatBytes(pendingFile.size)}</div>
+              </div>
+            ) : pendingVideo ? (
               <video
                 src={pendingVideo.url}
                 controls
@@ -1195,7 +1378,7 @@ export default function ChatTab({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    void (pendingVideo ? sendPendingVideo() : sendPending());
+                    void (pendingFile ? sendPendingFile() : pendingVideo ? sendPendingVideo() : sendPending());
                   }
                 }}
               />

@@ -20,7 +20,7 @@ import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 import { HttpError } from '../utils/errors';
 
-export type MediaKind = 'video' | 'image' | 'audio';
+export type MediaKind = 'video' | 'image' | 'audio' | 'file';
 
 /**
  * WhatsApp-style ceilings. The in-app recorder stops itself at 60s; these caps
@@ -41,6 +41,12 @@ export const MAX_VIDEO_MS = 65_000;
 export const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
 /** 5 minutes in the recorder, plus slack for container duration rounding. */
 export const MAX_AUDIO_MS = 305_000;
+
+/**
+ * Documents. 32 MB comfortably holds lecture slides, PDFs and zipped projects
+ * while staying kind to mobile data and the free storage tier.
+ */
+export const MAX_FILE_BYTES = 32 * 1024 * 1024;
 
 const VIDEO_TYPES = new Set([
   'video/mp4',
@@ -69,7 +75,50 @@ const AUDIO_TYPES = new Set([
   'audio/3gpp',
 ]);
 
+/**
+ * Documents only. An allowlist (not "anything except .exe") because the picker
+ * on Android reports honest MIME types, and executables have no business riding
+ * in a chat bubble. application/octet-stream IS allowed: that is what Android
+ * reports for perfectly normal files whose extension it does not recognise, and
+ * refusing it would block real documents.
+ */
+const FILE_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/rtf',
+  'application/epub+zip',
+  'application/zip',
+  'application/x-7z-compressed',
+  'application/vnd.rar',
+  'application/json',
+  'text/plain',
+  'text/csv',
+  'text/markdown',
+  'application/octet-stream',
+]);
+
 const EXT_BY_TYPE: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-powerpoint': 'ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/rtf': 'rtf',
+  'application/epub+zip': 'epub',
+  'application/zip': 'zip',
+  'application/x-7z-compressed': '7z',
+  'application/vnd.rar': 'rar',
+  'application/json': 'json',
+  'text/plain': 'txt',
+  'text/csv': 'csv',
+  'text/markdown': 'md',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'video/quicktime': 'mov',
@@ -159,12 +208,20 @@ export function bucketName(): string {
 export function maxBytesFor(kind: MediaKind): number {
   if (kind === 'video') return MAX_VIDEO_BYTES;
   if (kind === 'audio') return MAX_AUDIO_BYTES;
+  if (kind === 'file') return MAX_FILE_BYTES;
   return MAX_IMAGE_BYTES;
 }
 
 export function isAllowedType(kind: MediaKind, contentType: string): boolean {
   const type = contentType.split(';')[0].trim().toLowerCase();
-  const allowed = kind === 'video' ? VIDEO_TYPES : kind === 'audio' ? AUDIO_TYPES : IMAGE_TYPES;
+  const allowed =
+    kind === 'video'
+      ? VIDEO_TYPES
+      : kind === 'audio'
+        ? AUDIO_TYPES
+        : kind === 'file'
+          ? FILE_TYPES
+          : IMAGE_TYPES;
   return allowed.has(type);
 }
 
@@ -233,7 +290,9 @@ export function assertStorageReady(): void {
  */
 export function buildMediaPath(kind: MediaKind, contentType: string, userId: string): string {
   const type = contentType.split(';')[0].trim().toLowerCase();
-  const ext = EXT_BY_TYPE[type] || (kind === 'video' ? 'mp4' : kind === 'audio' ? 'webm' : 'jpg');
+  const ext =
+    EXT_BY_TYPE[type] ||
+    (kind === 'video' ? 'mp4' : kind === 'audio' ? 'webm' : kind === 'file' ? 'dat' : 'jpg');
   const day = new Date().toISOString().slice(0, 10);
   return `${kind}/${userId.replace(/-/g, '').slice(0, 8)}/${day}/${randomUUID()}.${ext}`;
 }

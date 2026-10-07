@@ -144,7 +144,7 @@ const MAX_AUDIO_DURATION_MS = 305_000;
 
 export const createMessageSchema = z.object({
   body: z.string().min(1).max(2_000_000),
-  type: z.enum(['TEXT', 'IMAGE', 'STICKER', 'VIDEO', 'AUDIO']).default('TEXT'),
+  type: z.enum(['TEXT', 'IMAGE', 'STICKER', 'VIDEO', 'AUDIO', 'FILE']).default('TEXT'),
   caption: z
     .string()
     .trim()
@@ -165,6 +165,8 @@ export const createMessageSchema = z.object({
   mediaDurationMs: z.number().int().positive().max(MAX_AUDIO_DURATION_MS).optional().nullable(),
   /** Telegram-style: the media may be opened once, then it is gone. */
   viewOnce: z.boolean().default(false),
+  /** Original filename, for FILE messages. */
+  mediaName: z.string().trim().max(255).optional().nullable(),
 }).superRefine((message, ctx) => {
   if (typeof message.mediaDurationMs !== 'number') return;
   const limit = message.type === 'AUDIO' ? MAX_AUDIO_DURATION_MS : MAX_VIDEO_DURATION_MS;
@@ -190,10 +192,10 @@ export const createMessageSchema = z.object({
  * keeps `../../` and absolute URLs out of the storage key.
  */
 const MEDIA_PATH =
-  /^(video|image|audio)\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov|3gp|m4v|mpg|jpg|jpeg|png|webp|gif|m4a|ogg|mp3|aac|wav|amr)$/;
+  /^(video|image|audio|file)\/[0-9a-f]{8}\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(mp4|webm|mov|3gp|m4v|mpg|jpg|jpeg|png|webp|gif|m4a|ogg|mp3|aac|wav|amr|pdf|doc|docx|xls|xlsx|ppt|pptx|rtf|epub|zip|7z|rar|json|txt|csv|md|dat)$/;
 
 export const mediaSignSchema = z.object({
-  kind: z.enum(['video', 'image', 'audio']),
+  kind: z.enum(['video', 'image', 'audio', 'file']),
   contentType: z.string().trim().min(3).max(80),
   // An absolute sanity ceiling, deliberately looser than the real per-kind cap:
   // media.routes enforces 64 MB video / 12 MB image so the rejection carries a
@@ -203,7 +205,7 @@ export const mediaSignSchema = z.object({
 });
 
 export const mediaConfirmSchema = z.object({
-  kind: z.enum(['video', 'image', 'audio']),
+  kind: z.enum(['video', 'image', 'audio', 'file']),
   path: z.string().regex(MEDIA_PATH, 'Unknown media path'),
   width: z.number().int().positive().max(8000).optional().nullable(),
   height: z.number().int().positive().max(8000).optional().nullable(),

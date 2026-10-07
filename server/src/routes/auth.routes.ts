@@ -11,6 +11,9 @@ import * as authService from '../services/auth.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { setAuthCookie, clearAuthCookie, requireAuth } from '../middleware/auth';
 import { ok } from '../utils/responses';
+import { prisma } from '../lib/prisma';
+import { NotFoundError } from '../utils/errors';
+import { describeEmailConfig, emailDiagnostics, sendEmail } from '../services/email.service';
 
 const router = Router();
 
@@ -66,6 +69,35 @@ router.post(
     const origin = host ? `${req.protocol}://${host}` : undefined;
     await authService.requestPasswordReset(req.body.email, origin).catch(() => undefined);
     ok(res, { message: 'If an account exists for that email, you will receive a password reset link.' });
+  })
+);
+
+/**
+ * Delivery self-test: sends a plain test email to the CALLER'S OWN address and
+ * reports which providers are configured, a live SMTP handshake result and the
+ * actual send outcome. Password-reset failures are silent by design (the
+ * endpoint cannot reveal which addresses exist), which left nobody able to say
+ * WHY a link never arrived. This answers that, in-band, without leaking any
+ * secret and without being able to mail anyone but yourself.
+ */
+router.post(
+  '/email-self-test',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { email: true },
+    });
+    if (!user) throw new NotFoundError('User not found');
+    const config = describeEmailConfig();
+    const diagnostics = await emailDiagnostics();
+    const result = await sendEmail({
+      to: user.email,
+      subject: 'SkillSwap — email delivery self-test',
+      text: 'This is a delivery test. If you can read this, password-reset emails can reach this inbox.',
+      html: '<p>This is a delivery test. If you can read this, password-reset emails can reach this inbox.</p>',
+    });
+    ok(res, { to: user.email, config, diagnostics, delivered: result.delivered, error: result.error });
   })
 );
 

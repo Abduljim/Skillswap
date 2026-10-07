@@ -309,6 +309,7 @@ enum MessageType {
   STICKER
   VIDEO
   AUDIO
+  FILE
 }
 
 model Message {
@@ -335,6 +336,8 @@ model Message {
   mediaWidth      Int?
   mediaHeight     Int?
   mediaDurationMs Int?
+  /// Original filename for FILE messages (documents keep their name).
+  mediaName     String?
   // View-once media (Telegram-style): the recipient fetches the URL through a
   // one-shot endpoint that stamps mediaViewedAt, after which the thread shows
   // "Viewed once" and the media is gone from every list response.

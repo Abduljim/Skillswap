@@ -40,6 +40,7 @@ router.get(
       maxVideoMs: storage.MAX_VIDEO_MS,
       maxAudioBytes: storage.MAX_AUDIO_BYTES,
       maxAudioMs: storage.MAX_AUDIO_MS,
+      maxFileBytes: storage.MAX_FILE_BYTES,
     });
   })
 );
