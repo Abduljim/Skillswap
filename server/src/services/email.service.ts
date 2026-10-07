@@ -146,6 +146,15 @@ export async function sendEmail(
  * is locked out of their account. Never prints SMTP_PASS.
  */
 export function describeEmailConfig(): string {
+  // The Brevo SMTP LOGIN (something@smtp-brevo.com) is not a sendable address:
+  // that domain publishes SPF "-all" and DMARC "p=reject", so every receiving
+  // server silently discards mail From: it - Brevo answers "250 accepted" and
+  // the mail then vanishes without even reaching spam. This misconfiguration is
+  // invisible in every server-side log, so name it explicitly wherever the
+  // config is described (boot log + email self-test).
+  if (/@smtp-brevo\.com/i.test(env.SMTP_FROM || '')) {
+    return `smtp DANGER - SMTP_FROM is "${env.SMTP_FROM}". smtp-brevo.com publishes SPF "-all" and DMARC "p=reject": receiving servers SILENTLY DISCARD mail from it (Brevo still says "accepted"). That address is your Brevo LOGIN, not a sender. Fix: Brevo dashboard -> Senders, Domains & Dedicated IPs -> Add a sender (e.g. your own Gmail), then set SMTP_FROM to it (docs/EMAIL.md).`;
+  }
   // isSmtpConfigured() only checks host and from, so a relay can look configured
   // while every AUTH fails: Brevo and Gmail both need the password. Say so, with
   // the error code it will produce, rather than printing a healthy-looking line.

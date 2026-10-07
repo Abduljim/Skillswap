@@ -498,6 +498,23 @@ describe('email provider summary (boot log)', () => {
   });
 });
 
+describe('The Brevo login address is never a sendable From', () => {
+  it('screams when SMTP_FROM is an @smtp-brevo.com address (DMARC p=reject)', () => {
+    env.SMTP_HOST = 'smtp-relay.brevo.com';
+    env.SMTP_FROM = 'SkillSwap <bb648e001@smtp-brevo.com>';
+    const line = describeEmailConfig();
+    expect(line).toContain('DANGER');
+    expect(line).toContain('p=reject');
+    expect(line).toContain('Add a sender');
+  });
+
+  it('stays quiet for a normal sender', () => {
+    env.SMTP_HOST = 'smtp-relay.brevo.com';
+    env.SMTP_FROM = 'SkillSwap <owner@example.test>';
+    expect(describeEmailConfig()).not.toContain('DANGER');
+  });
+});
+
 describe('The emailed link lands on a page that actually exists', () => {
   it('points at the API-served reset page when no client URL is configured', async () => {
     env.CLIENT_URL = '';
