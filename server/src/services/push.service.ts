@@ -15,12 +15,19 @@ interface IncomingCallPush {
  * server-key API if only FCM_SERVER_KEY is configured. Dead tokens are dropped
  * on the way so we stop pushing to a device that uninstalled or re-registered.
  */
+interface PushResult {
+  sent: number;
+  skipped: boolean;
+  /** How many devices this user has registered for push (0 = no phone). */
+  tokens: number;
+}
+
 async function pushToUser(
   targetUserId: string,
   fcmData: Record<string, string>
-): Promise<{ sent: number; skipped: boolean }> {
+): Promise<PushResult> {
   const useV1 = fcmV1Configured();
-  if (!useV1 && !env.FCM_SERVER_KEY) return { sent: 0, skipped: true };
+  if (!useV1 && !env.FCM_SERVER_KEY) return { sent: 0, skipped: true, tokens: 0 };
 
   let tokens: string[] = [];
   try {
@@ -31,9 +38,9 @@ async function pushToUser(
     tokens = rows.map((r) => r.token).filter(Boolean);
   } catch (e) {
     console.error('[push] token lookup failed', e);
-    return { sent: 0, skipped: false };
+    return { sent: 0, skipped: false, tokens: 0 };
   }
-  if (!tokens.length) return { sent: 0, skipped: false };
+  if (!tokens.length) return { sent: 0, skipped: false, tokens: 0 };
 
   let sent = 0;
   for (const token of tokens) {
@@ -68,7 +75,7 @@ async function pushToUser(
       console.error('[push] send failed', e);
     }
   }
-  return { sent, skipped: false };
+  return { sent, skipped: false, tokens: tokens.length };
 }
 
 /**
@@ -81,7 +88,7 @@ async function pushToUser(
 export async function sendIncomingCallPush(
   targetUserId: string,
   data: IncomingCallPush
-): Promise<{ sent: number; skipped: boolean }> {
+): Promise<PushResult> {
   return pushToUser(targetUserId, {
     type: 'call_incoming',
     exchangeId: String(data.exchangeId),
@@ -108,7 +115,7 @@ interface GroupCallPush {
 export async function sendGroupCallPush(
   targetUserId: string,
   data: GroupCallPush
-): Promise<{ sent: number; skipped: boolean }> {
+): Promise<PushResult> {
   return pushToUser(targetUserId, {
     type: 'group_call_incoming',
     groupId: String(data.groupId),
@@ -127,7 +134,7 @@ export async function sendGroupCallPush(
 export async function sendGroupCallCancelledPush(
   targetUserId: string,
   groupId: string
-): Promise<{ sent: number; skipped: boolean }> {
+): Promise<PushResult> {
   return pushToUser(targetUserId, {
     type: 'group_call_cancelled',
     groupId: String(groupId),
@@ -145,7 +152,7 @@ export async function sendGroupCallCancelledPush(
 export async function sendCallCancelledPush(
   targetUserId: string,
   exchangeId: string
-): Promise<{ sent: number; skipped: boolean }> {
+): Promise<PushResult> {
   return pushToUser(targetUserId, {
     type: 'call_cancelled',
     exchangeId: String(exchangeId),

@@ -1041,13 +1041,17 @@ export function CallsProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    const onReachability = (d: { exchangeId: string; present: boolean; pushed: number; pushSkipped: boolean }) => {
+    const onReachability = (d: { exchangeId: string; present: boolean; pushed: number; pushSkipped: boolean; tokens?: number }) => {
       if (d.exchangeId !== exchangeIdRef.current) return;
       // "Ringing…" whenever their phone can actually ring: the app is live
       // (present) or a push notification is ringing it right now (pushed > 0).
       // Only a callee with no socket AND no push gets the honest "Calling…".
       // Nothing about closed apps is ever shown — the status word says it all.
-      setCalleeOnline(d.present || (d.pushed ?? 0) > 0);
+      // Their phone can ring if ANY path exists: live socket, a push that
+        // just delivered, or even a registered device (FCM accepts the
+        // message the moment their data comes back). "Calling…" is reserved
+        // for the honest dead end: no socket, no device, no push.
+      setCalleeOnline(d.present || (d.pushed ?? 0) > 0 || (d.tokens ?? 0) > 0);
     };
     socket.on('call:callee-reachability', onReachability);
     socket.on('call:ringing', onRinging);

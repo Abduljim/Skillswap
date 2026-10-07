@@ -1,4 +1,5 @@
 import { FrameAvatar } from './ui';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Phone,
   PhoneOff,
@@ -145,6 +146,7 @@ export function CallOverlay({
   const partner = call.peer;
   const ringing = call.status === 'incoming';
   const inCall = call.status === 'active';
+  const { user: me } = useAuth();
   const videoOn = inCall && call.video;
   // Only an established call can be minimised: a ringing sheet has nothing to
   // collapse into, and the callee must see Accept/Decline.
@@ -290,6 +292,18 @@ export function CallOverlay({
         )}
       </div>
 
+      {/* My camera off ⇒ my preview shows MY profile, not a blank box. */}
+      {!mini && videoOn && !localCamOn && (
+        <div className="absolute top-4 right-4 w-28 h-40 rounded-2xl bg-ink-900 ring-1 ring-white/20 z-10 flex items-center justify-center overflow-hidden">
+          <FrameAvatar
+            frame={me?.profile?.avatarFrame || 'default'}
+            src={me?.profile?.avatarUrl}
+            alt="You"
+            size={64}
+          />
+        </div>
+      )}
+
       <video
         ref={localVideoRef as React.RefObject<HTMLVideoElement>}
         autoPlay
@@ -366,13 +380,6 @@ export function CallOverlay({
             {relayHint && !inCall && !ended && (
               <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
                 {relayHint}
-              </p>
-            )}
-            {inCall && call.video && !localHasVideo && (
-              <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
-                {localCamOn
-                  ? 'Camera unavailable on this device — continuing as an audio call.'
-                  : 'Your camera is off — you can still see and hear them.'}
               </p>
             )}
           </div>

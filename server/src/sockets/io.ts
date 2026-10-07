@@ -471,6 +471,7 @@ export function initSocket(httpServer: HTTPServer) {
         const present = calleeIsPresent(targetUserId);
         let pushed = 0;
         let pushSkipped = false;
+        let pushTokens = 0;
         if (!present) {
           const result = await sendIncomingCallPush(targetUserId, {
             exchangeId: data.exchangeId,
@@ -479,6 +480,7 @@ export function initSocket(httpServer: HTTPServer) {
           });
           pushed = result.sent;
           pushSkipped = result.skipped;
+          pushTokens = result.tokens;
         }
         // "Ringing…" must never mean "nobody can hear this". No socket and zero
         // pushes means the callee has no device registered for push (never
@@ -489,6 +491,7 @@ export function initSocket(httpServer: HTTPServer) {
           present,
           pushed,
           pushSkipped,
+          tokens: pushTokens,
         });
         console.log(
           `📞 [call] ${data.exchangeId.slice(0, 8)} request: callee present=${present} push sent=${pushed} skipped=${pushSkipped}`

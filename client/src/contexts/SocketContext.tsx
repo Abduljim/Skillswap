@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
 import { warmIceConfig } from '../lib/ice';
-import { registerPushToken } from '../lib/push';
+import { registerPushToken, refreshPushToken } from '../lib/push';
+import { App as CapApp } from '@capacitor/app';
 import { createSocket } from '../lib/socket';
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
@@ -38,6 +39,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // A connected socket means the server is awake: the right moment to make
       // sure this device has a push token for closed-app ringing.
       void registerPushToken();
+      void refreshPushToken();
       seedPresence();
     };
     const onDisconnect = () => setReady(false);
@@ -50,6 +52,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
     warm();
     const warmTimer = window.setInterval(warm, 240_000);
+    // Coming back from background is the other moment a rotated token must be
+    // re-announced, or closed-app ringing dies silently after a reinstall.
+    let appSub: { remove: () => Promise<void> } | null = null;
+    try {
+      void CapApp.addListener('appStateChange', (st) => {
+        if (st.isActive) void refreshPushToken();
+      }).then((sub) => {
+        appSub = sub;
+      });
+    } catch {
+      // Web preview has no app lifecycle.
+    }
     // Live presence for the message-list dots: the server announces every
     // online/offline flip to all connected clients.
     const onPresenceUpdate = (d: { userId: string; online: boolean }) =>
@@ -86,6 +100,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       window.clearInterval(warmTimer);
+      void appSub?.remove();
       if (socketOut) {
         socketOut.off('connect', onConnect);
         socketOut.off('disconnect', onDisconnect);

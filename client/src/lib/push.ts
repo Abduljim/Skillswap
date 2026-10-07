@@ -31,6 +31,8 @@ let inflight: Promise<void> | null = null;
  * login; re-registers only if it fails (the server re-points the token to
  * whoever signs in on this device).
  */
+let lastRegisteredAt = 0;
+
 export async function registerPushToken(): Promise<void> {
   if (registered) return;
   if (inflight) return inflight;
@@ -48,6 +50,7 @@ export async function registerPushToken(): Promise<void> {
         if (!token) return;
         await api.post('/notifications/push-token', { token, platform: 'android' });
         registered = true;
+        lastRegisteredAt = Date.now();
         return;
       } catch {
         registered = false;
@@ -93,4 +96,15 @@ export async function getLaunchAction(): Promise<'answer' | 'decline' | ''> {
   } catch {
     return '';
   }
+}
+/**
+ * Re-POST the current FCM token, throttled to once per 10 minutes. After an
+ * APK reinstall the token rotates; without this the server keeps a stale row
+ * and a closed app "never rings" until the next fresh login.
+ */
+export async function refreshPushToken(): Promise<void> {
+  if (Capacitor.getPlatform() !== 'android') return;
+  if (registered && Date.now() - lastRegisteredAt < 10 * 60_000) return;
+  registered = false;
+  await registerPushToken();
 }
