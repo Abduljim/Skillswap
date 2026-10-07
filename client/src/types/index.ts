@@ -152,6 +152,8 @@ export interface Conversation {
     displayName: string;
     profile?: { avatarUrl?: string | null; avatarFrame?: string | null };
   };
+  /** Server snapshot of the partner's presence (live socket updates win). */
+  partnerOnline?: boolean;
   lastMessage: Message | null;
   unreadCount: number;
   updatedAt: string;

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { EmptyState, Skeleton, FrameAvatar } from '../components/ui';
 import { MessageSquare } from 'lucide-react';
 import type { Conversation } from '../types';
+import { useGlobalSocket } from '../contexts/SocketContext';
 
 function timeAgo(dateStr: string): string {
   const ms = Date.now() - new Date(dateStr).getTime();
@@ -29,6 +30,8 @@ function preview(m: Conversation['lastMessage']): string {
 
 export default function MessagesPage() {
   const nav = useNavigate();
+  const { presence } = useGlobalSocket();
+
   const { data, isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () => api.get<Conversation[]>('/messages/conversations'),
@@ -71,12 +74,22 @@ export default function MessagesPage() {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`font-semibold text-sm truncate ${
-                      unread ? 'text-ink-900' : 'text-ink-800'
-                    }`}
-                  >
-                    {c.partner.displayName}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {/* Online/offline dot — live socket presence, with the
+                        server's partnerOnline snapshot as first-paint fallback. */}
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        (presence[c.partner.id] ?? c.partnerOnline) ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                      title={(presence[c.partner.id] ?? c.partnerOnline) ? 'Online' : 'Offline'}
+                    />
+                    <span
+                      className={`font-semibold text-sm truncate ${
+                        unread ? 'text-ink-900' : 'text-ink-800'
+                      }`}
+                    >
+                      {c.partner.displayName}
+                    </span>
                   </span>
                   <span className="text-xs text-ink-500 shrink-0">{timeAgo(c.updatedAt)}</span>
                 </div>

@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { ForbiddenError, NotFoundError, BadRequestError , HttpError} from '../utils/errors';
-import { emitToExchange } from '../sockets/io';
+import { emitToExchange, isUserOnline } from '../sockets/io';
 import { isOwnMediaUrl } from './supabase.service';
 
 async function assertActiveParticipant(userId: string, exchangeId: string) {
@@ -130,6 +130,8 @@ export async function listConversations(userId: string) {
       return {
         exchangeId: ex.id,
         partner,
+        // First-paint presence for the dot; live socket updates win over it.
+        partnerOnline: isUserOnline(partner.id),
         lastMessage: ex.messages[0] ?? null,
         unreadCount: ex._count.messages,
         updatedAt: ex.messages[0]?.createdAt ?? ex.updatedAt,

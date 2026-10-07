@@ -117,6 +117,8 @@ function ConversationContent({
   // disagree. Graphite and Midnight are dark-only wallpapers.
   const { isDark, setMode, activeTheme } = useTheme();
   const dark = isDark;
+  const { presence } = useGlobalSocket();
+  const peerOnline = presence[peer?.id] ?? false;
 
   const chooseMode = (d: boolean) => {
     if (d && !pro) {
@@ -185,6 +187,17 @@ function ConversationContent({
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
+
+        {/* Partner name + presence dot (green online / red offline) */}
+        <div className="flex items-center gap-2 min-w-0 ml-1">
+          <span
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${peerOnline ? 'bg-green-500' : 'bg-red-500'}`}
+            title={peerOnline ? 'Online' : 'Offline'}
+          />
+          <span className={`text-sm font-semibold truncate ${dark ? 'text-[#eef0f4]' : 'text-[#12131a]'}`}>
+            {peer?.displayName}
+          </span>
+        </div>
 
         <div className={`ml-auto flex items-center gap-0.5 rounded-full p-0.5 ${shell.pillIdle} ${dark ? 'bg-[#161a23]' : 'bg-[#f2ede4]'}`}>
           <button

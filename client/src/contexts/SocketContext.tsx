@@ -4,22 +4,26 @@ import { warmIceConfig } from '../lib/ice';
 import { registerPushToken } from '../lib/push';
 import { createSocket } from '../lib/socket';
 import { useAuth } from './AuthContext';
+import { api } from '../lib/api';
 
 interface SocketState {
   socket: Socket | null;
   ready: boolean;
+  /** Live online/offline map for exchange partners (message-list dots). */
+  presence: Record<string, boolean>;
 }
 
 // One socket for the whole app, kept alive for the logged-in session. This is
 // what makes an incoming call UI reachable from ANY screen (feed, messages,
 // profile …) — previously a socket only existed while inside a conversation,
 // so nobody browsing the app could see or hear a call coming in.
-const SocketContext = createContext<SocketState>({ socket: null, ready: false });
+const SocketContext = createContext<SocketState>({ socket: null, ready: false, presence: {} });
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const [ready, setReady] = useState(false);
+  const [presence, setPresence] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -34,8 +38,27 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // A connected socket means the server is awake: the right moment to make
       // sure this device has a push token for closed-app ringing.
       void registerPushToken();
+      seedPresence();
     };
     const onDisconnect = () => setReady(false);
+    // Live presence for the message-list dots: the server announces every
+    // online/offline flip to all connected clients.
+    const onPresenceUpdate = (d: { userId: string; online: boolean }) =>
+      setPresence((prev) => ({ ...prev, [d.userId]: d.online }));
+    // Seed presence for the partners we actually chat with; socket events keep
+    // it fresh from here on.
+    const seedPresence = () => {
+      api
+        .get<Array<{ userId: string; online: boolean }>>('/users/presence/partners')
+        .then((rows) => {
+          setPresence((prev) => {
+            const next = { ...prev };
+            for (const r of rows) next[r.userId] = r.online;
+            return next;
+          });
+        })
+        .catch(() => {});
+    };
 
     (async () => {
       s = await createSocket();
@@ -44,7 +67,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socketRef.current = s;
       s.on('connect', onConnect);
       s.on('disconnect', onDisconnect);
-      if (s.connected) setReady(true);
+      s.on('presence:update', onPresenceUpdate);
+      if (s.connected) {
+        setReady(true);
+        seedPresence();
+      }
     })();
 
     return () => {
@@ -52,6 +79,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (socketOut) {
         socketOut.off('connect', onConnect);
         socketOut.off('disconnect', onDisconnect);
+        socketOut.off('presence:update', onPresenceUpdate);
         socketOut.disconnect();
       }
       socketRef.current = null;
@@ -59,7 +87,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
   }, [user?.id]);
 
-  return <SocketContext.Provider value={{ socket: socketRef.current, ready }}>{children}</SocketContext.Provider>;
+  return (
+    <SocketContext.Provider value={{ socket: socketRef.current, ready, presence }}>
+      {children}
+    </SocketContext.Provider>
+  );
 }
 
 export const useGlobalSocket = () => useContext(SocketContext);

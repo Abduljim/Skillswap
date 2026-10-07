@@ -6,6 +6,7 @@ import { userSearchSchema } from '../validators/schemas';
 import * as profileService from '../services/profile.service';
 import { ok } from '../utils/responses';
 import { prisma } from '../lib/prisma';
+import { isUserOnline } from '../sockets/io';
 import { NotFoundError } from '../utils/errors';
 
 const router = Router();
@@ -100,6 +101,31 @@ router.get(
     });
 
     ok(res, { users: enriched, total, page, pageSize });
+  })
+);
+
+/**
+ * Presence snapshot for the partners we actually chat with (green/red dots in
+ * the message list). Socket event `presence:update` keeps it live afterwards;
+ * this is the seed the client fetches when its socket connects. Registered
+ * before '/:id' on purpose — otherwise Express reads 'presence' as a user id.
+ */
+router.get(
+  '/presence/partners',
+  requireAuth,
+  asyncHandler(async (req: any, res) => {
+    const exchanges = await prisma.exchange.findMany({
+      where: {
+        status: 'ACTIVE',
+        OR: [{ userAId: req.user.userId }, { userBId: req.user.userId }],
+      },
+      select: { userAId: true, userBId: true },
+    });
+    const partners = new Set<string>();
+    for (const ex of exchanges) {
+      partners.add(ex.userAId === req.user.userId ? ex.userBId : ex.userAId);
+    }
+    ok(res, [...partners].map((id) => ({ userId: id, online: isUserOnline(id) })));
   })
 );
 

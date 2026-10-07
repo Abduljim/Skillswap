@@ -871,3 +871,80 @@ describe('A call the server refuses', () => {
     expect(callee.userId).toBeTruthy();
   });
 });
+
+/**
+ * Like `once`, but ignores events that don't match — the watcher's OWN
+ * connect also broadcasts a presence:update, and it can land in the same tick
+ * the listener is attached, so unfiltered waiting would be racy.
+ */
+function onceFor<T = any>(
+  socket: ClientSocket,
+  event: string,
+  match: (d: T) => boolean,
+  timeoutMs = 5000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(event, handler);
+      reject(new Error(`Timeout waiting for a matching '${event}'`));
+    }, timeoutMs);
+    const handler = (d: T) => {
+      if (!match(d)) return;
+      clearTimeout(timer);
+      socket.off(event, handler);
+      resolve(d);
+    };
+    socket.on(event, handler);
+  });
+}
+
+describe('Presence broadcast (message-list dots)', () => {
+  it('announces a partner going online, then offline when they leave', async () => {
+    const watcher = await signup('presence-watcher@skillswap.test', 'Watcher');
+    const target = await signup('presence-target@skillswap.test', 'Target');
+
+    const ws = await connect(watcher.token);
+    const onlineEvt = onceFor<{ userId: string; online: boolean }>(
+      ws,
+      'presence:update',
+      (d) => d.userId === target.userId && d.online === true
+    );
+    const ts = await connect(target.token);
+
+    expect(await onlineEvt).toMatchObject({ userId: target.userId, online: true });
+
+    const offlineEvt = onceFor<{ userId: string; online: boolean }>(
+      ws,
+      'presence:update',
+      (d) => d.userId === target.userId && d.online === false
+    );
+    ts.disconnect();
+
+    expect(await offlineEvt).toMatchObject({ userId: target.userId, online: false });
+  });
+
+  it('goes offline on the watcher when the app reports itself backgrounded', async () => {
+    const watcher = await signup('presence-watcher2@skillswap.test', 'Watcher 2');
+    const target = await signup('presence-target2@skillswap.test', 'Target 2');
+
+    const ws = await connect(watcher.token);
+    const ts = await connect(target.token);
+    // Both are online now; the background flip must flip the target's dot red
+    // even though its socket stays alive (locked-screen app).
+    const bgEvt = onceFor<{ userId: string; online: boolean }>(
+      ws,
+      'presence:update',
+      (d) => d.userId === target.userId && d.online === false
+    );
+    ts.emit('presence:set', { foreground: false });
+    expect(await bgEvt).toMatchObject({ userId: target.userId, online: false });
+
+    const fgEvt = onceFor<{ userId: string; online: boolean }>(
+      ws,
+      'presence:update',
+      (d) => d.userId === target.userId && d.online === true
+    );
+    ts.emit('presence:set', { foreground: true });
+    expect(await fgEvt).toMatchObject({ userId: target.userId, online: true });
+  });
+});

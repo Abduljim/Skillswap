@@ -63,6 +63,33 @@ function calleeIsPresent(userId: string): boolean {
   return !backgroundSockets.has(userId);
 }
 
+/**
+ * Public face of calleeIsPresent for REST handlers: "online" means the app is
+ * live in the foreground somewhere (same rule calls use). Locked/backgrounded
+ * or closed ⇒ offline — which is also what a push-rung phone looks like, and
+ * the message-list dot should honestly say red there.
+ */
+export function isUserOnline(userId: string): boolean {
+  return calleeIsPresent(userId);
+}
+
+/**
+ * Presence fan-out. Every authenticated socket joins `presence:all`; when a
+ * user's online/offline value flips, everyone is told so the green/red dots in
+ * the message list stay live without polling. Emits only on change — connects
+ * and foreground/background flips that don't change the value are silent.
+ */
+const lastBroadcastPresence = new Map<string, boolean>();
+function broadcastPresence(userId: string) {
+  const online = calleeIsPresent(userId);
+  if (lastBroadcastPresence.get(userId) === online) return;
+  // Track only online users so the map can't grow without bound; a duplicate
+  // "offline" for an already-offline user is harmless (clients are idempotent).
+  if (online) lastBroadcastPresence.set(userId, true);
+  else lastBroadcastPresence.delete(userId);
+  io?.to('presence:all').emit('presence:update', { userId, online });
+}
+
 interface ActiveCall {
   callerId: string;
   calleeId: string;
@@ -297,10 +324,14 @@ export function initSocket(httpServer: HTTPServer) {
     const userId = (socket as any).userId as string;
     socket.join(`user:${userId}`);
     addSocket(connectedSockets, userId, socket.id);
+    // Live presence room + announce (first connect flips false→true ⇒ emitted).
+    socket.join('presence:all');
+    broadcastPresence(userId);
 
     socket.on('disconnect', () => {
       dropSocket(connectedSockets, userId, socket.id);
       dropSocket(backgroundSockets, userId, socket.id);
+      broadcastPresence(userId);
       void cleanupCallsForUser(userId);
     });
 
@@ -315,6 +346,7 @@ export function initSocket(httpServer: HTTPServer) {
     socket.on('presence:set', (data: { foreground?: unknown }) => {
       if (data?.foreground === false) addSocket(backgroundSockets, userId, socket.id);
       else dropSocket(backgroundSockets, userId, socket.id);
+      broadcastPresence(userId);
     });
 
     socket.on('exchange:join', async (exchangeId: string) => {

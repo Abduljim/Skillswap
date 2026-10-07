@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useGlobalSocket } from './SocketContext';
 import { CallOverlay, CallStatus, Peer } from '../components/CallOverlay';
+import { CallErrorBoundary } from '../components/CallErrorBoundary';
 import { GroupCallOverlay } from '../components/GroupCallOverlay';
 import { ensureMediaPermissions } from '../lib/media-permissions';
 import { notifyCallPermissionNeeded } from '../lib/permission-gate';
@@ -285,9 +286,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
    * set up instead of leaving "Ringing…" on screen.
    */
   const [relayHint, setRelayHint] = useState<string | null>(null);
-  /** Whether an offline callee's phone is actually being rung right now. */
-  const [reachNote, setReachNote] = useState<string | null>(null);
-  /** False once the server says the callee has no live socket: "Calling…". */
+  /** False only when the callee cannot ring at all: no socket AND no push. */
   const [calleeOnline, setCalleeOnline] = useState<boolean | null>(null);
   /** Real track state, so video panels hide when there is no video to show. */
   const [remoteHasVideo, setRemoteHasVideo] = useState(false);
@@ -296,7 +295,6 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status === 'none' && groupStatus === 'none') {
       setRelayHint(null);
-      setReachNote(null);
       setCalleeOnline(null);
       setRemoteHasVideo(false);
       setLocalHasVideo(false);
@@ -426,12 +424,12 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Peer connection + signaling ────────────────────────────────────────────
-  const attachRemote = useCallback((stream: MediaStream) => {
+  const attachRemote = useCallback((stream: MediaStream | null) => {
     remoteStreamRef.current = stream;
-    if (remoteVideoRef.current) {
+    setRemoteHasVideo(Boolean(stream && stream.getVideoTracks().length > 0));
+    if (stream && remoteVideoRef.current) {
       const el = remoteVideoRef.current;
       el.srcObject = stream;
-      setRemoteHasVideo(stream.getVideoTracks().length > 0);
       (el as any).playsInline = true;
       el.muted = false; // remote audio is the entire point of the call
       el.play?.().catch(() => {});
@@ -447,9 +445,9 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const attachLocal = useCallback((stream: MediaStream) => {
-    setLocalHasVideo(stream.getVideoTracks().length > 0);
-    if (localVideoRef.current) {
+  const attachLocal = useCallback((stream: MediaStream | null) => {
+    setLocalHasVideo(Boolean(stream && stream.getVideoTracks().length > 0));
+    if (stream && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
       (localVideoRef.current as any).playsInline = true;
       (localVideoRef.current as any).play?.().catch(() => {});
@@ -1030,15 +1028,11 @@ export function CallsProvider({ children }: { children: ReactNode }) {
 
     const onReachability = (d: { exchangeId: string; present: boolean; pushed: number; pushSkipped: boolean }) => {
       if (d.exchangeId !== exchangeIdRef.current) return;
-      setCalleeOnline(d.present);
-      if (d.present) return;
-      setReachNote(
-        d.pushSkipped
-          ? 'Their app is closed and push is not configured on the server, so their phone cannot ring. They will see a missed call when they open the app.'
-          : d.pushed > 0
-            ? 'Their app is closed — their phone is ringing from a push notification now.'
-            : 'They appear offline: the app is closed and no device is registered for push, so this call cannot reach them. They will see a missed call.'
-      );
+      // "Ringing…" whenever their phone can actually ring: the app is live
+      // (present) or a push notification is ringing it right now (pushed > 0).
+      // Only a callee with no socket AND no push gets the honest "Calling…".
+      // Nothing about closed apps is ever shown — the status word says it all.
+      setCalleeOnline(d.present || (d.pushed ?? 0) > 0);
     };
     socket.on('call:callee-reachability', onReachability);
     socket.on('call:ringing', onRinging);
@@ -1180,10 +1174,13 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   // ── Re-attach video tracks when the active video UI mounts ────────────────
+  // The refs can still be null here: this effect fires the instant the call
+  // is picked up, before any media exists. Casting null to MediaStream made
+  // getVideoTracks() throw and white-screen the whole app on answer.
   useEffect(() => {
     if (status !== 'active') return;
-    attachRemote(remoteStreamRef.current as MediaStream);
-    attachLocal(streamRef.current as MediaStream);
+    attachRemote(remoteStreamRef.current);
+    attachLocal(streamRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, video]);
 
@@ -1669,6 +1666,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   return (
     <CallsContext.Provider value={value}>
       {children}
+      <CallErrorBoundary label="call screen">
       <CallOverlay
         call={{ status, peer, video, incoming, error }}
         onAccept={() => void acceptCall()}
@@ -1690,7 +1688,6 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onClearSummary={clearSummary}
         onRedial={(p, ex, v) => void startCall(p, ex, v)}
         relayHint={relayHint}
-        reachNote={reachNote}
         calleeOnline={calleeOnline}
         remoteHasVideo={remoteHasVideo}
         localHasVideo={localHasVideo}
@@ -1701,6 +1698,8 @@ export function CallsProvider({ children }: { children: ReactNode }) {
           nav(`/messages/${ex}`);
         }}
       />
+      </CallErrorBoundary>
+      <CallErrorBoundary label="group call screen">
       <GroupCallOverlay
         status={groupStatus}
         video={groupVideo}
@@ -1725,6 +1724,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
         onMinimize={() => setGroupMinimized(true)}
         onRestore={() => setGroupMinimized(false)}
       />
+      </CallErrorBoundary>
     </CallsContext.Provider>
   );
 }
