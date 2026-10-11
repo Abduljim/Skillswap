@@ -292,31 +292,36 @@ export function CallOverlay({
         )}
       </div>
 
-      {/* My camera off ⇒ my preview shows MY profile, not a blank box. */}
-      {!mini && videoOn && !localCamOn && (
-        <div className="absolute top-4 right-4 w-28 h-40 rounded-2xl bg-ink-900 ring-1 ring-white/20 z-10 flex items-center justify-center overflow-hidden">
-          <FrameAvatar
-            frame={me?.profile?.avatarFrame || 'default'}
-            src={me?.profile?.avatarUrl}
-            alt="You"
-            size={64}
-          />
-        </div>
-      )}
-
-      <video
-        ref={localVideoRef as React.RefObject<HTMLVideoElement>}
-        autoPlay
-        playsInline
-        muted
+      {/* My preview box: live video while my camera is on, MY profile (avatar
+          in my ring) whenever it is not — cam switched off, no camera on the
+          device, or the track died. Never a blank box, for me or for them. */}
+      <div
         className={
           mini
             ? 'hidden'
-            : `absolute top-4 right-4 w-28 h-40 rounded-2xl object-cover bg-ink-900 ring-1 ring-white/20 z-10 ${
-                videoOn && localHasVideo ? '' : 'invisible'
-              }`
+            : 'absolute top-4 right-4 w-28 h-40 rounded-2xl bg-ink-900 ring-1 ring-white/20 z-10 overflow-hidden'
         }
-      />
+      >
+        <video
+          ref={localVideoRef as React.RefObject<HTMLVideoElement>}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full w-full object-cover ${
+            videoOn && localHasVideo && localCamOn ? '' : 'invisible'
+          }`}
+        />
+        {videoOn && (!localHasVideo || !localCamOn) && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FrameAvatar
+              frame={me?.profile?.avatarFrame || 'default'}
+              src={me?.profile?.avatarUrl}
+              alt="You"
+              size={64}
+            />
+          </div>
+        )}
+      </div>
 
       {mini ? (
         // Floating bar. This branch paints only the bar — no backdrop — so the

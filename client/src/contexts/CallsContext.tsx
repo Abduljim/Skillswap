@@ -452,6 +452,11 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   const attachLocal = useCallback((stream: MediaStream | null) => {
     setLocalHasVideo(Boolean(stream && stream.getVideoTracks().length > 0));
     if (stream && localVideoRef.current) {
+      // A track that dies (device unplugged, permission revoked) must flip the
+      // preview to the profile fallback instead of leaving a frozen rectangle.
+      for (const t of stream.getVideoTracks()) {
+        t.addEventListener('ended', () => setLocalHasVideo(false));
+      }
       localVideoRef.current.srcObject = stream;
       (localVideoRef.current as any).playsInline = true;
       (localVideoRef.current as any).play?.().catch(() => {});
