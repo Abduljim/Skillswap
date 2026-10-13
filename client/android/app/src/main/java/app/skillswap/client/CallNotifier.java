@@ -250,6 +250,9 @@ public class CallNotifier extends Plugin {
     public void ring(PluginCall call) {
         String peerName = call.getString("displayName", "Incoming call");
         String source = call.getString("soundSource", "high");
+        final boolean video = Boolean.TRUE.equals(call.getBoolean("video", false));
+        final String exchangeId = call.getString("exchangeId", "");
+        final String callerId = call.getString("callerId", "");
         if (!notificationsAllowed()) {
             call.resolve();
             return;
@@ -267,7 +270,7 @@ public class CallNotifier extends Plugin {
                 NotificationCompat.Builder builder = new NotificationCompat.Builder(getContext(), CHANNEL_ID)
                         .setSmallIcon(R.mipmap.ic_launcher)
                         .setContentTitle(peerName)
-                        .setContentText("Incoming call…")
+                        .setContentText(video ? "Incoming video call…" : "Incoming voice call…")
                         .setCategory(NotificationCompat.CATEGORY_CALL)
                         .setPriority(NotificationCompat.PRIORITY_MAX)
                         .setOngoing(true)
@@ -277,6 +280,34 @@ public class CallNotifier extends Plugin {
                         .setAutoCancel(false)
                         .setOnlyAlertOnce(false)
                         .setVibrate(new long[] { 0, 700, 400, 700 });
+
+                // Answer/Decline straight from the shade — the same receiver
+                // the closed-app (FCM) notification uses, so responding works
+                // whether the ring came from a push or from a live socket.
+                int pflags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pflags |= PendingIntent.FLAG_IMMUTABLE;
+                builder.addAction(0, "Answer", PendingIntent.getBroadcast(getContext(), 441,
+                        new Intent(getContext(), CallActionReceiver.class)
+                                .setAction(CallActionReceiver.ACTION_ANSWER), pflags));
+                builder.addAction(0, "Decline", PendingIntent.getBroadcast(getContext(), 442,
+                        new Intent(getContext(), CallActionReceiver.class)
+                                .setAction(CallActionReceiver.ACTION_DECLINE), pflags));
+
+                // Store the ringing call with the same prefs the FCM path and
+                // PushPlugin use: tapping the notification (or answering from
+                // it) must land JS in exactly this conversation.
+                try {
+                    getContext().getSharedPreferences("call_state", android.content.Context.MODE_PRIVATE).edit()
+                            .putString("kind", "direct")
+                            .putString("exchange_id", exchangeId)
+                            .putString("caller_name", peerName)
+                            .putString("caller_id", callerId)
+                            .putBoolean("video", video)
+                            .putLong("ts", System.currentTimeMillis())
+                            .apply();
+                } catch (Exception ignored) {
+                    // Prefs unavailable: the app still opens, just without auto-restore.
+                }
 
                 Notification notification = builder.build();
 

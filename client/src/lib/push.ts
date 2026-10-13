@@ -18,6 +18,7 @@ interface PushPlugin {
   getLaunchedCall(): Promise<LaunchedCall | null>;
   clearLaunchedCall(): Promise<void>;
   getLaunchAction(): Promise<{ action: string }>;
+  getLaunchMessage(): Promise<{ exchangeId?: string | null }>;
 }
 
 const Push = registerPlugin<PushPlugin>('Push');
@@ -107,4 +108,14 @@ export async function refreshPushToken(): Promise<void> {
   if (registered && Date.now() - lastRegisteredAt < 10 * 60_000) return;
   registered = false;
   await registerPushToken();
+}
+
+/** The conversation a message notification opened (null when none). */
+export async function getLaunchMessage(): Promise<{ exchangeId?: string | null } | null> {
+  try {
+    if (Capacitor.getPlatform() !== 'android') return null;
+    return await Push.getLaunchMessage();
+  } catch {
+    return null;
+  }
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { ForbiddenError, NotFoundError, BadRequestError , HttpError} from '../utils/errors';
 import { emitToExchange, isUserOnline } from '../sockets/io';
+import { sendMessagePush } from './push.service';
 import { isOwnMediaUrl } from './supabase.service';
 
 async function assertActiveParticipant(userId: string, exchangeId: string) {
@@ -200,5 +201,27 @@ export async function createMessage(
     'message:new',
     message.viewOnce ? { ...message, mediaUrl: null, thumbUrl: null } : message
   );
+  // Ping their phone when they cannot see the message right now (app closed
+  // or backgrounded). Live sockets get the socket event instead.
+  void (async () => {
+    try {
+      const ex = await prisma.exchange.findUnique({
+        where: { id: exchangeId },
+        select: { userAId: true, userBId: true },
+      });
+      const other = ex ? (ex.userAId === userId ? ex.userBId : ex.userAId) : null;
+      if (!other || isUserOnline(other)) return;
+      const sender = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { displayName: true },
+      });
+      await sendMessagePush(other, {
+        senderName: sender?.displayName ?? 'Someone',
+        exchangeId,
+      });
+    } catch {
+      // A failed ping must never fail the message itself.
+    }
+  })();
   return message;
 }

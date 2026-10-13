@@ -6,7 +6,7 @@ import { useTheme, FREE_THEME, FREE_MODE } from '../contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import CallPermissionGate from '../components/CallPermissionGate';
-import { registerPushToken } from '../lib/push';
+import { registerPushToken, getLaunchMessage } from '../lib/push';
 import { unlockAudio } from '../lib/ringtone';
 import type { Conversation, ExchangeRequest } from '../types';
 import clsx from 'clsx';
@@ -20,6 +20,26 @@ export default function AppLayout() {
 
   // Chat conversations fill the whole screen (like WhatsApp), so the app chrome is hidden there.
   const isFullScreenChat = /^\/messages\/[^/]+$/.test(location.pathname);
+
+  // A "Sent you a message" notification tap must land IN that conversation,
+  // on cold start and when the app was merely in the background.
+  useEffect(() => {
+    let live = true;
+    const check = async () => {
+      const m = await getLaunchMessage();
+      if (live && m?.exchangeId) nav(`/messages/${m.exchangeId}`);
+    };
+    void check();
+    const onResume = (e: any) => {
+      if (e?.isActive) void check();
+    };
+    import('@capacitor/app').then(({ App }) => {
+      if (live) void App.addListener('appStateChange', onResume);
+    });
+    return () => {
+      live = false;
+    };
+  }, [nav]);
 
   useEffect(() => {
     const on = () => setOnline(true);

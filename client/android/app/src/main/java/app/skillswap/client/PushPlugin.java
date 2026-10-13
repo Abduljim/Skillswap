@@ -47,7 +47,24 @@ public class PushPlugin extends Plugin {
                 });
     }
 
+    /**
+     * The conversation a "Sent you a message" notification opened (consumed
+     * on read), so JS can navigate straight into that thread.
+     */
     @PluginMethod
+    public void getLaunchMessage(PluginCall call) {
+        try {
+            android.content.Intent intent = getActivity() != null ? getActivity().getIntent() : null;
+            String exchangeId = intent != null ? intent.getStringExtra("open_exchange") : null;
+            if (intent != null && exchangeId != null) intent.removeExtra("open_exchange");
+            JSObject ret = new JSObject();
+            ret.put("exchangeId", exchangeId == null ? null : exchangeId);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.resolve(new JSObject());
+        }
+    }
+
     public void getLaunchedCall(PluginCall call) {
         Context c = getContext();
         long ts = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_TS, 0);

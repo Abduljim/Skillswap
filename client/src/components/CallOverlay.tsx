@@ -7,6 +7,7 @@ import {
   MicOff,
   Video,
   VideoOff,
+  Minimize2,
   MessageCircle,
   X,
   RotateCw,
@@ -381,6 +382,11 @@ export function CallOverlay({
               }`}
             >
               {statusText}
+            {!inCall && !ended && (
+              <p className="text-[11px] uppercase tracking-[0.18em] text-white/50 font-semibold mt-1">
+                {call.video ? 'Video call' : 'Voice call'}
+              </p>
+            )}
             </p>
             {relayHint && !inCall && !ended && (
               <p className="mt-2 text-[11px] leading-snug text-amber-200/80 max-w-xs mx-auto">
@@ -476,6 +482,11 @@ export function CallOverlay({
                     label={call.video ? 'Turn camera off' : 'Turn camera on'}
                   >
                     {call.video ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                  </DockButton>
+                )}
+                {inCall && onMinimize && (
+                  <DockButton onClick={onMinimize} label="Minimize — keep using the app">
+                    <Minimize2 className="w-5 h-5" />
                   </DockButton>
                 )}
                 <DockButton onClick={onHangup} danger label="End call">

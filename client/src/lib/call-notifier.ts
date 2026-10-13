@@ -20,7 +20,10 @@ interface CallNotifierPlugin {
   requestMediaPermissions(): Promise<void>;
   setSoundSource(opts: { source: CallSoundSource }): Promise<void>;
   setCallUiActive(opts: { active: boolean }): Promise<void>;
-  ring(opts: { displayName: string; soundSource?: CallSoundSource }): Promise<void>;
+  ring(opts: { displayName: string; soundSource?: CallSoundSource;
+    video?: boolean;
+    exchangeId?: string;
+    callerId?: string }): Promise<void>;
   stop(): Promise<void>;
   openSettings(): Promise<void>;
   getPermissionState(): Promise<Partial<CallPermissions>>;
@@ -93,9 +96,20 @@ export async function setCallUiActive(active: boolean): Promise<void> {
   }
 }
 
-export async function ringIncomingCall(peer: { displayName: string }, sound: CallSoundSource = 'high'): Promise<void> {
+export async function ringIncomingCall(
+  peer: { displayName: string; id?: string },
+  sound: CallSoundSource = 'high',
+  call?: { video?: boolean; exchangeId?: string }
+): Promise<void> {
   try {
-    if (Capacitor.getPlatform() === 'android') await CallNotifier.ring({ ...peer, soundSource: sound });
+    if (Capacitor.getPlatform() === 'android')
+      await CallNotifier.ring({
+        ...peer,
+        soundSource: sound,
+        video: !!call?.video,
+        exchangeId: call?.exchangeId ?? '',
+        callerId: peer.id ?? '',
+      });
   } catch {
     // Fall back to the in-app Web Audio ringtone.
   }

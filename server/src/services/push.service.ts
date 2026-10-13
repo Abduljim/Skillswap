@@ -99,6 +99,21 @@ export async function sendIncomingCallPush(
   });
 }
 
+/**
+ * "You've got a message" for a recipient who cannot see it right now: app
+ * closed, or open but backgrounded. Tapping opens that conversation.
+ */
+export async function sendMessagePush(
+  targetUserId: string,
+  data: { senderName: string; exchangeId: string }
+): Promise<PushResult> {
+  return pushToUser(targetUserId, {
+    type: 'message_new',
+    senderName: data.senderName,
+    exchangeId: data.exchangeId,
+  });
+}
+
 interface GroupCallPush {
   groupId: string;
   video: boolean;

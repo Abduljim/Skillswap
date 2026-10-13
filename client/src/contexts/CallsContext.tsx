@@ -1085,7 +1085,10 @@ export function CallsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void setCallUiActive(status !== 'none' || groupStatusRef.current !== 'none');
     if (status === 'incoming') {
-      void ringIncomingCall(peer, getCallSoundSource());
+      void ringIncomingCall(peer, getCallSoundSource(), {
+        video,
+        exchangeId: exchangeIdRef.current,
+      });
       startRingtone(true);
     } else if (status === 'outgoing') {
       startRingtone(false);

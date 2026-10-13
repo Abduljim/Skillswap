@@ -107,6 +107,12 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
                     groupText(memberCount, "1".equals(data.get("video"))), groupId);
             return;
         }
+        if ("message_new".equals(type)) {
+            String sender = data.get("senderName") != null ? data.get("senderName") : "Someone";
+            String exchangeId = data.get("exchangeId") != null ? data.get("exchangeId") : "";
+            showMessageNotification(sender, exchangeId);
+            return;
+        }
         if (!"call_incoming".equals(type)) {
             super.onMessageReceived(remoteMessage);
             return;
@@ -174,6 +180,42 @@ public class CallFirebaseMessagingService extends FirebaseMessagingService {
             return Integer.parseInt(raw.trim());
         } catch (NumberFormatException e) {
             return fallback;
+        }
+    }
+
+    /**
+     * "Sent you a message" — ordinary-priority, tappable, opens straight into
+     * that conversation via the open_exchange intent extra.
+     */
+    private void showMessageNotification(String senderName, String exchangeId) {
+        try {
+            String CHANNEL = "skillswap_messages";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationManager nm = getSystemService(NotificationManager.class);
+                if (nm != null && nm.getNotificationChannel(CHANNEL) == null) {
+                    NotificationChannel ch = new NotificationChannel(
+                            CHANNEL, "Messages", NotificationManager.IMPORTANCE_DEFAULT);
+                    ch.setDescription("New SkillSwap messages");
+                    nm.createNotificationChannel(ch);
+                }
+            }
+            Intent open = new Intent(this, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            open.putExtra("open_exchange", exchangeId);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getActivity(this, 501, open, flags);
+            NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle(senderName)
+                    .setContentText("Sent you a message")
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(senderName + " sent you a message"))
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setAutoCancel(true)
+                    .setContentIntent(pi);
+            NotificationManagerCompat.from(this).notify((int) (System.currentTimeMillis() % 100000) + 1000, b.build());
+        } catch (Exception e) {
+            // Notification permission revoked or device policy.
         }
     }
 
