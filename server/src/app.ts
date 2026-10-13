@@ -76,9 +76,20 @@ export function createApp() {
     skip: skipInTests,
   });
 
-  app.get('/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok', time: new Date().toISOString() } });
-  });
+  // RENDER_GIT_COMMIT is injected by Render on every deploy, so /health names
+  // the exact commit that is live — no more guessing whether a redeploy landed.
+  const healthHandler = (_req: any, res: any) => {
+    res.json({
+      success: true,
+      data: {
+        status: 'ok',
+        time: new Date().toISOString(),
+        commit: process.env.RENDER_GIT_COMMIT || 'dev',
+      },
+    });
+  };
+  app.get('/health', healthHandler);
+  app.get('/api/health', healthHandler);
 
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/signup', authLimiter);
